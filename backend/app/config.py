@@ -56,7 +56,12 @@ class Settings:
     # Optional ClamAV daemon for scanning uploads (host:port).
     clamd_address: str | None = field(default_factory=lambda: _env("CLAMD_ADDRESS"))
     # Notification providers. "log" providers print to the server log (development).
-    push_provider: str = field(default_factory=lambda: _env("PUSH_PROVIDER", "log"))
+    # "auto": Firebase Cloud Messaging when the service-account file exists, otherwise "log".
+    push_provider: str = field(default_factory=lambda: _env("PUSH_PROVIDER", "auto"))
+    # Firebase service-account key (secret, server only). Never commit it.
+    fcm_credentials_file: str = field(
+        default_factory=lambda: _env("FCM_CREDENTIALS_FILE", "/etc/nus/firebase.json")
+    )
     # "http": post to a push gateway that holds the FCM/APNs credentials.
     push_gateway_url: str | None = field(default_factory=lambda: _env("PUSH_GATEWAY_URL"))
     push_gateway_key: str | None = field(default_factory=lambda: _env("PUSH_GATEWAY_KEY"))

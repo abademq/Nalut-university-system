@@ -5,16 +5,23 @@ import 'package:provider/provider.dart';
 import 'api/api_client.dart';
 import 'api/token_store.dart';
 import 'config.dart';
+import 'push.dart';
 import 'screens/home_shell.dart';
 import 'screens/login_screen.dart';
 import 'state/session.dart';
 
 void main() {
   final store = SecureTokenStore();
-  final session = Session(api: ApiClient(store: store, baseUrl: defaultServerUrl), store: store);
+  final session = Session(
+    api: ApiClient(store: store, baseUrl: defaultServerUrl),
+    store: store,
+    push: FirebasePushService(),
+  );
   session.start();
   runApp(UniversityApp(session: session));
 }
+
+final messengerKey = GlobalKey<ScaffoldMessengerState>();
 
 class UniversityApp extends StatelessWidget {
   const UniversityApp({super.key, required this.session});
@@ -22,10 +29,15 @@ class UniversityApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    session.onForegroundMessage = (title, body) => messengerKey.currentState?.showSnackBar(SnackBar(
+          content: Text(body.isEmpty ? title : '$title\n$body'),
+          duration: const Duration(seconds: 5),
+        ));
     final scheme = ColorScheme.fromSeed(seedColor: AppColors.primary, primary: AppColors.primary);
     return ChangeNotifierProvider.value(
       value: session,
       child: MaterialApp(
+        scaffoldMessengerKey: messengerKey,
         title: 'منصة الجامعة',
         debugShowCheckedModeBanner: false,
         locale: const Locale('ar'),

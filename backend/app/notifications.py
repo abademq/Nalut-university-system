@@ -7,8 +7,15 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
+import time
+import urllib.error
+import urllib.parse
 import urllib.request
+from pathlib import Path
 from typing import Iterable
+
+import jwt
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -82,6 +89,71 @@ class HttpPushProvider:
             return False
 
 
+class FcmProvider:
+    """Firebase Cloud Messaging HTTP v1, authenticated with a service-account key.
+
+    Returns "sent", "invalid" (token no longer registered: caller deletes it) or "failed".
+    """
+
+    SCOPE = "https://www.googleapis.com/auth/firebase.messaging"
+
+    def __init__(self, credentials_file: str) -> None:
+        info = json.loads(Path(credentials_file).read_text())
+        self.project_id = info["project_id"]
+        self.client_email = info["client_email"]
+        self.private_key = info["private_key"]
+        self.token_uri = info.get("token_uri", "https://oauth2.googleapis.com/token")
+        self._token: str | None = None
+        self._expires = 0.0
+        self._lock = threading.Lock()
+
+    def _access_token(self) -> str:
+        with self._lock:
+            if self._token and time.time() < self._expires - 60:
+                return self._token
+            now = int(time.time())
+            assertion = jwt.encode(
+                {"iss": self.client_email, "scope": self.SCOPE, "aud": self.token_uri, "iat": now, "exp": now + 3600},
+                self.private_key, algorithm="RS256",
+            )
+            body = urllib.parse.urlencode({
+                "grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer", "assertion": assertion,
+            }).encode()
+            with urllib.request.urlopen(urllib.request.Request(self.token_uri, data=body), timeout=15) as resp:  # noqa: S310
+                data = json.loads(resp.read())
+            self._token = data["access_token"]
+            self._expires = time.time() + int(data.get("expires_in", 3600))
+            return self._token
+
+    def send(self, token: str, title: str, body: str, data: dict) -> str:
+        message = {
+            "message": {
+                "token": token,
+                "notification": {"title": title, "body": body},
+                "data": {k: "" if v is None else str(v) for k, v in data.items()},
+                "android": {"priority": "high"},
+                "apns": {"payload": {"aps": {"sound": "default"}}},
+            }
+        }
+        req = urllib.request.Request(
+            f"https://fcm.googleapis.com/v1/projects/{self.project_id}/messages:send",
+            data=json.dumps(message).encode(),
+            headers={"Authorization": f"Bearer {self._access_token()}", "Content-Type": "application/json"},
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=15) as resp:  # noqa: S310 - fixed Google endpoint
+                return "sent" if 200 <= resp.status < 300 else "failed"
+        except urllib.error.HTTPError as exc:
+            detail = exc.read().decode(errors="replace")
+            if exc.code == 404 or "UNREGISTERED" in detail or (exc.code == 400 and "registration token" in detail):
+                return "invalid"
+            log.warning("FCM error %s: %s", exc.code, detail[:300])
+            return "failed"
+        except OSError as exc:
+            log.warning("FCM unreachable: %s", exc)
+            return "failed"
+
+
 class LogSmsProvider:
     sent: list = []
 
@@ -109,8 +181,19 @@ class HttpSmsProvider:
             return False
 
 
+_fcm: FcmProvider | None = None
+
+
 def push_provider():
-    return HttpPushProvider() if settings.push_provider == "http" else LogPushProvider()
+    global _fcm
+    mode = settings.push_provider
+    if mode == "http":
+        return HttpPushProvider()
+    if mode == "fcm" or (mode == "auto" and Path(settings.fcm_credentials_file).is_file()):
+        if _fcm is None:
+            _fcm = FcmProvider(settings.fcm_credentials_file)
+        return _fcm
+    return LogPushProvider()
 
 
 def sms_provider():
@@ -244,7 +327,7 @@ def dispatch(db: Session, n: Notification) -> int:
     uni = db.get(University, n.university_id)
     cfg = effective_settings(uni)["notifications"]
     recipients = resolve_recipients(db, n)
-    push = push_provider() if "push" in n.channels else None
+    push = "push" in n.channels
     sms_allowed = (
         "sms" in n.channels
         and cfg.get("sms_enabled")
@@ -258,12 +341,12 @@ def dispatch(db: Session, n: Notification) -> int:
         user = db.get(User, uid)
         d = NotificationDelivery(notification_id=n.id, user_id=uid)
         if push:
-            if _wants(user, n, "push"):
-                tokens = list(db.scalars(select(DeviceToken.token).where(DeviceToken.user_id == uid)))
-                ok = [push.send(tok, n.title, n.body[:200], {"notification_id": n.id, "link": n.link}) for tok in tokens]
-                d.push_status = "sent" if ok and all(ok) else ("failed" if ok else "no_device")
-            else:
+            if not _wants(user, n, "push"):
                 d.push_status = "skipped"
+            elif db.scalar(select(DeviceToken.id).where(DeviceToken.user_id == uid).limit(1)):
+                d.push_status = "pending"  # sent by the background worker, outside the request
+            else:
+                d.push_status = "no_device"
         if sms:
             if user.phone and _wants(user, n, "sms"):
                 d.sms_status = "sent" if sms.send(user.phone, f"{n.title}: {n.body}"[:300]) else "failed"
@@ -282,7 +365,31 @@ def dispatch(db: Session, n: Notification) -> int:
                      "target_ids": n.target_ids, "recipients": len(recipients), "title": n.title},
         )
     db.flush()
+    if push:
+        from . import worker
+
+        worker.kick()
     return len(recipients)
+
+
+def send_pending_pushes(db: Session, provider=None, limit: int = 500) -> int:
+    """Deliver queued push notifications. Tokens the provider reports as invalid are deleted."""
+    provider = provider or push_provider()
+    rows = db.scalars(select(NotificationDelivery).where(NotificationDelivery.push_status == "pending")
+                      .order_by(NotificationDelivery.id).limit(limit)).all()
+    for d in rows:
+        n = d.notification
+        results = []
+        for dev in db.scalars(select(DeviceToken).where(DeviceToken.user_id == d.user_id)).all():
+            result = provider.send(dev.token, n.title, n.body[:200],
+                                   {"notification_id": n.id, "category": n.category, "link": n.link})
+            if result == "invalid":
+                db.delete(dev)
+                continue
+            results.append(result in (True, "sent"))
+        d.push_status = "sent" if results and any(results) else ("failed" if results else "no_device")
+    db.flush()
+    return len(rows)
 
 
 def create(db: Session, *, sender: User | None, university_id: int, category: str, title: str, body: str,

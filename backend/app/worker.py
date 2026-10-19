@@ -73,9 +73,18 @@ def purge_expired_files(db) -> int:
     return count
 
 
+_wake = threading.Event()
+
+
+def kick() -> None:
+    """Ask the background loop to run now (e.g. push notifications were queued)."""
+    _wake.set()
+
+
 def run_once() -> dict:
     out = {}
-    for name, job in (("notifications", notifications.dispatch_due), ("reminders", send_due_reminders),
+    for name, job in (("push", notifications.send_pending_pushes),
+                      ("notifications", notifications.dispatch_due), ("reminders", send_due_reminders),
                       ("sessions", close_expired_sessions), ("purge", purge_expired_files)):
         db = SessionLocal()
         try:
@@ -90,8 +99,12 @@ def run_once() -> dict:
 
 
 def _loop(interval: int, stop: threading.Event) -> None:
-    while not stop.wait(interval):
-        run_once()
+    while not stop.is_set():
+        if _wake.wait(interval):
+            _wake.clear()
+            time.sleep(1)  # let the request that queued the work commit first
+        if not stop.is_set():
+            run_once()
 
 
 def start_background(interval: int) -> threading.Event:

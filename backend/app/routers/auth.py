@@ -389,6 +389,20 @@ def register_device(body: DeviceIn, user: User = Depends(get_current_user), db: 
     return {"ok": True}
 
 
+class DeviceRemoveIn(BaseModel):
+    token: str = Field(min_length=10, max_length=500)
+
+
+@router.post("/me/devices/remove")
+def remove_device(body: DeviceRemoveIn, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Called on logout so a shared phone stops receiving this user's notifications."""
+    existing = db.scalar(select(DeviceToken).where(DeviceToken.token == body.token, DeviceToken.user_id == user.id))
+    if existing:
+        db.delete(existing)
+        db.commit()
+    return {"ok": True}
+
+
 @router.get("/me/sessions")
 def my_sessions(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     rows = db.scalars(select(AuthSession).where(AuthSession.user_id == user.id, AuthSession.revoked_at.is_(None),

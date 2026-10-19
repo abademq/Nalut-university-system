@@ -37,7 +37,15 @@ iOS يتطلب جهاز Mac مع Xcode وحساب Apple Developer.
 - `test/contract_test.dart`: نفس شيفرة التطبيق ضد خادم حقيقي (الدخول، البيانات، تسجيل الحضور بالـ QR، رفع ملف):
   `NUS_TEST_SERVER=http://127.0.0.1:8000 flutter test test/contract_test.dart`
 
+## الإشعارات الفورية (Firebase Cloud Messaging)
+- مشروع Firebase: `nalut-university`. إعدادات التطبيق في `lib/firebase_options.dart` (مأخوذة من
+  `android/app/google-services.json`، وهي ليست أسراراً).
+- عند الدخول يطلب التطبيق إذن الإشعارات ويسجّل رمز الهاتف عبر `POST /api/me/devices`، وعند الخروج
+  يلغيه عبر `POST /api/me/devices/remove` حتى لا تصل إشعارات مستخدم سابق إلى هاتف مشترك.
+- الخادم يرسل عبر FCM HTTP v1 بمفتاح حساب الخدمة في `/etc/nus/firebase.json` (سري، على الخادم فقط)،
+  ويحذف تلقائياً رموز الهواتف التي حُذف منها التطبيق. الإرسال يتم في الخلفية فلا يبطئ الطلبات.
+- إذا لم يتوفر Firebase أو رفض المستخدم الإذن يبقى صندوق الإشعارات داخل التطبيق يعمل كالمعتاد.
+- iOS: يتطلب إضافة تطبيق iOS في Firebase ورفع مفتاح APNs من حساب Apple Developer.
+
 ## لاحقاً
-- الإشعارات الفورية (Firebase Cloud Messaging): تتطلب مشروع Firebase للجامعة وملف `google-services.json`؛
-  التطبيق يرسل رمز الجهاز إلى `/api/me/devices` والخادم جاهز لذلك.
 - مفتاح توقيع للنشر في المتاجر، وأيقونة وهوية الجامعة.
