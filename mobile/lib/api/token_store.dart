@@ -12,7 +12,15 @@ class SecureTokenStore implements TokenStore {
   final _storage = const FlutterSecureStorage();
 
   @override
-  Future<String?> read(String key) => _storage.read(key: key);
+  Future<String?> read(String key) async {
+    try {
+      return await _storage.read(key: key);
+    } catch (_) {
+      // Keystore entries can become unreadable (e.g. after an OS restore). Start clean.
+      await _storage.deleteAll().catchError((Object _) {});
+      return null;
+    }
+  }
 
   @override
   Future<void> write(String key, String? value) =>

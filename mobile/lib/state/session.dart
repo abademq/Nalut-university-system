@@ -28,9 +28,17 @@ class Session extends ChangeNotifier {
   bool get canCheckIn => role.isNotEmpty && role != 'platform_admin';
   String get firstName => (user?['full_name'] as String? ?? '').split(' (').first;
 
+  /// Restores a saved session. Never leaves the app on the loading screen: any failure
+  /// (unreadable secure storage, slow network) falls back to the login screen.
   Future<void> start() async {
-    api.baseUrl = await store.read(StoreKeys.serverUrl) ?? defaultServerUrl;
-    final profile = await api.restore();
+    Map<String, dynamic>? profile;
+    try {
+      api.baseUrl = await store.read(StoreKeys.serverUrl) ?? defaultServerUrl;
+      profile = await api.restore().timeout(const Duration(seconds: 15));
+    } catch (e) {
+      debugPrint('session restore failed: $e');
+      profile = null;
+    }
     _set(profile);
   }
 

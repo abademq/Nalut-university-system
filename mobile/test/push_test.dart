@@ -46,10 +46,35 @@ void main() {
     expect(s.status, SessionStatus.signedOut);
   });
 
+  test('startup never hangs when secure storage fails: falls back to the login screen', () async {
+    final s = Session(api: ApiClient(store: BrokenStore(), baseUrl: 'https://u.example'), store: BrokenStore());
+    expect(s.status, SessionStatus.loading);
+    await s.start();
+    expect(s.status, SessionStatus.signedOut);
+  });
+
+  test('startup with an unreachable server falls back to the login screen', () async {
+    final store = MemoryTokenStore()..values[StoreKeys.refreshToken] = 'R';
+    final api = ApiClient(store: store, baseUrl: 'https://u.example',
+        client: MockClient((req) async => throw http.ClientException('no route')));
+    final s = Session(api: api, store: store);
+    await s.start();
+    expect(s.status, SessionStatus.signedOut);
+    expect(store.values[StoreKeys.refreshToken], 'R'); // kept: it may work once the network is back
+  });
+
   test('a failing push service never blocks sign-in', () async {
     final push = FakePush()..fail = true;
     final s = makeSession(push);
     await s.login('a@b.ly', 'pw');
     expect(s.status, SessionStatus.signedIn);
   });
+}
+
+class BrokenStore implements TokenStore {
+  @override
+  Future<String?> read(String key) async => throw Exception('keystore unavailable');
+
+  @override
+  Future<void> write(String key, String? value) async {}
 }

@@ -11,6 +11,9 @@ import 'screens/login_screen.dart';
 import 'state/session.dart';
 
 void main() {
+  // Plugins (secure storage, Firebase) talk to the OS through platform channels,
+  // which need the binding before any call is made.
+  WidgetsFlutterBinding.ensureInitialized();
   final store = SecureTokenStore();
   final session = Session(
     api: ApiClient(store: store, baseUrl: defaultServerUrl),
