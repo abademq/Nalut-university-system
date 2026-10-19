@@ -28,7 +28,13 @@
 
 ## التشغيل السريع (للتطوير والعرض)
 
-المتطلبات: Python 3.12+.
+المتطلبات: Python 3.12 أو 3.13 (على Windows فعّل خيار «Add python.exe to PATH» أثناء التثبيت).
+
+**أسهل طريقة:** على Windows انقر مرتين على `start-windows.bat`، وعلى macOS/Linux نفّذ `./start.sh`.
+أول تشغيل يثبّت المتطلبات وينشئ البيانات التجريبية، ثم افتح http://localhost:8000.
+لإعادة البيانات التجريبية من البداية (مثلاً قبل العرض): `start-windows.bat reset` أو `./start.sh reset`.
+
+أو يدوياً:
 
 ```bash
 python -m venv .venv && source .venv/bin/activate
