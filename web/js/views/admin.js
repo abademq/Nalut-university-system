@@ -1,0 +1,225 @@
+import { html, useState, useAsync, Async, Empty, Chip, ErrorBox, useForm, useSubmit, toast, toastError, Modal, ROLE, fmtDate } from "../ui.js";
+import { api } from "../api.js";
+
+const CREATABLE = {
+  university_admin: ["student", "teacher", "assistant", "staff", "faculty_admin"],
+  faculty_admin: ["student", "teacher", "assistant", "staff"],
+};
+const OFFICES = { registrar: "التسجيل", student_affairs: "شؤون الطلبة", exams: "الامتحانات" };
+
+function TempPassword({ value, onClose }) {
+  return html`<${Modal} title="كلمة المرور المؤقتة" onClose=${onClose}>
+    <p>سلّم كلمة المرور التالية للمستخدم عبر قناة آمنة. لن تظهر مرة أخرى، وسيُطلب منه تغييرها عند أول دخول.</p>
+    <p class="qr-code mono" style="text-align:center">${value}</p>
+    <button onClick=${onClose}>تم</button><//>`;
+}
+
+function CreateUser({ user, structure, onCreated }) {
+  const [v, bind] = useForm({ full_name: "", role: "student", email: "", phone: "", code: "", cohort: "", office: "",
+    faculty_id: user.faculty?.id || "", department_id: "" });
+  const [submit, busy, error] = useSubmit(async () => {
+    const body = { ...v, faculty_id: v.faculty_id ? Number(v.faculty_id) : null, department_id: v.department_id ? Number(v.department_id) : null };
+    for (const k of ["email", "phone", "code", "cohort", "office"]) if (!body[k]) body[k] = null;
+    const r = await api.post("/api/users", body);
+    onCreated(r.temporary_password);
+  });
+  const fac = (structure.faculties || []).find((f) => String(f.id) === String(v.faculty_id));
+  return html`<form class="card" onSubmit=${submit}><h3>مستخدم جديد</h3><${ErrorBox} error=${error} />
+    <div class="form-grid">
+      <div class="field"><label>الاسم الكامل</label><input ...${bind("full_name")} required /></div>
+      <div class="field"><label>الدور</label><select ...${bind("role")}>${CREATABLE[user.role].map((r) => html`<option value=${r}>${ROLE[r]}</option>`)}</select></div>
+      <div class="field"><label>البريد الإلكتروني</label><input type="email" class="ltr" ...${bind("email")} /></div>
+      <div class="field"><label>رقم الهاتف</label><input class="ltr" ...${bind("phone")} /></div>
+      <div class="field"><label>${v.role === "student" ? "رقم القيد" : "الرقم الوظيفي"}</label><input class="ltr" ...${bind("code")} /></div>
+      ${user.role === "university_admin" ? html`<div class="field"><label>الكلية</label><select ...${bind("faculty_id")}><option value="">—</option>
+        ${(structure.faculties || []).map((f) => html`<option value=${f.id}>${f.name}</option>`)}</select></div>` : null}
+      <div class="field"><label>القسم</label><select ...${bind("department_id")}><option value="">—</option>
+        ${(fac?.departments || []).map((d) => html`<option value=${d.id}>${d.name}</option>`)}</select></div>
+      ${v.role === "student" ? html`<div class="field"><label>الدفعة</label><input ...${bind("cohort")} /></div>` : null}
+      ${v.role === "staff" ? html`<div class="field"><label>المكتب</label><select ...${bind("office")}><option value="">—</option>
+        ${Object.entries(OFFICES).map(([k, l]) => html`<option value=${k}>${l}</option>`)}</select></div>` : null}
+    </div>
+    <p class="small muted">تُجمع البيانات الضرورية فقط. يُشترط البريد أو الهاتف لتسجيل الدخول.</p>
+    <button disabled=${busy}>إنشاء الحساب</button></form>`;
+}
+
+export function UsersView({ user }) {
+  const [filters, setFilters] = useState({ role: "", q: "" });
+  const state = useAsync(() => api.get(`/api/users?limit=200&role=${filters.role}&q=${encodeURIComponent(filters.q)}`), [filters.role, filters.q]);
+  const structure = useAsync(() => api.get("/api/org/structure"), []);
+  const [creating, setCreating] = useState(false);
+  const [temp, setTemp] = useState(null);
+  const toggle = async (u) => {
+    if (!confirm(u.is_active ? "إيقاف الحساب؟" : "تفعيل الحساب؟")) return;
+    await api.patch(`/api/users/${u.id}`, { is_active: !u.is_active }).catch(toastError);
+    state.reload();
+  };
+  const reset = async (u) => {
+    if (!confirm(`إعادة تعيين كلمة مرور ${u.full_name}؟`)) return;
+    const r = await api.post(`/api/users/${u.id}/reset-password`).catch(toastError);
+    if (r) setTemp(r.temporary_password);
+  };
+  const facName = (id) => structure.data?.faculties.find((f) => f.id === id)?.name || "";
+  return html`<div>
+    <div class="row between"><h1>المستخدمون</h1><button onClick=${() => setCreating(!creating)}>${creating ? "إلغاء" : "+ مستخدم"}</button></div>
+    ${creating && structure.data ? html`<${CreateUser} user=${user} structure=${structure.data} onCreated=${(pw) => { setCreating(false); setTemp(pw); state.reload(); }} />` : null}
+    <div class="row" style="margin-bottom:.75rem">
+      <input style="max-width:280px" placeholder="بحث بالاسم أو الرقم أو البريد" value=${filters.q} onInput=${(e) => setFilters({ ...filters, q: e.target.value })} />
+      <select style="max-width:200px" value=${filters.role} onChange=${(e) => setFilters({ ...filters, role: e.target.value })}>
+        <option value="">كل الأدوار</option>${Object.entries(ROLE).filter(([k]) => k !== "platform_admin").map(([k, l]) => html`<option value=${k}>${l}</option>`)}</select></div>
+    <${Async} state=${state}>${(d) => html`<div class="card"><p class="small muted">${d.total} مستخدم</p><div class="table-wrap"><table>
+      <thead><tr><th>الاسم</th><th>الدور</th><th>الرقم</th><th>الكلية</th><th>التواصل</th><th>الحالة</th><th></th></tr></thead>
+      <tbody>${d.items.map((u) => html`<tr><td>${u.full_name}</td><td>${ROLE[u.role]}</td><td class="mono">${u.code || ""}</td>
+        <td class="small">${facName(u.faculty_id)}</td><td class="small ltr">${u.email || u.phone || ""}</td>
+        <td>${u.is_active ? html`<${Chip} kind="success">نشط<//>` : html`<${Chip} kind="danger">موقوف<//>`} ${u.mfa_enabled ? html`<${Chip} kind="info">2FA<//>` : null}</td>
+        <td>${u.id !== user.id && CREATABLE[user.role]?.includes(u.role) ? html`<div class="row">
+          <button class="small secondary" onClick=${() => toggle(u)}>${u.is_active ? "إيقاف" : "تفعيل"}</button>
+          <button class="small secondary" onClick=${() => reset(u)}>كلمة مرور</button></div>` : null}</td></tr>`)}</tbody></table></div></div>`}<//>
+    ${temp ? html`<${TempPassword} value=${temp} onClose=${() => setTemp(null)} />` : null}
+  </div>`;
+}
+
+export function StructureView({ user }) {
+  const state = useAsync(() => api.get("/api/org/structure"), []);
+  const [fac, bindFac, setFac] = useForm({ name: "", code: "" });
+  const [dep, bindDep, setDep] = useForm({ faculty_id: user.faculty?.id || "", name: "", code: "" });
+  const [term, bindTerm] = useForm({ name: "", start_date: "", end_date: "", is_current: true });
+  const [addFac, b1, e1] = useSubmit(async () => { await api.post("/api/org/faculties", fac); setFac({ name: "", code: "" }); toast("تمت الإضافة"); state.reload(); });
+  const [addDep, b2, e2] = useSubmit(async () => { await api.post("/api/org/departments", { ...dep, faculty_id: Number(dep.faculty_id) }); setDep({ ...dep, name: "", code: "" }); toast("تمت الإضافة"); state.reload(); });
+  const [addTerm, b3, e3] = useSubmit(async () => { await api.post("/api/org/terms", term); toast("تمت الإضافة"); state.reload(); });
+  const uni = user.role === "university_admin";
+  return html`<div><h1>الهيكل التنظيمي</h1>
+    <${Async} state=${state}>${(s) => html`<div class="grid cols-2">
+      <div class="card"><h3>الكليات والأقسام</h3>${s.faculties.map((f) => html`<div style="margin-bottom:.6rem">
+        <strong>${f.name}</strong> <span class="small muted mono">${f.code}</span>
+        <div class="row" style="margin-top:.25rem">${f.departments.map((d) => html`<${Chip}>${d.name}<//>`)}</div></div>`)}</div>
+      <div class="card"><h3>الفصول الدراسية</h3>${s.terms.length ? html`<ul class="list">${s.terms.map((t) => html`<li class="row between">
+        <span>${t.name}</span><span class="small muted">${t.start_date} → ${t.end_date} ${t.is_current ? "· الحالي" : ""}</span></li>`)}</ul>` : html`<${Empty} />`}</div>
+    </div>`}<//>
+    <div class="grid cols-3">
+      ${uni ? html`<form class="card" onSubmit=${addFac}><h3>كلية جديدة</h3><${ErrorBox} error=${e1} />
+        <div class="field"><label>الاسم</label><input ...${bindFac("name")} required /></div>
+        <div class="field"><label>الرمز</label><input class="ltr" ...${bindFac("code")} required /></div><button disabled=${b1}>إضافة</button></form>` : null}
+      <form class="card" onSubmit=${addDep}><h3>قسم جديد</h3><${ErrorBox} error=${e2} />
+        ${uni ? html`<div class="field"><label>الكلية</label><select ...${bindDep("faculty_id")} required><option value="">—</option>
+          ${(state.data?.faculties || []).map((f) => html`<option value=${f.id}>${f.name}</option>`)}</select></div>` : null}
+        <div class="field"><label>الاسم</label><input ...${bindDep("name")} required /></div>
+        <div class="field"><label>الرمز</label><input class="ltr" ...${bindDep("code")} required /></div><button disabled=${b2}>إضافة</button></form>
+      ${uni ? html`<form class="card" onSubmit=${addTerm}><h3>فصل دراسي</h3><${ErrorBox} error=${e3} />
+        <div class="field"><label>الاسم</label><input ...${bindTerm("name")} required /></div>
+        <div class="form-grid"><div class="field"><label>البداية</label><input type="date" ...${bindTerm("start_date")} required /></div>
+        <div class="field"><label>النهاية</label><input type="date" ...${bindTerm("end_date")} required /></div></div>
+        <label class="check"><input type="checkbox" ...${bindTerm("is_current", "checkbox")} /> الفصل الحالي</label><button disabled=${b3}>إضافة</button></form>` : null}
+    </div></div>`;
+}
+
+export function SettingsView() {
+  const state = useAsync(() => api.get("/api/settings"), []);
+  return html`<div><h1>إعدادات المؤسسة</h1><${Async} state=${state}>${(d) => html`<${SettingsForm} data=${d} onSaved=${state.reload} />`}<//></div>`;
+}
+
+function SettingsForm({ data, onSaved }) {
+  const e = data.effective;
+  const [v, bind] = useForm({
+    display_name: e.branding.display_name || data.university.name, primary_color: e.branding.primary_color, accent_color: e.branding.accent_color,
+    require_mfa: e.security.require_mfa_for_admins, sms_enabled: e.notifications.sms_enabled, due_reminder_hours: e.notifications.due_reminder_hours,
+    late_after_minutes: e.attendance.late_after_minutes, rotation_seconds: e.attendance.rotation_seconds,
+    warning_absence_percent: e.attendance.warning_absence_percent, limit_absence_percent: e.attendance.limit_absence_percent,
+    review_threshold: e.attendance.review_threshold, selfie_retention_days: e.attendance.selfie_retention_days,
+    pass_mark: e.grading.pass_mark, low_performance_percent: e.grading.low_performance_percent,
+  });
+  const n = (k) => Number(v[k]);
+  const [submit, busy, error] = useSubmit(async () => {
+    await api.put("/api/settings", { settings: {
+      branding: { display_name: v.display_name, primary_color: v.primary_color, accent_color: v.accent_color },
+      security: { require_mfa_for_admins: v.require_mfa },
+      notifications: { ...e.notifications, sms_enabled: v.sms_enabled, due_reminder_hours: n("due_reminder_hours") },
+      attendance: { ...e.attendance, late_after_minutes: n("late_after_minutes"), rotation_seconds: n("rotation_seconds"),
+        warning_absence_percent: n("warning_absence_percent"), limit_absence_percent: n("limit_absence_percent"),
+        review_threshold: n("review_threshold"), selfie_retention_days: n("selfie_retention_days") },
+      grading: { ...e.grading, pass_mark: n("pass_mark"), low_performance_percent: n("low_performance_percent") },
+    } });
+    toast("تم حفظ الإعدادات");
+    onSaved();
+  });
+  const num = (k, label, extra = {}) => html`<div class="field"><label>${label}</label><input type="number" ...${bind(k)} ...${extra} /></div>`;
+  return html`<form onSubmit=${submit}><${ErrorBox} error=${error} />
+    <div class="card"><h3>الهوية البصرية</h3><div class="form-grid">
+      <div class="field"><label>الاسم المعروض</label><input ...${bind("display_name")} /></div>
+      <div class="field"><label>اللون الأساسي</label><input type="color" ...${bind("primary_color")} /></div>
+      <div class="field"><label>اللون الثانوي</label><input type="color" ...${bind("accent_color")} /></div></div></div>
+    <div class="card"><h3>الأمان والإشعارات</h3>
+      <label class="check"><input type="checkbox" ...${bind("require_mfa", "checkbox")} /> إلزام الحسابات الإدارية بالمصادقة الثنائية</label>
+      <label class="check"><input type="checkbox" ...${bind("sms_enabled", "checkbox")} /> تفعيل الرسائل النصية SMS للإشعارات العاجلة</label>
+      <div class="form-grid">${num("due_reminder_hours", "التذكير قبل موعد التسليم (ساعة)")}</div></div>
+    <div class="card"><h3>سياسة الحضور</h3><div class="form-grid">
+      ${num("late_after_minutes", "يعتبر متأخراً بعد (دقيقة)")}${num("rotation_seconds", "مدة صلاحية رمز QR (ثانية)", { min: 5, max: 120 })}
+      ${num("warning_absence_percent", "نسبة غياب للتنبيه %")}${num("limit_absence_percent", "حد الغياب المعتمد %")}
+      ${num("review_threshold", "درجة المخاطر للمراجعة البشرية")}${num("selfie_retention_days", "مدة الاحتفاظ بالصور (يوم)")}</div></div>
+    <div class="card"><h3>التقييم</h3><div class="form-grid">${num("pass_mark", "درجة النجاح %")}${num("low_performance_percent", "حد الأداء الضعيف %")}</div>
+      <p class="small muted">سلم التقديرات: ${e.grading.scale.map(([m, l, a]) => `${l} (${a}) ≥ ${m}`).join(" · ")}</p></div>
+    <button disabled=${busy}>حفظ الإعدادات</button></form>`;
+}
+
+export function AuditView() {
+  const [action, setAction] = useState("");
+  const state = useAsync(() => api.get(`/api/audit?limit=200${action ? `&action=${action}` : ""}`), [action]);
+  const [verify, setVerify] = useState(null);
+  return html`<div>
+    <div class="row between"><h1>سجل التدقيق</h1>
+      <button class="secondary" onClick=${() => api.get("/api/audit/verify").then(setVerify).catch(toastError)}>التحقق من سلامة السجل</button></div>
+    ${verify ? html`<div class=${`alert ${verify.ok ? "success" : "error"}`}>${verify.ok ? `السجل سليم ومتسلسل (${verify.checked} عملية)` : `تم اكتشاف تعديل عند العملية #${verify.broken_at}`}</div>` : null}
+    <div class="row" style="margin-bottom:.75rem"><select style="max-width:260px" value=${action} onChange=${(e) => setAction(e.target.value)}>
+      <option value="">كل العمليات</option><option value="auth">الدخول والحسابات</option><option value="user">إدارة المستخدمين</option>
+      <option value="grade">الدرجات</option><option value="results">النتائج</option><option value="attendance">الحضور</option>
+      <option value="notification">الإشعارات</option><option value="warning">التحذيرات</option><option value="file">الملفات</option></select></div>
+    <${Async} state=${state}>${(rows) => rows.length ? html`<div class="card"><div class="table-wrap"><table>
+      <thead><tr><th>الوقت</th><th>العملية</th><th>المنفذ</th><th>الهدف</th><th>تفاصيل</th><th>IP</th></tr></thead>
+      <tbody>${rows.map((r) => html`<tr><td class="small">${fmtDate(r.created_at)}</td><td class="mono small">${r.action}</td>
+        <td class="small">${r.actor || "النظام"}</td><td class="small mono">${r.target_type || ""} ${r.target_id || ""}</td>
+        <td class="small mono" style="max-width:320px;overflow-wrap:anywhere">${JSON.stringify(r.details)}</td><td class="small mono">${r.ip || ""}</td></tr>`)}
+      </tbody></table></div></div>` : html`<${Empty} />`}<//></div>`;
+}
+
+export function AbuseReportsView() {
+  const state = useAsync(() => api.get("/api/message-reports"), []);
+  const act = async (id, action) => {
+    await api.post(`/api/message-reports/${id}`, { action }).then(() => toast("تم")).catch(toastError);
+    state.reload();
+  };
+  return html`<div><h1>بلاغات الرسائل</h1><${Async} state=${state}>${(rows) => rows.length ? html`<div class="card"><ul class="list">
+    ${rows.map((r) => html`<li><div class="row between"><strong>${r.sender.full_name} (${ROLE[r.sender.role]})</strong>
+      <${Chip} kind=${r.status === "open" ? "warning" : ""}>${r.status === "open" ? "مفتوح" : r.status === "actioned" ? "أُخفيت الرسالة" : "مرفوض"}<//></div>
+      <div class="alert info" style="margin:.4rem 0">${r.message.body}</div>
+      <div class="small">سبب البلاغ: ${r.reason} — المُبلِّغ: ${r.reporter.full_name} · ${fmtDate(r.created_at)}</div>
+      ${r.status === "open" ? html`<div class="row" style="margin-top:.4rem"><button class="small danger" onClick=${() => act(r.id, "hide")}>إخفاء الرسالة</button>
+        <button class="small secondary" onClick=${() => act(r.id, "dismiss")}>رفض البلاغ</button></div>` : null}</li>`)}</ul></div>`
+    : html`<${Empty}>لا توجد بلاغات<//>`}<//></div>`;
+}
+
+export function UniversitiesView() {
+  const state = useAsync(() => api.get("/api/universities"), []);
+  const [v, bind, setV] = useForm({ code: "", name: "", admin_name: "", admin_email: "" });
+  const [temp, setTemp] = useState(null);
+  const [submit, busy, error] = useSubmit(async () => {
+    const r = await api.post("/api/universities", v);
+    setTemp(r.temporary_password);
+    setV({ code: "", name: "", admin_name: "", admin_email: "" });
+    state.reload();
+  });
+  const toggle = async (u) => { await api.patch(`/api/universities/${u.id}`, { is_active: !u.is_active }).catch(toastError); state.reload(); };
+  return html`<div><h1>الجامعات المشتركة</h1>
+    <p class="muted">كل جامعة معزولة ببياناتها بالكامل. يدير مشرف المنصة الاشتراكات فقط.</p>
+    <${Async} state=${state}>${(rows) => html`<div class="card"><div class="table-wrap"><table>
+      <thead><tr><th>الجامعة</th><th>الرمز</th><th class="num">المستخدمون</th><th>الحالة</th><th></th></tr></thead>
+      <tbody>${rows.map((u) => html`<tr><td>${u.name}</td><td class="mono">${u.code}</td><td class="num">${u.users}</td>
+        <td>${u.is_active ? html`<${Chip} kind="success">مفعلة<//>` : html`<${Chip} kind="danger">موقوفة<//>`}</td>
+        <td><button class="small secondary" onClick=${() => toggle(u)}>${u.is_active ? "إيقاف" : "تفعيل"}</button></td></tr>`)}</tbody></table></div></div>`}<//>
+    <form class="card" onSubmit=${submit}><h3>إضافة جامعة</h3><${ErrorBox} error=${error} /><div class="form-grid">
+      <div class="field"><label>اسم الجامعة</label><input ...${bind("name")} required /></div>
+      <div class="field"><label>الرمز (حروف لاتينية صغيرة)</label><input class="ltr" ...${bind("code")} required pattern="[a-z0-9-]+" /></div>
+      <div class="field"><label>اسم مسؤول الجامعة</label><input ...${bind("admin_name")} required /></div>
+      <div class="field"><label>بريد مسؤول الجامعة</label><input type="email" class="ltr" ...${bind("admin_email")} required /></div></div>
+      <button disabled=${busy}>إنشاء</button></form>
+    ${temp ? html`<${TempPassword} value=${temp} onClose=${() => setTemp(null)} />` : null}</div>`;
+}

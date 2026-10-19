@@ -1,0 +1,44 @@
+# Local / demo deployment: API + web client, PostgreSQL, background worker, ClamAV.
+# For production put a TLS-terminating reverse proxy in front (HTTPS is required for
+# the camera, secure cookies and HSTS) and provide real secrets via an .env file.
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: nus
+      POSTGRES_USER: nus
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nus"]
+      interval: 5s
+      retries: 10
+
+  clamav:
+    image: clamav/clamav:stable
+    profiles: ["scan"]
+
+  api:
+    build: .
+    env_file: [.env]
+    environment:
+      DATABASE_URL: postgresql+psycopg://nus:${POSTGRES_PASSWORD:-change-me}@db/nus
+      RUN_WORKER: "false"
+    volumes: [files:/data/files]
+    ports: ["8000:8000"]
+    depends_on:
+      db: {condition: service_healthy}
+
+  worker:
+    build: .
+    env_file: [.env]
+    environment:
+      DATABASE_URL: postgresql+psycopg://nus:${POSTGRES_PASSWORD:-change-me}@db/nus
+    volumes: [files:/data/files]
+    command: ["python", "-m", "app.worker"]
+    depends_on:
+      db: {condition: service_healthy}
+
+volumes:
+  pgdata:
+  files:

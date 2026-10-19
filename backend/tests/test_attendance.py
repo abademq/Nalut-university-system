@@ -158,3 +158,13 @@ def test_short_code_fallback(client, as_, db):
     r = client.post("/api/attendance/check-in", headers={**as_("s.ali@nalut.edu.ly"), "X-Device-Id": "d"},
                     data={"short_code": code, "session_id": str(sid), "nonce": nonce()})
     assert r.status_code == 200, r.text
+
+
+def test_requirements_visible_only_to_participants(client, as_):
+    sid = open_session(client, as_, risk_level="high", latitude=31.8686, longitude=10.9813)
+    r = client.get(f"/api/attendance/sessions/{sid}/requirements", headers=as_("s.ali@nalut.edu.ly")).json()
+    assert r["require_selfie"] and r["require_location"]
+    assert client.get(f"/api/attendance/sessions/{sid}/requirements",
+                      headers=as_("student12@nalut.edu.ly")).status_code == 404
+    # the QR itself is only available to the session's managers
+    assert client.get(f"/api/attendance/sessions/{sid}/qr", headers=as_("s.ali@nalut.edu.ly")).status_code == 403

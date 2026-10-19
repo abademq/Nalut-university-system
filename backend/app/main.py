@@ -86,7 +86,7 @@ for r in (auth, admin, courses, assignments, grades, notifications, attendance, 
 
 @app.get("/api/health")
 def health():
-    return {"ok": True}
+    return {"ok": True, "demo": not settings.is_production}
 
 
 # --------------------------------------------------------------------------- web client (PWA)

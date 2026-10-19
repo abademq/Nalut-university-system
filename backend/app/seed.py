@@ -158,8 +158,9 @@ def seed(db) -> None:
                    [(t_khaled, "instructor")], eng_students)
 
     # ----- grades: IS110 published, CS201 waiting for approval, CS101 draft in progress
-    def fill_grades(c, studs, lo=40, hi=98):
-        comps = list(db.scalars(select(AssessmentComponent).where(AssessmentComponent.course_id == c.id)))
+    def fill_grades(c, studs, lo=40, hi=98, skip=()):
+        comps = [x for x in db.scalars(select(AssessmentComponent).where(AssessmentComponent.course_id == c.id))
+                 if x.name not in skip]
         teacher = db.scalar(select(User).join(CourseStaff, CourseStaff.user_id == User.id).where(
             CourseStaff.course_id == c.id, CourseStaff.role == "instructor"))
         for s in studs:
@@ -179,6 +180,7 @@ def seed(db) -> None:
     fill_grades(cs201, students[:8])
     db.add(CourseResult(course_id=cs201.id, status="submitted", submitted_by=t_ahmed.id,
                         submitted_at=now - timedelta(days=1)))
+    fill_grades(cs101, students[:10], skip=("الامتحان النهائي",))  # final exam not yet marked
     db.add(CourseResult(course_id=cs101.id, status="draft"))
     db.add(CourseResult(course_id=ce101.id, status="draft"))
     db.flush()

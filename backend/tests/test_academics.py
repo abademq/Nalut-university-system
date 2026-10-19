@@ -16,7 +16,7 @@ def test_results_workflow_and_audit(client, as_):
     t, dean = as_(TEACHER), as_(DEAN)
     c = cid(client, t, "CS101")
     g = client.get(f"/api/courses/{c}/grades", headers=t).json()
-    st, comp = g["students"][0], g["components"][0]
+    st, comp = g["students"][0], g["components"][-1]  # final exam: not yet marked in the demo data
     r = client.put(f"/api/courses/{c}/grades", headers=t,
                    json={"entries": [{"student_id": st["id"], "component_id": comp["id"], "score": 15}]})
     assert r.status_code == 200

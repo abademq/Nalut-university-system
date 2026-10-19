@@ -17,6 +17,9 @@ from app.config import settings  # noqa: E402
 from app.security import limiter  # noqa: E402
 
 PASSWORD = "Demo@12345"
+# Set TEST_DATABASE_URL=postgresql+psycopg://... to run the suite against PostgreSQL
+# (each test then rebuilds and reseeds the schema, which is slower).
+PG_URL = os.environ.get("TEST_DATABASE_URL")
 
 
 @pytest.fixture(scope="session")
@@ -32,13 +35,29 @@ def template():
     return _TMP / "template.db", _TMP / "template-files"
 
 
+def _fresh_postgres(tmp_path):
+    from app import seed
+
+    dbmod.configure(PG_URL)
+    settings.storage_dir = tmp_path / "files"
+    dbmod.Base.metadata.drop_all(bind=dbmod.engine)
+    dbmod.init_db()
+    s = dbmod.SessionLocal()
+    seed.seed(s)
+    s.commit()
+    s.close()
+
+
 @pytest.fixture()
 def client(template, tmp_path):
-    db_file, files_dir = template
-    shutil.copy(db_file, tmp_path / "test.db")
-    shutil.copytree(files_dir, tmp_path / "files")
-    dbmod.configure(f"sqlite:///{tmp_path / 'test.db'}")
-    settings.storage_dir = tmp_path / "files"
+    if PG_URL:
+        _fresh_postgres(tmp_path)
+    else:
+        db_file, files_dir = template
+        shutil.copy(db_file, tmp_path / "test.db")
+        shutil.copytree(files_dir, tmp_path / "files")
+        dbmod.configure(f"sqlite:///{tmp_path / 'test.db'}")
+        settings.storage_dir = tmp_path / "files"
     limiter.reset()
     from app.main import app
 

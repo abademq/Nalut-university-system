@@ -178,6 +178,16 @@ def session_qr(sid: int, user: User = Depends(get_current_user), db: Session = D
     return state
 
 
+@router.get("/attendance/sessions/{sid}/requirements")
+def session_requirements(sid: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """What the scanning app must collect for this session (for eligible participants)."""
+    s = db.get(AttendanceSession, sid)
+    if not s or s.university_id != user.university_id or not svc.eligible(db, user, s):
+        raise not_found("جلسة الحضور غير موجودة")
+    return {"id": s.id, "title": s.title, "status": s.status, "require_location": s.require_location,
+            "require_selfie": s.require_selfie, "has_geofence": s.latitude is not None}
+
+
 @router.post("/attendance/sessions/{sid}/close")
 def close(sid: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     s = _session_for(db, user, sid)
