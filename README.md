@@ -112,4 +112,5 @@ docs/                التوثيق
 - [وحدة الحضور الذكية](docs/attendance.md)
 - [سيناريو العرض في القمة](docs/demo.md)
 - [النشر على VPS بجانب موقع آخر](docs/deploy-vps.md)
+- [تطبيق الهاتف (Flutter)](mobile/README.md)
 - [خارطة الطريق: SMS، RFID/NFC، الذكاء الاصطناعي، Flutter](docs/roadmap.md)
