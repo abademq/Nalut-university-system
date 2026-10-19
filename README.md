@@ -111,4 +111,5 @@ docs/                التوثيق
 - [الأمان والخصوصية](docs/security.md)
 - [وحدة الحضور الذكية](docs/attendance.md)
 - [سيناريو العرض في القمة](docs/demo.md)
+- [النشر على VPS بجانب موقع آخر](docs/deploy-vps.md)
 - [خارطة الطريق: SMS، RFID/NFC، الذكاء الاصطناعي، Flutter](docs/roadmap.md)
