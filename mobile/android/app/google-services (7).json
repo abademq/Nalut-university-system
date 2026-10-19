@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "981654644318",
+    "project_id": "nalut-university",
+    "storage_bucket": "nalut-university.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:981654644318:android:25d68059de0061c635b6cf",
+        "android_client_info": {
+          "package_name": "ly.edu.nalut.nalut_university"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB1ur5kviewTwNrDTGSvIE_uDgrRLq10Cw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
