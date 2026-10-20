@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import hashlib
 import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import worker
@@ -71,6 +72,8 @@ async def security_headers(request: Request, call_next):
         h.setdefault("Content-Security-Policy", CSP)
     if request.url.path.startswith("/api/"):
         h.setdefault("Cache-Control", "no-store")
+    elif request.url.path.startswith("/b/"):
+        h.setdefault("Cache-Control", "public, max-age=31536000, immutable")  # URL changes with every update
     elif request.url.path.startswith("/static/"):
         # revalidate every time (a cheap 304 when unchanged) so an update shows up immediately
         h.setdefault("Cache-Control", "no-cache")
@@ -102,8 +105,24 @@ def health():
 
 # --------------------------------------------------------------------------- web client (PWA)
 
+def _web_build(root) -> str:
+    """Fingerprint of the web files: changes whenever any of them changes."""
+    h = hashlib.sha1()
+    for f in sorted(root.rglob("*")):
+        if f.is_file():
+            st = f.stat()
+            h.update(f"{f.relative_to(root)}:{st.st_size}:{st.st_mtime_ns}".encode())
+    return h.hexdigest()[:10]
+
+
 if settings.web_dir.exists():
-    app.mount("/static", StaticFiles(directory=settings.web_dir), name="static")
+    WEB_BUILD = _web_build(settings.web_dir)
+    _static = StaticFiles(directory=settings.web_dir)
+    app.mount("/static", _static, name="static")
+    # The page loads its code from /b/<build>/..., so every update gets new URLs and no
+    # browser, CDN or proxy cache can keep serving an old version. Relative module imports
+    # inherit the prefix. Any build id is accepted, so a tab left open keeps working.
+    app.mount("/b/{build}", _static, name="static-build")
 
     @app.get("/sw.js", include_in_schema=False)
     def service_worker():
@@ -116,4 +135,6 @@ if settings.web_dir.exists():
 
     @app.get("/", include_in_schema=False)
     def index():
-        return FileResponse(settings.web_dir / "index.html", headers={"Cache-Control": "no-cache"})
+        page = (settings.web_dir / "index.html").read_text(encoding="utf-8")
+        page = page.replace('"/static/css/', f'"/b/{WEB_BUILD}/css/').replace('"/static/js/', f'"/b/{WEB_BUILD}/js/')
+        return HTMLResponse(page, headers={"Cache-Control": "no-cache"})
