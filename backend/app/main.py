@@ -71,6 +71,9 @@ async def security_headers(request: Request, call_next):
         h.setdefault("Content-Security-Policy", CSP)
     if request.url.path.startswith("/api/"):
         h.setdefault("Cache-Control", "no-store")
+    elif request.url.path.startswith("/static/"):
+        # revalidate every time (a cheap 304 when unchanged) so an update shows up immediately
+        h.setdefault("Cache-Control", "no-cache")
     if settings.cookie_secure:
         h.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
     return response
@@ -87,9 +90,14 @@ for r in (auth, admin, courses, assignments, grades, notifications, attendance, 
     app.include_router(r.router)
 
 
+# Written by deploy/install-vps.sh: the deployed commit, to check that an update went through.
+_version_file = settings.web_dir.parent / "VERSION"
+VERSION = _version_file.read_text().strip() if _version_file.exists() else "dev"
+
+
 @app.get("/api/health")
 def health():
-    return {"ok": True, "demo": not settings.is_production}
+    return {"ok": True, "demo": not settings.is_production, "version": VERSION}
 
 
 # --------------------------------------------------------------------------- web client (PWA)

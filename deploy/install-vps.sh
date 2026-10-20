@@ -56,6 +56,7 @@ say "Copying the code to $APP_DIR"
 if [ "$SRC_DIR" != "$APP_DIR" ]; then
   rsync -a --delete --exclude .git --exclude .venv --exclude 'backend/data' --exclude '__pycache__' "$SRC_DIR/" "$APP_DIR/"
 fi
+git -c safe.directory='*' -C "$SRC_DIR" log -1 --format='%h %cd' --date=short > "$APP_DIR/VERSION" 2>/dev/null || echo unknown > "$APP_DIR/VERSION"
 
 say "Installing Python requirements (a few minutes the first time)"
 [ -d "$APP_DIR/.venv" ] || python3 -m venv "$APP_DIR/.venv"
@@ -182,6 +183,7 @@ if [ -n "$HTTPS_OK" ]; then
 else
   warn "Installed, but HTTPS is not active yet (see above). Login sessions and the camera need HTTPS."
 fi
+echo "  Version        : $(cat "$APP_DIR/VERSION")"
 echo "  Service status : systemctl status $SERVICE"
 echo "  Live logs      : journalctl -u $SERVICE -f"
 echo "  Update later   : git pull && sudo bash deploy/install-vps.sh $DOMAIN"
