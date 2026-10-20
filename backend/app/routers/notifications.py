@@ -50,6 +50,18 @@ def mark_read(delivery_id: int, user: User = Depends(get_current_user), db: Sess
     return {"ok": True}
 
 
+@router.post("/by-id/{nid}/read")
+def mark_read_by_notification(nid: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Used when the user opens a push notification (the phone only knows the notification id)."""
+    d = db.scalar(select(NotificationDelivery).where(NotificationDelivery.notification_id == nid,
+                                                     NotificationDelivery.user_id == user.id))
+    if not d:
+        raise not_found()
+    d.read_at = d.read_at or utcnow()
+    db.commit()
+    return {"ok": True, "delivery_id": d.id}
+
+
 @router.post("/read-all")
 def mark_all(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     for d in db.scalars(select(NotificationDelivery).where(NotificationDelivery.user_id == user.id,

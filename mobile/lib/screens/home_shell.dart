@@ -3,8 +3,11 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../links.dart';
 import '../state/session.dart';
+import '../widgets/banners.dart';
 import 'assignments_screen.dart';
+import 'attendance_manage_screen.dart';
 import 'attendance_screen.dart';
 import 'home_screen.dart';
 import 'more_screen.dart';
@@ -19,6 +22,7 @@ class HomeShell extends StatefulWidget {
 
 class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   int _index = 0;
+  int _bannerVersion = 0;
   Timer? _poll;
 
   @override
@@ -37,23 +41,41 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) context.read<Session>().refreshUnread();
+    if (state == AppLifecycleState.resumed) {
+      context.read<Session>().refreshUnread();
+      setState(() => _bannerVersion++);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final session = context.watch<Session>();
+    final open = session.pendingOpen;
+    if (open != null) {
+      session.pendingOpen = null;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        if (open.notificationId != null) session.markNotificationRead(open.notificationId!);
+        openLink(context, session, open.link, title: open.title, body: open.body);
+      });
+    }
     final tabs = <(String, IconData, Widget)>[
       ('الرئيسية', Icons.home_outlined, const HomeScreen()),
       if (session.isStudent || session.isInstructor) ('المهام', Icons.assignment_outlined, const AssignmentsScreen()),
-      if (session.canCheckIn) ('الحضور', Icons.qr_code_scanner, const AttendanceScreen()),
+      if (session.isInstructor || session.isAdmin)
+        ('الحضور', Icons.qr_code_2, const AttendanceManageScreen())
+      else if (session.canCheckIn)
+        ('الحضور', Icons.qr_code_scanner, const AttendanceScreen()),
       ('الإشعارات', Icons.notifications_outlined, const NotificationsScreen()),
       ('المزيد', Icons.menu, const MoreScreen()),
     ];
     final index = _index.clamp(0, tabs.length - 1);
     return Scaffold(
       appBar: AppBar(title: Text(tabs[index].$1)),
-      body: IndexedStack(index: index, children: [for (final t in tabs) t.$3]),
+      body: Column(children: [
+        BannerStrip(key: ValueKey(_bannerVersion)),
+        Expanded(child: IndexedStack(index: index, children: [for (final t in tabs) t.$3])),
+      ]),
       bottomNavigationBar: NavigationBar(
         selectedIndex: index,
         onDestinationSelected: (i) => setState(() => _index = i),

@@ -12,6 +12,8 @@ import { RequestsView, RequestDetail } from "./views/requests.js";
 import { UsersView, StructureView, SettingsView, AuditView, AbuseReportsView, UniversitiesView } from "./views/admin.js";
 import { ReportsView } from "./views/reports.js";
 import { ProfileView } from "./views/profile.js";
+import { BannerStrip, BannersView, ArchiveView, ArchiveDetail } from "./views/manage.js";
+import { GuideView } from "./views/guide.js";
 
 const isAdmin = (r) => r === "university_admin" || r === "faculty_admin";
 const isInstructor = (r) => r === "teacher" || r === "assistant";
@@ -31,10 +33,13 @@ const NAV = [
   ["#/reports", "التقارير", "📊", (r) => isAdmin(r) || isInstructor(r), false],
   ["#/users", "المستخدمون", "👥", (r) => isAdmin(r), false],
   ["#/structure", "الهيكل التنظيمي", "🏢", isAdmin, false],
+  ["#/banners", "الإعلانات المثبتة", "📌", isAdmin, false],
+  ["#/archive", "أرشيف الطلبة", "🗂", (r, u) => isAdmin(r) || (r === "staff" && u.office === "registrar"), false],
   ["#/abuse", "بلاغات الرسائل", "⚑", isAdmin, false],
   ["#/audit", "سجل التدقيق", "🛡", (r) => isAdmin(r) || r === "platform_admin", false],
   ["#/settings", "إعدادات المؤسسة", "⚙", (r) => r === "university_admin", false],
   ["#/profile", "حسابي", "👤", () => true, true],
+  ["#/guide", "دليل الاستخدام", "❓", () => true, false],
 ];
 
 function route(hash, user) {
@@ -64,6 +69,9 @@ function route(hash, user) {
     case "abuse": return html`<${AbuseReportsView} user=${user} />`;
     case "universities": return html`<${UniversitiesView} user=${user} />`;
     case "profile": return html`<${ProfileView} user=${user} />`;
+    case "banners": return html`<${BannersView} user=${user} />`;
+    case "archive": return b ? html`<${ArchiveDetail} id=${b} user=${user} />` : html`<${ArchiveView} user=${user} />`;
+    case "guide": return html`<${GuideView} user=${user} />`;
     default: return html`<div class="card empty">الصفحة غير موجودة</div>`;
   }
 }
@@ -90,7 +98,7 @@ function Shell({ user, onLogout }) {
     return () => { clearInterval(t); window.removeEventListener("nus:notifications", poll); };
   }, [user.id]);
 
-  const items = NAV.filter(([, , , allowed]) => allowed(user.role));
+  const items = NAV.filter(([, , , allowed]) => allowed(user.role, user));
   const active = (h) => (h === "#/" ? hash === "#/" || hash === "" : hash.startsWith(h));
   const brand = user.branding?.display_name || user.university?.name || "منصة الجامعة";
   const fullscreen = hash.startsWith("#/attendance/display/");
@@ -112,6 +120,7 @@ function Shell({ user, onLogout }) {
         <div class="row only-mobile"><a class="btn secondary small" href="#/messages">💬</a></div>
       </div>
       ${user.must_change_password ? html`<div class="alert warning">تستخدم كلمة مرور مؤقتة. <a href="#/profile">غيّرها الآن</a>.</div>` : null}
+      ${user.role !== "platform_admin" ? html`<${BannerStrip} key=${hash.split("/")[1] || "home"} />` : null}
       ${route(hash, user)}
     </main>
     <nav class="bottom-nav">${items.filter((i) => i[4]).slice(0, 5).map(([h, label, icon]) => html`

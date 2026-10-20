@@ -122,7 +122,11 @@ def patch_university(uid: int, body: UniversityPatch, request: Request,
 def structure(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     if user.university_id is None:
         return {"faculties": [], "terms": []}
-    facs = db.scalars(select(Faculty).where(Faculty.university_id == user.university_id).order_by(Faculty.id)).all()
+    fq = select(Faculty).where(Faculty.university_id == user.university_id)
+    # only university-level users (university admin, or staff not attached to a faculty) see every faculty
+    if user.role != Role.UNIVERSITY_ADMIN and user.faculty_id is not None:
+        fq = fq.where(Faculty.id == user.faculty_id)
+    facs = db.scalars(fq.order_by(Faculty.id)).all()
     deps = db.scalars(select(Department).where(Department.university_id == user.university_id)).all()
     terms = db.scalars(select(Term).where(Term.university_id == user.university_id).order_by(Term.start_date)).all()
     return {
@@ -174,6 +178,89 @@ def create_department(body: DepartmentIn, request: Request,
     return {"id": d.id}
 
 
+class FacultyPatch(BaseModel):
+    name: str | None = Field(default=None, min_length=2, max_length=200)
+    code: str | None = Field(default=None, min_length=1, max_length=40)
+
+
+def _faculty(db: Session, user: User, fid: int) -> Faculty:
+    f = db.get(Faculty, fid)
+    if not f or f.university_id != user.university_id:
+        raise not_found("الكلية غير موجودة")
+    return f
+
+
+@router.patch("/org/faculties/{fid}")
+def patch_faculty(fid: int, body: FacultyPatch, request: Request,
+                  user: User = Depends(require_roles(Role.UNIVERSITY_ADMIN)), db: Session = Depends(get_db)):
+    f = _faculty(db, user, fid)
+    data = body.model_dump(exclude_none=True)
+    for k, v in data.items():
+        setattr(f, k, v.strip())
+    audit.record(db, "faculty.updated", actor=user, target_type="faculty", target_id=f.id, details=data,
+                 ip=client_ip(request))
+    db.commit()
+    return {"ok": True}
+
+
+def _ensure_empty(db: Session, column, value, what: str) -> None:
+    from ..models import Course
+
+    if db.scalar(select(func.count(User.id)).where(getattr(User, column) == value)) or \
+            db.scalar(select(func.count(Course.id)).where(getattr(Course, column) == value)):
+        raise HTTPException(status_code=400, detail=f"لا يمكن حذف {what} لوجود مستخدمين أو مقررات مرتبطة به")
+
+
+@router.delete("/org/faculties/{fid}")
+def delete_faculty(fid: int, request: Request, user: User = Depends(require_roles(Role.UNIVERSITY_ADMIN)),
+                   db: Session = Depends(get_db)):
+    f = _faculty(db, user, fid)
+    _ensure_empty(db, "faculty_id", f.id, "الكلية")
+    if db.scalar(select(func.count(Department.id)).where(Department.faculty_id == f.id)):
+        raise HTTPException(status_code=400, detail="احذف أقسام الكلية أولاً")
+    audit.record(db, "faculty.deleted", actor=user, target_type="faculty", target_id=f.id, details={"name": f.name},
+                 ip=client_ip(request))
+    db.delete(f)
+    db.commit()
+    return {"ok": True}
+
+
+def _department(db: Session, user: User, did: int) -> Department:
+    d = db.get(Department, did)
+    if not d or d.university_id != user.university_id:
+        raise not_found("القسم غير موجود")
+    if user.role == Role.FACULTY_ADMIN and d.faculty_id != user.faculty_id:
+        raise forbidden()
+    return d
+
+
+@router.patch("/org/departments/{did}")
+def patch_department(did: int, body: FacultyPatch, request: Request,
+                     user: User = Depends(require_roles(Role.UNIVERSITY_ADMIN, Role.FACULTY_ADMIN)),
+                     db: Session = Depends(get_db)):
+    d = _department(db, user, did)
+    data = body.model_dump(exclude_none=True)
+    for k, v in data.items():
+        setattr(d, k, v.strip())
+    audit.record(db, "department.updated", actor=user, target_type="department", target_id=d.id, details=data,
+                 ip=client_ip(request))
+    db.commit()
+    return {"ok": True}
+
+
+@router.delete("/org/departments/{did}")
+def delete_department(did: int, request: Request,
+                      user: User = Depends(require_roles(Role.UNIVERSITY_ADMIN, Role.FACULTY_ADMIN)),
+                      db: Session = Depends(get_db)):
+    d = _department(db, user, did)
+    _ensure_empty(db, "department_id", d.id, "القسم")
+    audit.record(db, "department.deleted", actor=user, target_type="department", target_id=d.id,
+                 details={"name": d.name}, ip=client_ip(request))
+    db.delete(d)
+    db.commit()
+    return {"ok": True}
+
+
 class TermIn(BaseModel):
     name: str = Field(min_length=2, max_length=100)
     start_date: date
@@ -187,10 +274,59 @@ def create_term(body: TermIn, user: User = Depends(require_roles(Role.UNIVERSITY
     if body.is_current:
         for t in db.scalars(select(Term).where(Term.university_id == user.university_id)):
             t.is_current = False
+    if body.end_date <= body.start_date:
+        raise HTTPException(status_code=400, detail="تاريخ النهاية يجب أن يكون بعد البداية")
     t = Term(university_id=user.university_id, **body.model_dump())
     db.add(t)
     db.commit()
     return {"id": t.id}
+
+
+class TermPatch(BaseModel):
+    name: str | None = Field(default=None, min_length=2, max_length=100)
+    start_date: date | None = None
+    end_date: date | None = None
+    is_current: bool | None = None
+
+
+def _term(db: Session, user: User, tid: int) -> Term:
+    t = db.get(Term, tid)
+    if not t or t.university_id != user.university_id:
+        raise not_found("الفصل غير موجود")
+    return t
+
+
+@router.patch("/org/terms/{tid}")
+def patch_term(tid: int, body: TermPatch, request: Request,
+               user: User = Depends(require_roles(Role.UNIVERSITY_ADMIN)), db: Session = Depends(get_db)):
+    t = _term(db, user, tid)
+    data = body.model_dump(exclude_none=True)
+    if data.get("is_current"):
+        for other in db.scalars(select(Term).where(Term.university_id == user.university_id, Term.id != t.id)):
+            other.is_current = False
+    for k, v in data.items():
+        setattr(t, k, v)
+    if t.end_date <= t.start_date:
+        raise HTTPException(status_code=400, detail="تاريخ النهاية يجب أن يكون بعد البداية")
+    audit.record(db, "term.updated", actor=user, target_type="term", target_id=t.id,
+                 details={k: str(v) for k, v in data.items()}, ip=client_ip(request))
+    db.commit()
+    return {"ok": True}
+
+
+@router.delete("/org/terms/{tid}")
+def delete_term(tid: int, request: Request, user: User = Depends(require_roles(Role.UNIVERSITY_ADMIN)),
+                db: Session = Depends(get_db)):
+    from ..models import Course
+
+    t = _term(db, user, tid)
+    if db.scalar(select(func.count(Course.id)).where(Course.term_id == t.id)):
+        raise HTTPException(status_code=400, detail="لا يمكن حذف فصل مرتبط بمقررات")
+    audit.record(db, "term.deleted", actor=user, target_type="term", target_id=t.id, details={"name": t.name},
+                 ip=client_ip(request))
+    db.delete(t)
+    db.commit()
+    return {"ok": True}
 
 
 # --------------------------------------------------------------------------- users

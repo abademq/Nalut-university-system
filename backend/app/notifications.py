@@ -131,7 +131,9 @@ class FcmProvider:
                 "token": token,
                 "notification": {"title": title, "body": body},
                 "data": {k: "" if v is None else str(v) for k, v in data.items()},
-                "android": {"priority": "high"},
+                # play the default sound on the high-importance channel the app creates
+                "android": {"priority": "high",
+                            "notification": {"channel_id": "nus_alerts", "sound": "default", "default_sound": True}},
                 "apns": {"payload": {"aps": {"sound": "default"}}},
             }
         }

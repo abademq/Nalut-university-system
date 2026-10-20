@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../api/api_client.dart';
 import '../config.dart';
+import '../links.dart';
 import '../state/session.dart';
 import '../widgets/common.dart';
 
@@ -22,6 +23,22 @@ class _AssignmentsScreenState extends State<AssignmentsScreen> {
   Widget build(BuildContext context) {
     final s = context.read<Session>();
     return Column(children: [
+      if (!s.isStudent)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+          child: SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              icon: const Icon(Icons.add),
+              label: const Text('مهمة جديدة'),
+              onPressed: () async {
+                final created = await Navigator.push<bool>(
+                    context, MaterialPageRoute(builder: (_) => const CreateAssignmentScreen()));
+                if (created == true && mounted) setState(() => _version++);
+              },
+            ),
+          ),
+        ),
       if (s.isStudent)
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
@@ -141,6 +158,8 @@ class _AssignmentDetailScreenState extends State<AssignmentDetailScreen> {
                       leading: const Icon(Icons.attach_file),
                       title: Text(f['name'] as String),
                       subtitle: Text('نسخة ${f['version']}'),
+                      trailing: const Icon(Icons.open_in_new, size: 18),
+                      onTap: () => downloadAndOpen(context, s, '/api/files/${f['id']}', f['name'] as String),
                     ),
                   if (sub['grade_released'] == true)
                     Container(
@@ -162,9 +181,42 @@ class _AssignmentDetailScreenState extends State<AssignmentDetailScreen> {
                 ]),
               ),
             if (canSubmit) _SubmitCard(assignment: a, onDone: () => setState(() => _version++)),
-            if (!s.isStudent)
-              const SectionCard(
-                child: Text('تقييم التسليمات وتنزيل الملفات متاح من لوحة التحكم على الويب.'),
+            if (a['submissions'] != null)
+              SectionCard(
+                title: 'التسليمات',
+                trailing: TextButton(
+                  onPressed: () async {
+                    try {
+                      final r = await s.api.post('/api/assignments/${a['id']}/release-grades') as Map<String, dynamic>;
+                      if (context.mounted) showMessage(context, 'نُشرت ${r['released']} درجة');
+                      setState(() => _version++);
+                    } catch (e) {
+                      if (context.mounted) showMessage(context, e, error: true);
+                    }
+                  },
+                  child: const Text('نشر الدرجات المقيّمة'),
+                ),
+                child: Column(children: [
+                  for (final row in a['submissions'] as List<dynamic>)
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(row['student']['full_name'] as String),
+                      subtitle: Text([
+                        '${row['student']['code'] ?? ''}',
+                        if (row['submission']?['submitted_at'] != null) fmtDate(row['submission']['submitted_at']),
+                        if (row['submission']?['score'] != null) 'الدرجة ${row['submission']['score']}',
+                        if (row['submission']?['grade_released'] == true) 'منشورة',
+                      ].join(' · ')),
+                      trailing: StatusChip.of(assignmentStatus, row['status'] as String?),
+                      onTap: row['submission'] == null || row['submission']['status'] == 'in_progress'
+                          ? null
+                          : () async {
+                              await Navigator.push(context, MaterialPageRoute(
+                                  builder: (_) => SubmissionScreen(assignment: a, row: row as Map<String, dynamic>)));
+                              if (mounted) setState(() => _version++);
+                            },
+                    ),
+                ]),
               ),
           ]);
         },
@@ -273,6 +325,234 @@ class _SubmitCardState extends State<_SubmitCard> {
             padding: EdgeInsets.only(top: 8),
             child: Text('انتهى الموعد؛ سيُسجَّل التسليم كمتأخر.', style: TextStyle(color: AppColors.danger)),
           ),
+      ]),
+    );
+  }
+}
+
+
+/// Teacher view of one submission: open the files, then grade and give feedback.
+class SubmissionScreen extends StatefulWidget {
+  const SubmissionScreen({super.key, required this.assignment, required this.row});
+  final Map<String, dynamic> assignment;
+  final Map<String, dynamic> row;
+
+  @override
+  State<SubmissionScreen> createState() => _SubmissionScreenState();
+}
+
+class _SubmissionScreenState extends State<SubmissionScreen> {
+  late final Map<String, dynamic> _sub = widget.row['submission'] as Map<String, dynamic>;
+  late final _score = TextEditingController(text: _sub['score']?.toString() ?? '');
+  late final _feedback = TextEditingController(text: _sub['feedback'] as String? ?? '');
+  final _reason = TextEditingController();
+  bool _release = false;
+  bool _busy = false;
+
+  @override
+  void dispose() {
+    _score.dispose();
+    _feedback.dispose();
+    _reason.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    final score = double.tryParse(_score.text.trim().replaceAll(',', '.'));
+    final max = (widget.assignment['max_score'] as num).toDouble();
+    if (score == null || score < 0 || score > max) return showMessage(context, 'أدخل درجة بين 0 و $max', error: true);
+    setState(() => _busy = true);
+    try {
+      await context.read<Session>().api.post('/api/submissions/${_sub['id']}/grade', {
+        'score': score,
+        'feedback': _feedback.text.trim(),
+        'release': _release,
+        'reason': _reason.text.trim(),
+      });
+      if (!mounted) return;
+      showMessage(context, _release ? 'تم الحفظ ونُشرت الدرجة للطالب' : 'تم حفظ التقييم');
+      Navigator.pop(context);
+    } catch (e) {
+      if (mounted) showMessage(context, e, error: true);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = context.read<Session>();
+    final student = widget.row['student'] as Map<String, dynamic>;
+    final graded = _sub['score'] != null;
+    return Scaffold(
+      appBar: AppBar(title: Text(student['full_name'] as String)),
+      body: ListView(padding: const EdgeInsets.all(16), children: [
+        Text(widget.assignment['title'] as String, style: Theme.of(context).textTheme.titleMedium),
+        Text('سُلّم ${fmtDate(_sub['submitted_at'])}${_sub['is_late'] == true ? ' (متأخر)' : ''}',
+            style: TextStyle(color: _sub['is_late'] == true ? AppColors.danger : Colors.grey)),
+        const SizedBox(height: 12),
+        SectionCard(
+          title: 'الملفات',
+          child: Column(children: [
+            for (final f in _sub['files'] as List<dynamic>)
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.insert_drive_file_outlined),
+                title: Text(f['name'] as String),
+                subtitle: Text('نسخة ${f['version']} · ${((f['size'] as num) / 1024).ceil()} KB'),
+                trailing: f['scan_status'] == 'clean'
+                    ? const Icon(Icons.open_in_new)
+                    : const StatusChip(StatusStyle('قيد الفحص', AppColors.warning)),
+                onTap: f['scan_status'] == 'clean'
+                    ? () => downloadAndOpen(context, s, '/api/files/${f['id']}', f['name'] as String)
+                    : null,
+              ),
+          ]),
+        ),
+        if ((_sub['note'] as String?)?.isNotEmpty == true)
+          SectionCard(title: 'ملاحظة الطالب', child: Text(_sub['note'] as String)),
+        SectionCard(
+          title: 'التقييم',
+          child: Column(children: [
+            TextField(
+              controller: _score,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: InputDecoration(labelText: 'الدرجة من ${widget.assignment['max_score']}'),
+            ),
+            const SizedBox(height: 12),
+            TextField(controller: _feedback, maxLines: 4, decoration: const InputDecoration(labelText: 'الملاحظات والتغذية الراجعة')),
+            if (graded) ...[
+              const SizedBox(height: 12),
+              TextField(controller: _reason, decoration: const InputDecoration(labelText: 'سبب تعديل الدرجة (إلزامي عند تغييرها)')),
+            ],
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              value: _release,
+              onChanged: (v) => setState(() => _release = v),
+              title: const Text('نشر الدرجة للطالب الآن'),
+              subtitle: Text(_sub['grade_released'] == true ? 'منشورة مسبقاً' : 'وإلا تبقى مخفية حتى «نشر الدرجات المقيّمة»'),
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(onPressed: _busy ? null : _save, child: Text(_busy ? 'جارٍ الحفظ…' : 'حفظ التقييم')),
+            ),
+          ]),
+        ),
+      ]),
+    );
+  }
+}
+
+class CreateAssignmentScreen extends StatefulWidget {
+  const CreateAssignmentScreen({super.key});
+
+  @override
+  State<CreateAssignmentScreen> createState() => _CreateAssignmentScreenState();
+}
+
+class _CreateAssignmentScreenState extends State<CreateAssignmentScreen> {
+  List<dynamic> _courses = [];
+  int? _course;
+  String _kind = 'homework';
+  final _title = TextEditingController();
+  final _desc = TextEditingController();
+  final _max = TextEditingController(text: '10');
+  final _exts = TextEditingController(text: 'pdf, docx, jpg, png');
+  DateTime _due = DateTime.now().add(const Duration(days: 7));
+  bool _allowLate = true;
+  bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    context.read<Session>().api.get('/api/courses').then((c) {
+      if (mounted) setState(() => _courses = c as List<dynamic>);
+    }).catchError((_) {});
+  }
+
+  @override
+  void dispose() {
+    for (final c in [_title, _desc, _max, _exts]) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  Future<void> _pickDue() async {
+    final d = await showDatePicker(context: context, initialDate: _due, firstDate: DateTime.now(), lastDate: DateTime.now().add(const Duration(days: 365)));
+    if (d == null || !mounted) return;
+    final t = await showTimePicker(context: context, initialTime: TimeOfDay.fromDateTime(_due));
+    setState(() => _due = DateTime(d.year, d.month, d.day, t?.hour ?? 23, t?.minute ?? 59));
+  }
+
+  Future<void> _save() async {
+    if (_course == null || _title.text.trim().length < 2) return showMessage(context, 'اختر المقرر واكتب العنوان', error: true);
+    setState(() => _busy = true);
+    try {
+      await context.read<Session>().api.post('/api/courses/$_course/assignments', {
+        'title': _title.text.trim(),
+        'description': _desc.text.trim(),
+        'kind': _kind,
+        'due_at': _due.toUtc().toIso8601String(),
+        'max_score': double.tryParse(_max.text) ?? 10,
+        'allow_late': _allowLate,
+        'allowed_extensions': _exts.text.split(RegExp(r'[\s,،]+')).where((e) => e.isNotEmpty).toList(),
+      });
+      if (!mounted) return;
+      showMessage(context, 'تم نشر المهمة وإشعار الطلبة');
+      Navigator.pop(context, true);
+    } catch (e) {
+      if (mounted) showMessage(context, e, error: true);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('مهمة جديدة')),
+      body: ListView(padding: const EdgeInsets.all(16), children: [
+        DropdownButtonFormField<int>(
+          initialValue: _course,
+          isExpanded: true,
+          decoration: const InputDecoration(labelText: 'المقرر'),
+          items: [for (final c in _courses) DropdownMenuItem(value: c['id'] as int, child: Text('${c['code']} — ${c['title']}'))],
+          onChanged: (v) => setState(() => _course = v),
+        ),
+        const SizedBox(height: 12),
+        DropdownButtonFormField<String>(
+          initialValue: _kind,
+          decoration: const InputDecoration(labelText: 'النوع'),
+          items: [for (final e in kindLabels.entries) DropdownMenuItem(value: e.key, child: Text(e.value))],
+          onChanged: (v) => setState(() => _kind = v!),
+        ),
+        const SizedBox(height: 12),
+        TextField(controller: _title, decoration: const InputDecoration(labelText: 'العنوان')),
+        const SizedBox(height: 12),
+        TextField(controller: _desc, maxLines: 4, decoration: const InputDecoration(labelText: 'الوصف والتعليمات')),
+        const SizedBox(height: 12),
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: const Icon(Icons.event),
+          title: const Text('موعد التسليم'),
+          subtitle: Text(fmtDate(_due.toUtc().toIso8601String())),
+          trailing: const Icon(Icons.edit_calendar),
+          onTap: _pickDue,
+        ),
+        Row(children: [
+          Expanded(child: TextField(controller: _max, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'الدرجة القصوى'))),
+          const SizedBox(width: 12),
+          Expanded(flex: 2, child: TextField(controller: _exts, textDirection: TextDirection.ltr, decoration: const InputDecoration(labelText: 'الصيغ المسموحة'))),
+        ]),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          value: _allowLate,
+          onChanged: (v) => setState(() => _allowLate = v),
+          title: const Text('السماح بالتسليم المتأخر (يُعلَّم كمتأخر)'),
+        ),
+        FilledButton(onPressed: _busy ? null : _save, child: Text(_busy ? 'جارٍ النشر…' : 'نشر المهمة')),
       ]),
     );
   }

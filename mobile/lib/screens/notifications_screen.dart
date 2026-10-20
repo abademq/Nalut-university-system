@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../config.dart';
+import '../links.dart';
 import '../state/session.dart';
+import 'send_notification_screen.dart';
 import '../widgets/common.dart';
 
 class NotificationsScreen extends StatefulWidget {
@@ -20,6 +22,18 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   Widget build(BuildContext context) {
     final s = context.read<Session>();
     return Column(children: [
+      if (canSendNotifications(s.role))
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+          child: SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              icon: const Icon(Icons.send),
+              label: const Text('إرسال إشعار'),
+              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SendNotificationScreen())),
+            ),
+          ),
+        ),
       SizedBox(
         height: 52,
         child: ListView(
@@ -98,6 +112,8 @@ class _NotificationTile extends StatelessWidget {
               onRead();
             } catch (_) {}
           }
+          if (!context.mounted) return;
+          await openLink(context, s, n['link'] as String?, title: n['title'] as String, body: n['body'] as String);
         },
         child: Padding(
           padding: const EdgeInsets.all(12),

@@ -9,8 +9,27 @@ import 'firebase_options.dart';
 
 /// Push notifications. Optional by design: if Firebase is not configured for the
 /// platform, or the user refuses permission, the app keeps working with the in-app inbox.
+/// A notification the user tapped in the phone's notification tray.
+class PushOpen {
+  const PushOpen({this.notificationId, this.link, this.title, this.body});
+  final int? notificationId;
+  final String? link;
+  final String? title;
+  final String? body;
+
+  factory PushOpen.fromData(Map<String, dynamic> data, {String? title, String? body}) => PushOpen(
+        notificationId: int.tryParse('${data['notification_id'] ?? ''}'),
+        link: (data['link'] as String?)?.isEmpty == true ? null : data['link'] as String?,
+        title: title,
+        body: body,
+      );
+}
+
 abstract class PushService {
-  Future<void> start(ApiClient api, {void Function(String title, String body)? onForeground, VoidCallback? onMessage});
+  Future<void> start(ApiClient api,
+      {void Function(String title, String body)? onForeground,
+      VoidCallback? onMessage,
+      void Function(PushOpen open)? onOpened});
   Future<void> stop(ApiClient api);
 }
 
@@ -27,7 +46,9 @@ class FirebasePushService implements PushService {
 
   @override
   Future<void> start(ApiClient api,
-      {void Function(String title, String body)? onForeground, VoidCallback? onMessage}) async {
+      {void Function(String title, String body)? onForeground,
+      VoidCallback? onMessage,
+      void Function(PushOpen open)? onOpened}) async {
     try {
       final options = DefaultFirebaseOptions.currentPlatform;
       if (options == null) return;
@@ -52,7 +73,16 @@ class FirebasePushService implements PushService {
         final n = m.notification;
         if (n != null) onForeground?.call(n.title ?? '', n.body ?? '');
       }));
-      _subs.add(FirebaseMessaging.onMessageOpenedApp.listen((_) => onMessage?.call()));
+      PushOpen opened(RemoteMessage m) =>
+          PushOpen.fromData(m.data, title: m.notification?.title, body: m.notification?.body);
+      // Tapped while the app was in the background...
+      _subs.add(FirebaseMessaging.onMessageOpenedApp.listen((m) {
+        onMessage?.call();
+        onOpened?.call(opened(m));
+      }));
+      // ...or the tap launched the app.
+      final initial = await messaging.getInitialMessage();
+      if (initial != null) onOpened?.call(opened(initial));
     } catch (e) {
       debugPrint('push disabled: $e');
     }

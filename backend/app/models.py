@@ -579,3 +579,70 @@ class ServiceRequestEvent(Base):
 
 
 Index("ix_attendance_records_session_device", AttendanceRecord.session_id, AttendanceRecord.device_id)
+
+
+# --------------------------------------------------------------------------- pinned announcements
+
+
+class Banner(Base):
+    """Announcement pinned at the top of the app/dashboard between starts_at and ends_at."""
+
+    __tablename__ = "banners"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    university_id: Mapped[int] = mapped_column(ForeignKey("universities.id"), index=True)
+    faculty_id: Mapped[int | None] = mapped_column(ForeignKey("faculties.id"))  # None = whole university
+    audience: Mapped[str] = mapped_column(String(20), default="all")  # all | students | staff
+    level: Mapped[str] = mapped_column(String(20), default="info")  # info | important | urgent
+    title: Mapped[str] = mapped_column(String(200))
+    body: Mapped[str] = mapped_column(Text, default="")
+    link: Mapped[str | None] = mapped_column(String(300))
+    starts_at: Mapped[datetime] = mapped_column(DateTime)
+    ends_at: Mapped[datetime | None] = mapped_column(DateTime)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+# --------------------------------------------------------------------------- student archive
+
+
+class StudentRecord(Base):
+    """Personal file of a student kept by the faculty / registrar (archive)."""
+
+    __tablename__ = "student_records"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    university_id: Mapped[int] = mapped_column(ForeignKey("universities.id"), index=True)
+    student_id: Mapped[int] = mapped_column(ForeignKey("users.id"), unique=True)
+    national_id_enc: Mapped[str | None] = mapped_column(String(300))  # encrypted at rest
+    birth_date: Mapped[date | None] = mapped_column(Date)
+    birth_place: Mapped[str | None] = mapped_column(String(100))
+    nationality: Mapped[str | None] = mapped_column(String(60))
+    gender: Mapped[str | None] = mapped_column(String(10))
+    address: Mapped[str | None] = mapped_column(String(300))
+    guardian_name: Mapped[str | None] = mapped_column(String(200))
+    guardian_relation: Mapped[str | None] = mapped_column(String(50))
+    guardian_phone: Mapped[str | None] = mapped_column(String(30))
+    high_school: Mapped[str | None] = mapped_column(String(200))
+    high_school_year: Mapped[str | None] = mapped_column(String(10))
+    high_school_score: Mapped[float | None] = mapped_column(Float)
+    admission_date: Mapped[date | None] = mapped_column(Date)
+    status: Mapped[str] = mapped_column(String(20), default="active")  # active|suspended|graduated|withdrawn
+    notes: Mapped[str | None] = mapped_column(Text)
+    updated_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class StudentDocument(Base):
+    __tablename__ = "student_documents"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    university_id: Mapped[int] = mapped_column(ForeignKey("universities.id"), index=True)
+    student_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    doc_type: Mapped[str] = mapped_column(String(40))
+    title: Mapped[str] = mapped_column(String(200))
+    notes: Mapped[str | None] = mapped_column(String(500))
+    file_id: Mapped[int] = mapped_column(ForeignKey("stored_files.id"))
+    uploaded_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime)
+    deleted_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    delete_reason: Mapped[str | None] = mapped_column(String(300))

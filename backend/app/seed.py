@@ -18,6 +18,9 @@ from .config import settings
 from .db import Base, SessionLocal, engine, init_db, utcnow
 from .models import (
     AssessmentComponent,
+    Banner,
+    StudentDocument,
+    StudentRecord,
     Assignment,
     AttendanceRecord,
     AttendanceSession,
@@ -42,7 +45,7 @@ from .models import (
     University,
     User,
 )
-from .security import hash_password
+from .security import encrypt_str, hash_password
 
 DEMO_PASSWORD = "Demo@12345"
 
@@ -304,6 +307,21 @@ def seed(db) -> None:
     db.add(Message(conversation_id=conv.id, sender_id=t_ahmed.id,
                    body="نعم، بايثون مقبولة. أرفق ملف التشغيل مع التقرير.", created_at=now - timedelta(hours=2)))
     conv.last_message_at = now - timedelta(hours=2)
+
+    # ----- pinned announcement and an archived student file
+    db.add(Banner(university_id=uni.id, title="موعد الامتحانات النصفية",
+                  body="تبدأ الامتحانات النصفية يوم الأحد القادم. راجع جدولك في صفحة الإعلانات.",
+                  level="important", audience="students", starts_at=now - timedelta(hours=1),
+                  ends_at=now + timedelta(days=14), created_by=president.id))
+    db.add(StudentRecord(university_id=uni.id, student_id=students[0].id, national_id_enc=encrypt_str("120040012345"),
+                         birth_date=date(2004, 3, 14), birth_place="نالوت", nationality="ليبي", gender="male",
+                         guardian_name="محمد الطاهر", guardian_relation="الأب", guardian_phone="0911234567",
+                         high_school="ثانوية نالوت المركزية", high_school_year="2022", high_school_score=86.5,
+                         admission_date=date(2023, 9, 1), updated_by=registrar.id))
+    hs = files.store(db, owner=registrar, purpose="archive", filename="شهادة-الثانوية.pdf",
+                     data=_pdf("High school certificate 2023001"), allowed_extensions=["pdf"], encrypt=True)
+    db.add(StudentDocument(university_id=uni.id, student_id=students[0].id, doc_type="high_school",
+                           title="شهادة الثانوية العامة", file_id=hs.id, uploaded_by=registrar.id))
 
     # ----- second university (tenant isolation demo)
     other = University(code="demo2", name="جامعة تجريبية ثانية", settings={"security": {"require_mfa_for_admins": False}})

@@ -117,8 +117,11 @@ def create_course(body: CourseIn, request: Request,
 
 
 class CoursePatch(BaseModel):
+    code: str | None = Field(default=None, min_length=2, max_length=40)
     title: str | None = Field(default=None, max_length=200)
     credits: int | None = Field(default=None, ge=0, le=20)
+    department_id: int | None = None
+    term_id: int | None = None
     schedule: list[SlotIn] | None = None
 
 
@@ -130,6 +133,14 @@ def patch_course(course_id: int, body: CoursePatch, request: Request,
     if not is_course_admin(user, c):
         raise forbidden()
     data = body.model_dump(exclude_unset=True)
+    if data.get("department_id") is not None:
+        dep = db.get(Department, data["department_id"])
+        if not dep or dep.faculty_id != c.faculty_id:
+            raise HTTPException(status_code=400, detail="القسم لا يتبع كلية المقرر")
+    if data.get("term_id") is not None:
+        term = db.get(Term, data["term_id"])
+        if not term or term.university_id != c.university_id:
+            raise HTTPException(status_code=400, detail="الفصل الدراسي غير صحيح")
     if "schedule" in data:
         data["schedule"] = [s.model_dump() for s in body.schedule or []]
     for k, v in data.items():
@@ -237,3 +248,54 @@ def my_schedule(user: User = Depends(get_current_user), db: Session = Depends(ge
         for slot in c.schedule or []:
             out.append({"course_id": c.id, "code": c.code, "title": c.title, **slot})
     return sorted(out, key=lambda s: (s["day"], s["start"]))
+
+
+class ComponentPatch(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    max_score: float | None = Field(default=None, gt=0, le=1000)
+
+
+def _component(db: Session, user: User, cid: int) -> tuple[AssessmentComponent, Course]:
+    from .. import grades
+
+    comp = db.get(AssessmentComponent, cid)
+    if not comp:
+        raise not_found()
+    course = get_course_for(db, user, comp.course_id, teach=True)
+    if grades.result_for(db, course.id).status != "draft":
+        raise HTTPException(status_code=400, detail="لا يمكن تعديل عناصر التقييم بعد رفع النتائج")
+    return comp, course
+
+
+@router.patch("/components/{cid}")
+def patch_component(cid: int, body: ComponentPatch, request: Request, user: User = Depends(get_current_user),
+                    db: Session = Depends(get_db)):
+    from ..models import GradeEntry
+
+    comp, course = _component(db, user, cid)
+    if body.max_score is not None:
+        top = db.scalar(select(func.max(GradeEntry.score)).where(GradeEntry.component_id == comp.id))
+        if top is not None and top > body.max_score:
+            raise HTTPException(status_code=400, detail=f"توجد درجات مرصودة أعلى من {body.max_score}")
+        comp.max_score = body.max_score
+    if body.name:
+        comp.name = body.name.strip()
+    audit.record(db, "component.updated", actor=user, target_type="course", target_id=course.id,
+                 details={"component": comp.id, **body.model_dump(exclude_none=True)}, ip=client_ip(request))
+    db.commit()
+    return {"id": comp.id, "name": comp.name, "max_score": comp.max_score}
+
+
+@router.delete("/components/{cid}")
+def delete_component(cid: int, request: Request, user: User = Depends(get_current_user),
+                     db: Session = Depends(get_db)):
+    from ..models import GradeEntry
+
+    comp, course = _component(db, user, cid)
+    if db.scalar(select(func.count(GradeEntry.id)).where(GradeEntry.component_id == comp.id)):
+        raise HTTPException(status_code=400, detail="لا يمكن حذف عنصر عليه درجات مرصودة")
+    audit.record(db, "component.deleted", actor=user, target_type="course", target_id=course.id,
+                 details={"component": comp.name}, ip=client_ip(request))
+    db.delete(comp)
+    db.commit()
+    return {"ok": True}

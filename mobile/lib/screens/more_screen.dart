@@ -6,6 +6,8 @@ import '../state/session.dart';
 import '../widgets/common.dart';
 import 'grades_screen.dart';
 import 'messages_screen.dart';
+import 'results_screen.dart';
+import 'send_notification_screen.dart';
 
 class MoreScreen extends StatelessWidget {
   const MoreScreen({super.key});
@@ -35,11 +37,32 @@ class MoreScreen extends StatelessWidget {
               trailing: const Icon(Icons.chevron_left),
               onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const GradesScreen())),
             ),
+          if (s.isAdmin)
+            ListTile(
+              leading: const Icon(Icons.fact_check_outlined),
+              title: const Text('اعتماد النتائج'),
+              trailing: const Icon(Icons.chevron_left),
+              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ResultsScreen())),
+            ),
+          if (canSendNotifications(s.role))
+            ListTile(
+              leading: const Icon(Icons.campaign_outlined),
+              title: const Text('إرسال إشعار'),
+              trailing: const Icon(Icons.chevron_left),
+              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SendNotificationScreen())),
+            ),
           ListTile(
             leading: const Icon(Icons.chat_outlined),
             title: const Text('الرسائل'),
             trailing: const Icon(Icons.chevron_left),
             onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MessagesScreen())),
+          ),
+          ListTile(
+            leading: const Icon(Icons.help_outline),
+            title: const Text('دليل الاستخدام'),
+            subtitle: const Text('شرح كل الأزرار والإعدادات'),
+            trailing: const Icon(Icons.chevron_left),
+            onTap: () => launchUrl(Uri.parse('${s.api.baseUrl}/#/guide'), mode: LaunchMode.externalApplication),
           ),
           ListTile(
             leading: const Icon(Icons.open_in_browser),

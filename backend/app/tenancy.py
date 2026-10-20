@@ -54,6 +54,11 @@ DEFAULT_SETTINGS: dict = {
         "sms_categories": ["official_warning", "admin_notice"],
         "due_reminder_hours": 24,
     },
+    "archive": {
+        # staff offices (besides faculty / university administration) allowed to manage student files
+        "offices": ["registrar"],
+        "max_file_mb": 10,
+    },
     "uploads": {
         "allowed_extensions": ["pdf", "docx", "doc", "pptx", "xlsx", "txt", "png", "jpg", "jpeg", "zip"],
         "max_file_mb": 20,

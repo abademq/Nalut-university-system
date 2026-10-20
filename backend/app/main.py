@@ -13,9 +13,11 @@ from .config import settings
 from .db import init_db
 from .routers import (
     admin,
+    archive,
     assignments,
     attendance,
     auth,
+    banners,
     courses,
     files,
     grades,
@@ -80,7 +82,8 @@ async def unhandled(request: Request, exc: Exception):  # pragma: no cover - saf
     return JSONResponse({"detail": "حدث خطأ غير متوقع"}, status_code=500)
 
 
-for r in (auth, admin, courses, assignments, grades, notifications, attendance, messages, requests, files, reports):
+for r in (auth, admin, courses, assignments, grades, notifications, attendance, messages, requests, files, reports,
+          banners, archive):
     app.include_router(r.router)
 
 

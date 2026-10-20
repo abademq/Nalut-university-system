@@ -19,12 +19,16 @@ class Session extends ChangeNotifier {
   /// Shows a banner for notifications that arrive while the app is open.
   void Function(String title, String body)? onForegroundMessage;
   SessionStatus status = SessionStatus.loading;
+
+  /// A tapped phone notification waiting for the home screen to open its page.
+  PushOpen? pendingOpen;
   Map<String, dynamic>? user;
   int unread = 0;
 
   String get role => user?['role'] as String? ?? '';
   bool get isStudent => role == 'student';
   bool get isInstructor => role == 'teacher' || role == 'assistant';
+  bool get isAdmin => role == 'faculty_admin' || role == 'university_admin';
   bool get canCheckIn => role.isNotEmpty && role != 'platform_admin';
   String get firstName => (user?['full_name'] as String? ?? '').split(' (').first;
 
@@ -67,6 +71,14 @@ class Session extends ChangeNotifier {
     } catch (_) {}
   }
 
+  /// Marks a notification read by its id (from a push payload) and refreshes the badge.
+  Future<void> markNotificationRead(int id) async {
+    try {
+      await api.post('/api/notifications/by-id/$id/read');
+    } catch (_) {}
+    await refreshUnread();
+  }
+
   Future<void> logout() async {
     // needs the session still valid to unregister this phone
     await push?.stop(api).catchError((Object _) {});
@@ -79,13 +91,22 @@ class Session extends ChangeNotifier {
   void _set(Map<String, dynamic>? profile) {
     user = profile;
     status = profile == null ? SessionStatus.signedOut : SessionStatus.signedIn;
-    if (profile == null) unread = 0;
+    if (profile == null) {
+      unread = 0;
+      pendingOpen = null;
+    }
     notifyListeners();
     if (profile != null) {
       refreshUnread();
       // Push is optional: a failure here must never affect the signed-in session.
       push
-          ?.start(api, onMessage: refreshUnread, onForeground: (t, b) => onForegroundMessage?.call(t, b))
+          ?.start(api,
+              onMessage: refreshUnread,
+              onForeground: (t, b) => onForegroundMessage?.call(t, b),
+              onOpened: (o) {
+                pendingOpen = o;
+                notifyListeners();
+              })
           .catchError((Object e) => debugPrint('push unavailable: $e'));
     }
   }

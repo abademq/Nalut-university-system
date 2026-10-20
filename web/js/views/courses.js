@@ -54,6 +54,55 @@ export function CoursesView({ user }) {
   </div>`;
 }
 
+function EditCourse({ course, onChange }) {
+  const structure = useAsync(() => api.get("/api/org/structure"), []);
+  const slot = course.schedule[0] || {};
+  const [v, bind] = useForm({ code: course.code, title: course.title, credits: course.credits,
+    department_id: course.department_id || "", term_id: course.term_id || "",
+    day: slot.day ?? 0, start: slot.start || "08:30", end: slot.end || "10:00", room: slot.room || "" });
+  const [submit, busy, error] = useSubmit(async () => {
+    const schedule = v.room ? [{ day: Number(v.day), start: v.start, end: v.end, room: v.room }, ...course.schedule.slice(1)] : course.schedule.slice(1);
+    await api.patch(`/api/courses/${course.id}`, { code: v.code, title: v.title, credits: Number(v.credits),
+      department_id: v.department_id ? Number(v.department_id) : null, term_id: v.term_id ? Number(v.term_id) : null, schedule });
+    toast("تم حفظ المقرر");
+    onChange();
+  });
+  const fac = (structure.data?.faculties || []).find((f) => f.id === course.faculty_id);
+  return html`<form class="card" onSubmit=${submit}><h3>بيانات المقرر</h3><${ErrorBox} error=${error} />
+    <div class="form-grid">
+      <div class="field"><label>الرمز</label><input ...${bind("code")} required /></div>
+      <div class="field"><label>الاسم</label><input ...${bind("title")} required /></div>
+      <div class="field"><label>الوحدات</label><input type="number" min="0" max="20" ...${bind("credits")} /></div>
+      <div class="field"><label>القسم</label><select ...${bind("department_id")}><option value="">—</option>
+        ${(fac?.departments || []).map((d) => html`<option value=${d.id}>${d.name}</option>`)}</select></div>
+      <div class="field"><label>الفصل الدراسي</label><select ...${bind("term_id")}><option value="">—</option>
+        ${(structure.data?.terms || []).map((t) => html`<option value=${t.id}>${t.name}</option>`)}</select></div>
+      <div class="field"><label>اليوم (الموعد الأول)</label><select ...${bind("day")}>${DAYS.map((d, i) => html`<option value=${i}>${d}</option>`)}</select></div>
+      <div class="field"><label>من</label><input type="time" ...${bind("start")} /></div>
+      <div class="field"><label>إلى</label><input type="time" ...${bind("end")} /></div>
+      <div class="field"><label>القاعة (اتركها فارغة لحذف الموعد)</label><input ...${bind("room")} /></div>
+    </div>
+    <button disabled=${busy}>حفظ</button></form>`;
+}
+
+function Components({ course, onChange }) {
+  const [name, setName] = useState("");
+  const [max, setMax] = useState("");
+  const act = async (fn) => { try { await fn(); toast("تم"); onChange(); } catch (e) { toastError(e); } };
+  return html`<div class="card"><h3>عناصر التقييم</h3>
+    <p class="small muted">يمكن تعديلها ما دامت النتائج في حالة «مسودة». لا يُحذف عنصر عليه درجات مرصودة.</p>
+    <ul class="list">${course.components.map((c) => html`<li class="row between"><span>${c.name} <span class="muted">(${c.max_score})</span></span>
+      <span class="row"><button class="ghost small" onClick=${() => {
+        const n = prompt("اسم العنصر:", c.name); if (n === null) return;
+        const m = prompt("الدرجة القصوى:", c.max_score); if (m === null) return;
+        act(() => api.patch(`/api/components/${c.id}`, { name: n, max_score: Number(m) }));
+      }}>تعديل</button><button class="ghost small" onClick=${() => confirm(`حذف ${c.name}؟`) && act(() => api.del(`/api/components/${c.id}`))}>حذف</button></span></li>`)}</ul>
+    <div class="row" style="margin-top:.5rem"><input style="max-width:200px" placeholder="عنصر جديد" value=${name} onInput=${(e) => setName(e.target.value)} />
+      <input style="max-width:110px" type="number" placeholder="الدرجة" value=${max} onInput=${(e) => setMax(e.target.value)} />
+      <button class="small" disabled=${!name || !max} onClick=${() => act(async () => { await api.post(`/api/courses/${course.id}/components`, { name, max_score: Number(max) }); setName(""); setMax(""); })}>إضافة</button></div>
+  </div>`;
+}
+
 function StaffManager({ course, onChange }) {
   const teachers = useAsync(() => Promise.all([api.get("/api/users?role=teacher&limit=200"), api.get("/api/users?role=assistant&limit=200")])
     .then(([a, b]) => [...a.items, ...b.items]), []);
@@ -91,7 +140,7 @@ export function CourseDetail({ id, user }) {
   return html`<${Async} state=${state}>${(c) => html`<div>
     <h1>${c.code} — ${c.title}</h1>
     <${Tabs} value=${tab} onChange=${setTab} tabs=${[["info", "نظرة عامة"], ["assignments", "المهام"],
-      ...(teaches ? [["students", `الطلبة (${c.students_count})`]] : []), ...(isAdmin(user) ? [["manage", "الإدارة"]] : [])]} />
+      ...(teaches ? [["students", `الطلبة (${c.students_count})`]] : []), ...(isAdmin(user) ? [["manage", "الإدارة"]] : teaches ? [["components", "عناصر التقييم"]] : [])]} />
     ${tab === "info" ? html`<div class="grid cols-2">
       <div class="card"><h3>معلومات المقرر</h3><ul class="list">
         <li>الوحدات: ${c.credits}</li>
@@ -113,6 +162,8 @@ export function CourseDetail({ id, user }) {
           if (!confirm("سحب الطالب من المقرر؟")) return;
           await api.del(`/api/courses/${c.id}/enrollments/${s.id}`); students.reload(); }}>سحب</button></td>` : null}</tr>`)}</tbody>
       </table></div>`}<//></div>` : null}
-    ${tab === "manage" ? html`<${StaffManager} course=${c} onChange=${() => { state.reload(); students.reload(); }} />` : null}
+    ${tab === "components" ? html`<${Components} course=${c} onChange=${state.reload} />` : null}
+    ${tab === "manage" ? html`<div class="grid cols-2"><${EditCourse} course=${c} onChange=${state.reload} /><${Components} course=${c} onChange=${state.reload} /></div>
+      <${StaffManager} course=${c} onChange=${() => { state.reload(); students.reload(); }} />` : null}
   </div>`}<//>`;
 }

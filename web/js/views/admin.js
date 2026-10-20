@@ -60,6 +60,7 @@ export function UsersView({ user }) {
     if (r) setTemp(r.temporary_password);
   };
   const facName = (id) => structure.data?.faculties.find((f) => f.id === id)?.name || "";
+  const [editing, setEditing] = useState(null);
   return html`<div>
     <div class="row between"><h1>المستخدمون</h1><button onClick=${() => setCreating(!creating)}>${creating ? "إلغاء" : "+ مستخدم"}</button></div>
     ${creating && structure.data ? html`<${CreateUser} user=${user} structure=${structure.data} onCreated=${(pw) => { setCreating(false); setTemp(pw); state.reload(); }} />` : null}
@@ -73,10 +74,56 @@ export function UsersView({ user }) {
         <td class="small">${facName(u.faculty_id)}</td><td class="small ltr">${u.email || u.phone || ""}</td>
         <td>${u.is_active ? html`<${Chip} kind="success">نشط<//>` : html`<${Chip} kind="danger">موقوف<//>`} ${u.mfa_enabled ? html`<${Chip} kind="info">2FA<//>` : null}</td>
         <td>${u.id !== user.id && CREATABLE[user.role]?.includes(u.role) ? html`<div class="row">
+          <button class="small secondary" onClick=${() => setEditing(u)}>تعديل</button>
           <button class="small secondary" onClick=${() => toggle(u)}>${u.is_active ? "إيقاف" : "تفعيل"}</button>
           <button class="small secondary" onClick=${() => reset(u)}>كلمة مرور</button></div>` : null}</td></tr>`)}</tbody></table></div></div>`}<//>
     ${temp ? html`<${TempPassword} value=${temp} onClose=${() => setTemp(null)} />` : null}
+    ${editing ? html`<${EditUser} user=${user} target=${editing} structure=${structure.data} onClose=${() => setEditing(null)}
+      onSaved=${() => { setEditing(null); state.reload(); }} />` : null}
   </div>`;
+}
+
+function EditUser({ user, target, structure, onClose, onSaved }) {
+  const [v, bind] = useForm({ full_name: target.full_name, role: target.role, email: target.email || "", phone: target.phone || "",
+    code: target.code || "", cohort: target.cohort || "", office: target.office || "", faculty_id: target.faculty_id || "",
+    department_id: target.department_id || "" });
+  const [submit, busy, error] = useSubmit(async () => {
+    const body = { ...v, faculty_id: v.faculty_id ? Number(v.faculty_id) : null, department_id: v.department_id ? Number(v.department_id) : null };
+    for (const k of ["email", "phone", "code", "cohort", "office"]) if (!body[k]) body[k] = null;
+    if (user.role !== "university_admin") delete body.faculty_id;
+    await api.patch(`/api/users/${target.id}`, body);
+    toast("تم حفظ التعديلات");
+    onSaved();
+  });
+  const fac = (structure?.faculties || []).find((f) => String(f.id) === String(v.faculty_id || user.faculty?.id));
+  return html`<${Modal} title=${`تعديل: ${target.full_name}`} onClose=${onClose}><form onSubmit=${submit}><${ErrorBox} error=${error} />
+    <div class="form-grid">
+      <div class="field"><label>الاسم الكامل</label><input ...${bind("full_name")} required /></div>
+      <div class="field"><label>الدور</label><select ...${bind("role")}>${CREATABLE[user.role].map((r) => html`<option value=${r}>${ROLE[r]}</option>`)}</select></div>
+      <div class="field"><label>البريد الإلكتروني</label><input type="email" class="ltr" ...${bind("email")} /></div>
+      <div class="field"><label>الهاتف</label><input class="ltr" ...${bind("phone")} /></div>
+      <div class="field"><label>رقم القيد / الرقم الوظيفي</label><input class="ltr" ...${bind("code")} /></div>
+      ${user.role === "university_admin" ? html`<div class="field"><label>الكلية</label><select ...${bind("faculty_id")}><option value="">—</option>
+        ${(structure?.faculties || []).map((f) => html`<option value=${f.id}>${f.name}</option>`)}</select></div>` : null}
+      <div class="field"><label>القسم</label><select ...${bind("department_id")}><option value="">—</option>
+        ${(fac?.departments || []).map((d) => html`<option value=${d.id}>${d.name}</option>`)}</select></div>
+      ${v.role === "student" ? html`<div class="field"><label>الدفعة</label><input ...${bind("cohort")} /></div>` : null}
+      ${v.role === "staff" ? html`<div class="field"><label>المكتب</label><select ...${bind("office")}><option value="">—</option>
+        ${Object.entries(OFFICES).map(([k, l]) => html`<option value=${k}>${l}</option>`)}</select></div>` : null}
+    </div>
+    <button disabled=${busy}>حفظ</button></form><//>`;
+}
+
+function EditModal({ title, fields, initial, onSave, onClose }) {
+  const [v, bind] = useForm(initial);
+  const [submit, busy, error] = useSubmit(async () => { await onSave(v); onClose(); });
+  return html`<${Modal} title=${title} onClose=${onClose}><form onSubmit=${submit}><${ErrorBox} error=${error} />
+    ${fields.map(([k, label, type = "text", extra = {}]) => type === "checkbox"
+      ? html`<label class="check"><input type="checkbox" ...${bind(k, "checkbox")} /> ${label}</label>`
+      : type === "select" ? html`<div class="field"><label>${label}</label><select ...${bind(k)}>
+          ${extra.options.map(([val, l]) => html`<option value=${val}>${l}</option>`)}</select></div>`
+        : html`<div class="field"><label>${label}</label><input type=${type} ...${bind(k)} ...${extra} /></div>`)}
+    <button disabled=${busy}>حفظ</button></form><//>`;
 }
 
 export function StructureView({ user }) {
@@ -84,17 +131,36 @@ export function StructureView({ user }) {
   const [fac, bindFac, setFac] = useForm({ name: "", code: "" });
   const [dep, bindDep, setDep] = useForm({ faculty_id: user.faculty?.id || "", name: "", code: "" });
   const [term, bindTerm] = useForm({ name: "", start_date: "", end_date: "", is_current: true });
+  const [edit, setEdit] = useState(null);
   const [addFac, b1, e1] = useSubmit(async () => { await api.post("/api/org/faculties", fac); setFac({ name: "", code: "" }); toast("تمت الإضافة"); state.reload(); });
-  const [addDep, b2, e2] = useSubmit(async () => { await api.post("/api/org/departments", { ...dep, faculty_id: Number(dep.faculty_id) }); setDep({ ...dep, name: "", code: "" }); toast("تمت الإضافة"); state.reload(); });
+  const [addDep, b2, e2] = useSubmit(async () => { await api.post("/api/org/departments", { ...dep, faculty_id: Number(dep.faculty_id || user.faculty?.id) }); setDep({ ...dep, name: "", code: "" }); toast("تمت الإضافة"); state.reload(); });
   const [addTerm, b3, e3] = useSubmit(async () => { await api.post("/api/org/terms", term); toast("تمت الإضافة"); state.reload(); });
   const uni = user.role === "university_admin";
+  const remove = async (path, label) => {
+    if (!confirm(`حذف ${label}؟ يُسمح بالحذف فقط إذا لم يكن مرتبطاً بمستخدمين أو مقررات.`)) return;
+    try { await api.del(path); toast("تم الحذف"); state.reload(); } catch (e) { toastError(e); }
+  };
+  const save = (path, msg = "تم الحفظ") => async (v) => { await api.patch(path, v); toast(msg); state.reload(); };
   return html`<div><h1>الهيكل التنظيمي</h1>
+    ${!uni ? html`<p class="muted">تظهر هنا كليتك وأقسامها فقط. إدارة الكليات الأخرى من صلاحيات إدارة الجامعة.</p>` : null}
     <${Async} state=${state}>${(s) => html`<div class="grid cols-2">
-      <div class="card"><h3>الكليات والأقسام</h3>${s.faculties.map((f) => html`<div style="margin-bottom:.6rem">
-        <strong>${f.name}</strong> <span class="small muted mono">${f.code}</span>
-        <div class="row" style="margin-top:.25rem">${f.departments.map((d) => html`<${Chip}>${d.name}<//>`)}</div></div>`)}</div>
-      <div class="card"><h3>الفصول الدراسية</h3>${s.terms.length ? html`<ul class="list">${s.terms.map((t) => html`<li class="row between">
-        <span>${t.name}</span><span class="small muted">${t.start_date} → ${t.end_date} ${t.is_current ? "· الحالي" : ""}</span></li>`)}</ul>` : html`<${Empty} />`}</div>
+      <div class="card"><h3>${uni ? "الكليات والأقسام" : "الكلية والأقسام"}</h3>${s.faculties.map((f) => html`<div style="margin-bottom:.9rem">
+        <div class="row between"><span><strong>${f.name}</strong> <span class="small muted mono">${f.code}</span></span>
+          ${uni ? html`<span class="row"><button class="ghost small" onClick=${() => setEdit({ title: "تعديل الكلية", path: `/api/org/faculties/${f.id}`,
+            initial: { name: f.name, code: f.code }, fields: [["name", "الاسم"], ["code", "الرمز"]] })}>تعديل</button>
+            <button class="ghost small" onClick=${() => remove(`/api/org/faculties/${f.id}`, f.name)}>حذف</button></span>` : null}</div>
+        <ul class="list">${f.departments.map((d) => html`<li class="row between" style="padding:.35rem 0">
+          <span>${d.name} <span class="small muted mono">${d.code}</span></span>
+          <span class="row"><button class="ghost small" onClick=${() => setEdit({ title: "تعديل القسم", path: `/api/org/departments/${d.id}`,
+            initial: { name: d.name, code: d.code }, fields: [["name", "الاسم"], ["code", "الرمز"]] })}>تعديل</button>
+            <button class="ghost small" onClick=${() => remove(`/api/org/departments/${d.id}`, d.name)}>حذف</button></span></li>`)}</ul></div>`)}</div>
+      <div class="card"><h3>الفصول الدراسية</h3>${s.terms.length ? html`<ul class="list">${s.terms.map((t) => html`<li>
+        <div class="row between"><span><strong>${t.name}</strong> ${t.is_current ? html`<${Chip} kind="success">الحالي<//>` : null}</span>
+          ${uni ? html`<span class="row"><button class="ghost small" onClick=${() => setEdit({ title: "تعديل الفصل الدراسي", path: `/api/org/terms/${t.id}`,
+            initial: { name: t.name, start_date: t.start_date, end_date: t.end_date, is_current: t.is_current },
+            fields: [["name", "الاسم"], ["start_date", "البداية", "date"], ["end_date", "النهاية", "date"], ["is_current", "الفصل الحالي", "checkbox"]] })}>تعديل</button>
+            <button class="ghost small" onClick=${() => remove(`/api/org/terms/${t.id}`, t.name)}>حذف</button></span>` : null}</div>
+        <div class="small muted ltr" style="text-align:right">${t.start_date} → ${t.end_date}</div></li>`)}</ul>` : html`<${Empty} />`}</div>
     </div>`}<//>
     <div class="grid cols-3">
       ${uni ? html`<form class="card" onSubmit=${addFac}><h3>كلية جديدة</h3><${ErrorBox} error=${e1} />
@@ -110,13 +176,27 @@ export function StructureView({ user }) {
         <div class="form-grid"><div class="field"><label>البداية</label><input type="date" ...${bindTerm("start_date")} required /></div>
         <div class="field"><label>النهاية</label><input type="date" ...${bindTerm("end_date")} required /></div></div>
         <label class="check"><input type="checkbox" ...${bindTerm("is_current", "checkbox")} /> الفصل الحالي</label><button disabled=${b3}>إضافة</button></form>` : null}
-    </div></div>`;
+    </div>
+    ${edit ? html`<${EditModal} title=${edit.title} fields=${edit.fields} initial=${edit.initial} onSave=${save(edit.path)} onClose=${() => setEdit(null)} />` : null}
+  </div>`;
 }
 
 export function SettingsView() {
   const state = useAsync(() => api.get("/api/settings"), []);
   return html`<div><h1>إعدادات المؤسسة</h1><${Async} state=${state}>${(d) => html`<${SettingsForm} data=${d} onSaved=${state.reload} />`}<//></div>`;
 }
+
+const HINTS = {
+  due_reminder_hours: "قبل كم ساعة من موعد التسليم يُرسل تذكير تلقائي للطلبة الذين لم يسلّموا.",
+  late_after_minutes: "إذا سجّل الطالب حضوره بعد هذه المدة من بداية المحاضرة يُعلَّم «متأخر» بدل «حاضر».",
+  rotation_seconds: "كل كم ثانية يتغير رمز QR المعروض. كلما قلّت المدة صعُب تمرير صورة الرمز لطالب غائب (15 ثانية مناسبة).",
+  warning_absence_percent: "عند بلوغ نسبة غياب الطالب في مقرر هذه القيمة يصله تنبيه تحذيري.",
+  limit_absence_percent: "الحد الأقصى المعتمد للغياب. عند تجاوزه يُنبَّه الطالب وأستاذ المقرر وإدارة الكلية لاتخاذ الإجراء وفق اللوائح (بقرار بشري، لا تلقائياً).",
+  review_threshold: "كل تسجيل حضور يحصل على نقاط مخاطر من مؤشرات مثل: خارج نطاق القاعة (50)، جهاز مشترك مع طالب آخر (60)، جهاز استُخدم لحساب آخر مؤخراً (30)، جهاز جديد (15). إذا بلغ المجموع هذه القيمة لا يُعتمد الحضور تلقائياً ويُحال «للمراجعة» ليقبله أو يرفضه الأستاذ. قيمة أقل = تشدد أكثر.",
+  selfie_retention_days: "بعد هذه المدة تُحذف صور التحقق الحية تلقائياً من الخادم حمايةً للخصوصية.",
+  pass_mark: "النسبة الدنيا للنجاح في المقرر.",
+  low_performance_percent: "إذا قلّ متوسط درجات الطالب في مهام مقرر عن هذه النسبة يظهر ضمن «طلبة يحتاجون متابعة».",
+};
 
 function SettingsForm({ data, onSaved }) {
   const e = data.effective;
@@ -142,7 +222,8 @@ function SettingsForm({ data, onSaved }) {
     toast("تم حفظ الإعدادات");
     onSaved();
   });
-  const num = (k, label, extra = {}) => html`<div class="field"><label>${label}</label><input type="number" ...${bind(k)} ...${extra} /></div>`;
+  const num = (k, label, extra = {}) => html`<div class="field"><label>${label}</label><input type="number" ...${bind(k)} ...${extra} />
+    ${HINTS[k] ? html`<div class="small muted" style="margin-top:.2rem">${HINTS[k]}</div>` : null}</div>`;
   return html`<form onSubmit=${submit}><${ErrorBox} error=${error} />
     <div class="card"><h3>الهوية البصرية</h3><div class="form-grid">
       <div class="field"><label>الاسم المعروض</label><input ...${bind("display_name")} /></div>

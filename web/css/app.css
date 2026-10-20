@@ -253,3 +253,7 @@ td input { padding: .3rem .4rem; min-width: 64px; }
 .modal-back { position: fixed; inset: 0; background: rgba(0, 0, 0, .45); display: grid; place-items: center; z-index: 45; padding: 16px; }
 .modal { background: var(--surface); border-radius: var(--radius); padding: 1.1rem; width: 100%; max-width: 560px; max-height: 90vh; overflow: auto; }
 img.selfie { max-width: 100%; border-radius: 12px; }
+
+.banner { border-inline-start: 4px solid currentColor; }
+dl.guide dt { font-weight: 700; margin-top: .8rem; }
+dl.guide dd { margin: .2rem 0 0; color: var(--text); line-height: 1.8; }

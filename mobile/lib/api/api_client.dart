@@ -89,6 +89,22 @@ class ApiClient {
     return _handle(await _send(call), call, path);
   }
 
+  /// Downloads a binary resource (e.g. a submitted file) with the same auth and refresh rules.
+  Future<Uint8List> getBytes(String path) async {
+    call() => _http.get(_uri(path), headers: _headers());
+    var res = await _send(call);
+    if (res.statusCode == 401 && await refresh()) res = await _send(call);
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      throw ApiException(res.statusCode, _errorMessage(res.statusCode, utf8.decode(res.bodyBytes)));
+    }
+    return res.bodyBytes;
+  }
+
+  Future<dynamic> patch(String path, Object body) async {
+    call() => _http.patch(_uri(path), headers: _headers(json: true), body: jsonEncode(body));
+    return _handle(await _send(call), call, path);
+  }
+
   Future<dynamic> post(String path, [Object? body]) async {
     call() => _http.post(_uri(path), headers: _headers(json: true), body: jsonEncode(body ?? {}));
     return _handle(await _send(call), call, path);

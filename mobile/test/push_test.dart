@@ -14,7 +14,8 @@ class FakePush implements PushService {
   bool fail = false;
 
   @override
-  Future<void> start(ApiClient api, {void Function(String, String)? onForeground, VoidCallback? onMessage}) async {
+  Future<void> start(ApiClient api,
+      {void Function(String, String)? onForeground, VoidCallback? onMessage, void Function(PushOpen)? onOpened}) async {
     events.add('start:${api.hasAccessToken}');
     if (fail) throw Exception('no google play services');
   }
