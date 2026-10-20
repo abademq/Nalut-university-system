@@ -11,10 +11,18 @@ const SENDERS = {
   admin_notice: ["university_admin", "faculty_admin", "staff"],
 };
 
+// Categories this account may send: the university's permission matrix decides (user.can);
+// the role table is only a fallback for older servers.
+export function sendable(user) {
+  if (user.role === "university_admin") return Object.keys(SENDERS);
+  if (user.can) return Object.keys(SENDERS).filter((k) => user.can.includes(`notify.${k}`));
+  return Object.entries(SENDERS).filter(([, roles]) => roles.includes(user.role)).map(([k]) => k);
+}
+
 export function NotificationsView({ user }) {
   const [cat, setCat] = useState("");
   const state = useAsync(() => api.get(`/api/notifications?limit=100${cat ? `&category=${cat}` : ""}`), [cat]);
-  const canSend = Object.values(SENDERS).some((r) => r.includes(user.role));
+  const canSend = sendable(user).length > 0;
   const open = async (n) => {
     if (!n.read_at) {
       await api.post(`/api/notifications/${n.delivery_id}/read`).catch(() => {});
@@ -75,7 +83,7 @@ function TargetPicker({ user, v, bind, setV }) {
 }
 
 export function SendNotification({ user }) {
-  const allowed = Object.entries(SENDERS).filter(([, roles]) => roles.includes(user.role)).map(([k]) => k);
+  const allowed = sendable(user);
   const [v, bind, setV] = useForm({ category: allowed[0], priority: "normal", title: "", body: "",
     target_type: user.role === "teacher" || user.role === "assistant" ? "course" : "users", target_id: "", users: [],
     audience: "students", push: true, sms: false, schedule: false, scheduled_at: "" });

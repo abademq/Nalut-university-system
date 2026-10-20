@@ -22,7 +22,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   Widget build(BuildContext context) {
     final s = context.read<Session>();
     return Column(children: [
-      if (canSendNotifications(s.role))
+      if (canSendNotifications(s.user))
         Padding(
           padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
           child: SizedBox(

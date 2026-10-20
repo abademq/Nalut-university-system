@@ -10,15 +10,15 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
-from .. import audit
+from .. import audit, permissions
 from ..db import get_db
 from ..deps import (
-    MANAGEABLE_ROLES,
     can_manage_user,
     can_view_user,
     client_ip,
     forbidden,
     get_current_user,
+    manageable_roles,
     not_found,
     require_roles,
 )
@@ -167,7 +167,8 @@ def create_department(body: DepartmentIn, request: Request,
     fac = db.get(Faculty, body.faculty_id)
     if not fac or fac.university_id != user.university_id:
         raise not_found("الكلية غير موجودة")
-    if user.role == Role.FACULTY_ADMIN and fac.id != user.faculty_id:
+    if user.role == Role.FACULTY_ADMIN and (fac.id != user.faculty_id
+                                            or not permissions.allowed(db, user, "structure.departments")):
         raise forbidden()
     d = Department(university_id=user.university_id, faculty_id=fac.id, name=body.name, code=body.code)
     db.add(d)
@@ -229,7 +230,8 @@ def _department(db: Session, user: User, did: int) -> Department:
     d = db.get(Department, did)
     if not d or d.university_id != user.university_id:
         raise not_found("القسم غير موجود")
-    if user.role == Role.FACULTY_ADMIN and d.faculty_id != user.faculty_id:
+    if user.role == Role.FACULTY_ADMIN and (d.faculty_id != user.faculty_id
+                                            or not permissions.allowed(db, user, "structure.departments")):
         raise forbidden()
     return d
 
@@ -406,11 +408,17 @@ def _normalize_contacts(db: Session, email: str | None, phone: str | None, exclu
     return email, phone
 
 
+def _require_user_admin(db: Session, actor: User) -> None:
+    if actor.role == Role.FACULTY_ADMIN and not permissions.allowed(db, actor, "users.manage"):
+        raise forbidden("إدارة الحسابات غير مفعلة لإدارة الكلية في هذه الجامعة")
+
+
 @router.post("/users")
 def create_user(body: UserIn, request: Request,
                 actor: User = Depends(require_roles(Role.UNIVERSITY_ADMIN, Role.FACULTY_ADMIN)),
                 db: Session = Depends(get_db)):
-    if body.role not in MANAGEABLE_ROLES.get(actor.role, set()):
+    _require_user_admin(db, actor)
+    if body.role not in manageable_roles(actor):
         raise forbidden("لا يمكنك إنشاء حساب بهذا الدور")
     faculty_id = actor.faculty_id if actor.role == Role.FACULTY_ADMIN else body.faculty_id
     _check_placement(db, actor, faculty_id, body.department_id)
@@ -461,8 +469,9 @@ def patch_user(uid: int, body: UserPatch, request: Request,
         raise not_found("المستخدم غير موجود")
     if not can_manage_user(actor, u):
         raise forbidden("لا تملك صلاحية تعديل هذا الحساب")
+    _require_user_admin(db, actor)
     changes = body.model_dump(exclude_unset=True)
-    if "role" in changes and changes["role"] not in MANAGEABLE_ROLES.get(actor.role, set()):
+    if "role" in changes and changes["role"] not in manageable_roles(actor):
         raise forbidden("لا يمكنك منح هذا الدور")
     if "email" in changes or "phone" in changes:
         changes["email"], changes["phone"] = _normalize_contacts(
@@ -486,6 +495,7 @@ def admin_reset_password(uid: int, request: Request,
     u = db.get(User, uid)
     if not u or not can_manage_user(actor, u):
         raise not_found("المستخدم غير موجود")
+    _require_user_admin(db, actor)
     pw = temp_password()
     u.password_hash, u.must_change_password = hash_password(pw), True
     u.failed_logins, u.locked_until = 0, None
@@ -513,12 +523,26 @@ def get_settings(user: User = Depends(require_roles(Role.UNIVERSITY_ADMIN, Role.
             "effective": effective_settings(uni), "overrides": uni.settings or {}}
 
 
+@router.get("/permissions")
+def permission_catalog(user: User = Depends(require_roles(Role.UNIVERSITY_ADMIN)), db: Session = Depends(get_db)):
+    uni = db.get(University, user.university_id)
+    return {"capabilities": permissions.catalog(), "current": effective_settings(uni)["permissions"],
+            "editable": bool(getattr(user, "acting_platform_admin", False))}
+
+
 @router.put("/settings")
 def put_settings(body: SettingsIn, request: Request, user: User = Depends(require_roles(Role.UNIVERSITY_ADMIN)),
                  db: Session = Depends(get_db)):
     unknown = set(body.settings) - ALLOWED_SETTING_KEYS
     if unknown:
         raise HTTPException(status_code=400, detail=f"مفاتيح غير معروفة: {', '.join(sorted(unknown))}")
+    if "permissions" in body.settings:
+        if not getattr(user, "acting_platform_admin", False):
+            raise forbidden("الصلاحيات يعدّلها مشرف المنصة فقط")
+        try:
+            body.settings["permissions"] = permissions.validate(body.settings["permissions"])
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
     att = body.settings.get("attendance", {})
     for key in ("warning_absence_percent", "limit_absence_percent", "review_threshold"):
         if key in att and not (0 <= float(att[key]) <= 100):

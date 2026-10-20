@@ -67,15 +67,25 @@ const SECTIONS = [
       ["درجة النجاح / حد الأداء الضعيف", "الأولى للنجاح في المقرر، والثانية تحدد من يظهر في «طلبة يحتاجون متابعة»."],
     ],
   },
+  {
+    id: "platform", title: "مشرف المنصة والصلاحيات", items: [
+      ["الجامعات ← إدارة", "يفتح الجامعة بصلاحيات إدارتها الكاملة: المستخدمون (بمن فيهم مدراء الجامعة)، الهيكل والفصول، المقررات، النتائج، الإعدادات، الأرشيف، والصلاحيات. شريط أعلى الصفحة يذكّرك بأنك داخل جامعة، وزر «العودة لإدارة المنصة» يخرجك منها. كل إجراء يُسجَّل باسمك في سجل التدقيق مع علامة «مشرف المنصة»."],
+      ["الصلاحيات", "جدول يحدد من يملك كل صلاحية في الجامعة: إرسال كل نوع من الإشعارات، إدارة الحسابات، الأقسام، الإعلانات المثبتة، اعتماد النتائج، أرشيف الطلبة. يعدّله مشرف المنصة فقط، وتراه إدارة الجامعة للاطلاع."],
+      ["لماذا إدارة الجامعة دائماً ✔؟", "حتى لا تُقفل الجامعة عن إدارة نفسها بالخطأ. القيود تُطبَّق على إدارة الكلية والموظفين والأساتذة."],
+      ["حدود النطاق", "منح صلاحية لا يوسّع النطاق: إدارة الكلية تبقى لكليتها، والأستاذ لمقرراته، وموظف الأرشيف لمكاتب الأرشيف المحددة في الإعدادات."],
+      ["استعادة الافتراضي", "يرجع الجدول للتوزيع الأصلي (ثم اضغط حفظ)."],
+    ],
+  },
 ];
 
 export function GuideView({ user }) {
   const [q, setQ] = useState("");
   const match = (t) => !q || t.includes(q.trim());
   const roleSection = user.role === "student" ? "student" : user.role === "teacher" || user.role === "assistant" ? "teacher" : "admin";
-  const visible = { student: ["basics", "student"], teacher: ["basics", "teacher"], admin: ["basics", "admin", "settings", "teacher", "student"] }[
+  const visible = { student: ["basics", "student"], teacher: ["basics", "teacher"], admin: ["basics", "admin", "settings", "platform", "teacher", "student"] }[
     user.role === "staff" ? "student" : roleSection];
-  const sections = SECTIONS.filter((x) => user.role === "staff" ? x.id === "basics" : visible.includes(x.id));
+  const sections = SECTIONS.filter((x) => user.role === "staff" ? x.id === "basics"
+    : user.role === "platform_admin" ? ["basics", "platform"].includes(x.id) : visible.includes(x.id));
   return html`<div><h1>دليل الاستخدام</h1>
     <p class="muted">شرح الصفحات والأزرار والإعدادات المتاحة لك.</p>
     <input style="max-width:340px;margin-bottom:1rem" placeholder="ابحث في الدليل… (مثلاً: المخاطر)" value=${q} onInput=${(e) => setQ(e.target.value)} />

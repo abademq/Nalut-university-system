@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import audit, files, grades, notifications
+from .. import audit, files, grades, notifications, permissions
 from ..db import get_db, utcnow
 from ..deps import (
     client_ip,
@@ -157,6 +157,10 @@ class WorkflowIn(BaseModel):
     note: str = Field(default="", max_length=500)
 
 
+def _approver(db: Session, user: User, course: Course) -> bool:
+    return is_course_admin(user, course) and permissions.allowed(db, user, "results.approve")
+
+
 def _transition(db: Session, user: User, course: Course, frm: set[str], to: str, note: str, request: Request):
     res = grades.result_for(db, course.id)
     if res.status not in frm:
@@ -192,7 +196,7 @@ def results_submit(course_id: int, body: WorkflowIn, request: Request, user: Use
 def results_approve(course_id: int, body: WorkflowIn, request: Request, user: User = Depends(get_current_user),
                     db: Session = Depends(get_db)):
     course = get_course_for(db, user, course_id)
-    if not is_course_admin(user, course):
+    if not _approver(db, user, course):
         raise forbidden("الاعتماد من صلاحيات إدارة الكلية")
     res = _transition(db, user, course, {"submitted"}, "approved", body.note, request)
     db.commit()
@@ -203,14 +207,14 @@ def results_approve(course_id: int, body: WorkflowIn, request: Request, user: Us
 def results_publish(course_id: int, body: WorkflowIn, request: Request, user: User = Depends(get_current_user),
                     db: Session = Depends(get_db)):
     course = get_course_for(db, user, course_id)
-    if not is_course_admin(user, course):
+    if not _approver(db, user, course):
         raise forbidden("النشر من صلاحيات إدارة الكلية")
     res = _transition(db, user, course, {"approved"}, "published", body.note, request)
     notifications.create(db, sender=user, university_id=course.university_id, category="announcement",
                          priority="important", title=f"نشر نتائج: {course.title}",
                          body="تم اعتماد نتائج المقرر ونشرها. يمكنك الاطلاع عليها في صفحة الدرجات.",
                          target_type="course", target_ids=[course.id], course_id=course.id, link="#/grades",
-                         channels=["inapp", "push"])
+                         channels=["inapp", "push"], automatic=True)
     db.commit()
     return _result_out(res)
 
@@ -220,7 +224,7 @@ def results_return(course_id: int, body: WorkflowIn, request: Request, user: Use
                    db: Session = Depends(get_db)):
     """Send results back to draft (also used to reopen published results; a reason is required)."""
     course = get_course_for(db, user, course_id)
-    if not is_course_admin(user, course):
+    if not _approver(db, user, course):
         raise forbidden()
     if len(body.note.strip()) < 3:
         raise HTTPException(status_code=400, detail="اذكر سبب الإرجاع")
@@ -231,7 +235,7 @@ def results_return(course_id: int, body: WorkflowIn, request: Request, user: Use
 
 @router.get("/results/pending")
 def results_pending(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    if user.role not in (Role.FACULTY_ADMIN, Role.UNIVERSITY_ADMIN):
+    if user.role not in (Role.FACULTY_ADMIN, Role.UNIVERSITY_ADMIN) or not permissions.allowed(db, user, "results.approve"):
         raise forbidden()
     ids = visible_course_ids(db, user)
     out = []

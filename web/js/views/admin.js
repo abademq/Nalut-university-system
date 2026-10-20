@@ -1,10 +1,16 @@
 import { html, useState, useAsync, Async, Empty, Chip, ErrorBox, useForm, useSubmit, toast, toastError, Modal, ROLE, fmtDate } from "../ui.js";
-import { api } from "../api.js";
+import { api, setActing } from "../api.js";
 
 const CREATABLE = {
   university_admin: ["student", "teacher", "assistant", "staff", "faculty_admin"],
   faculty_admin: ["student", "teacher", "assistant", "staff"],
 };
+// roles this account may create or edit (the platform administrator also manages university admins)
+function creatable(user) {
+  if (user.acting) return [...CREATABLE.university_admin, "university_admin"];
+  if (user.role === "faculty_admin" && !(user.can || []).includes("users.manage")) return [];
+  return CREATABLE[user.role] || [];
+}
 const OFFICES = { registrar: "التسجيل", student_affairs: "شؤون الطلبة", exams: "الامتحانات" };
 
 function TempPassword({ value, onClose }) {
@@ -27,7 +33,7 @@ function CreateUser({ user, structure, onCreated }) {
   return html`<form class="card" onSubmit=${submit}><h3>مستخدم جديد</h3><${ErrorBox} error=${error} />
     <div class="form-grid">
       <div class="field"><label>الاسم الكامل</label><input ...${bind("full_name")} required /></div>
-      <div class="field"><label>الدور</label><select ...${bind("role")}>${CREATABLE[user.role].map((r) => html`<option value=${r}>${ROLE[r]}</option>`)}</select></div>
+      <div class="field"><label>الدور</label><select ...${bind("role")}>${creatable(user).map((r) => html`<option value=${r}>${ROLE[r]}</option>`)}</select></div>
       <div class="field"><label>البريد الإلكتروني</label><input type="email" class="ltr" ...${bind("email")} /></div>
       <div class="field"><label>رقم الهاتف</label><input class="ltr" ...${bind("phone")} /></div>
       <div class="field"><label>${v.role === "student" ? "رقم القيد" : "الرقم الوظيفي"}</label><input class="ltr" ...${bind("code")} /></div>
@@ -62,7 +68,7 @@ export function UsersView({ user }) {
   const facName = (id) => structure.data?.faculties.find((f) => f.id === id)?.name || "";
   const [editing, setEditing] = useState(null);
   return html`<div>
-    <div class="row between"><h1>المستخدمون</h1><button onClick=${() => setCreating(!creating)}>${creating ? "إلغاء" : "+ مستخدم"}</button></div>
+    <div class="row between"><h1>المستخدمون</h1>${creatable(user).length ? html`<button onClick=${() => setCreating(!creating)}>${creating ? "إلغاء" : "+ مستخدم"}</button>` : null}</div>
     ${creating && structure.data ? html`<${CreateUser} user=${user} structure=${structure.data} onCreated=${(pw) => { setCreating(false); setTemp(pw); state.reload(); }} />` : null}
     <div class="row" style="margin-bottom:.75rem">
       <input style="max-width:280px" placeholder="بحث بالاسم أو الرقم أو البريد" value=${filters.q} onInput=${(e) => setFilters({ ...filters, q: e.target.value })} />
@@ -73,7 +79,7 @@ export function UsersView({ user }) {
       <tbody>${d.items.map((u) => html`<tr><td>${u.full_name}</td><td>${ROLE[u.role]}</td><td class="mono">${u.code || ""}</td>
         <td class="small">${facName(u.faculty_id)}</td><td class="small ltr">${u.email || u.phone || ""}</td>
         <td>${u.is_active ? html`<${Chip} kind="success">نشط<//>` : html`<${Chip} kind="danger">موقوف<//>`} ${u.mfa_enabled ? html`<${Chip} kind="info">2FA<//>` : null}</td>
-        <td>${u.id !== user.id && CREATABLE[user.role]?.includes(u.role) ? html`<div class="row">
+        <td>${u.id !== user.id && creatable(user).includes(u.role) ? html`<div class="row">
           <button class="small secondary" onClick=${() => setEditing(u)}>تعديل</button>
           <button class="small secondary" onClick=${() => toggle(u)}>${u.is_active ? "إيقاف" : "تفعيل"}</button>
           <button class="small secondary" onClick=${() => reset(u)}>كلمة مرور</button></div>` : null}</td></tr>`)}</tbody></table></div></div>`}<//>
@@ -99,7 +105,7 @@ function EditUser({ user, target, structure, onClose, onSaved }) {
   return html`<${Modal} title=${`تعديل: ${target.full_name}`} onClose=${onClose}><form onSubmit=${submit}><${ErrorBox} error=${error} />
     <div class="form-grid">
       <div class="field"><label>الاسم الكامل</label><input ...${bind("full_name")} required /></div>
-      <div class="field"><label>الدور</label><select ...${bind("role")}>${CREATABLE[user.role].map((r) => html`<option value=${r}>${ROLE[r]}</option>`)}</select></div>
+      <div class="field"><label>الدور</label><select ...${bind("role")}>${creatable(user).map((r) => html`<option value=${r}>${ROLE[r]}</option>`)}</select></div>
       <div class="field"><label>البريد الإلكتروني</label><input type="email" class="ltr" ...${bind("email")} /></div>
       <div class="field"><label>الهاتف</label><input class="ltr" ...${bind("phone")} /></div>
       <div class="field"><label>رقم القيد / الرقم الوظيفي</label><input class="ltr" ...${bind("code")} /></div>
@@ -290,12 +296,14 @@ export function UniversitiesView() {
   });
   const toggle = async (u) => { await api.patch(`/api/universities/${u.id}`, { is_active: !u.is_active }).catch(toastError); state.reload(); };
   return html`<div><h1>الجامعات المشتركة</h1>
-    <p class="muted">كل جامعة معزولة ببياناتها بالكامل. يدير مشرف المنصة الاشتراكات فقط.</p>
+    <p class="muted">كل جامعة معزولة ببياناتها بالكامل. زر «إدارة» يفتح الجامعة بصلاحيات إدارتها الكاملة
+      (المستخدمون بمن فيهم مدراء الجامعة، الهيكل، الإعدادات، الصلاحيات...) وكل ما تفعله يُسجَّل باسمك في سجل التدقيق.</p>
     <${Async} state=${state}>${(rows) => html`<div class="card"><div class="table-wrap"><table>
       <thead><tr><th>الجامعة</th><th>الرمز</th><th class="num">المستخدمون</th><th>الحالة</th><th></th></tr></thead>
       <tbody>${rows.map((u) => html`<tr><td>${u.name}</td><td class="mono">${u.code}</td><td class="num">${u.users}</td>
         <td>${u.is_active ? html`<${Chip} kind="success">مفعلة<//>` : html`<${Chip} kind="danger">موقوفة<//>`}</td>
-        <td><button class="small secondary" onClick=${() => toggle(u)}>${u.is_active ? "إيقاف" : "تفعيل"}</button></td></tr>`)}</tbody></table></div></div>`}<//>
+        <td><div class="row"><button class="small" onClick=${() => { setActing(u.id); location.hash = "#/"; }}>إدارة</button>
+          <button class="small secondary" onClick=${() => toggle(u)}>${u.is_active ? "إيقاف" : "تفعيل"}</button></div></td></tr>`)}</tbody></table></div></div>`}<//>
     <form class="card" onSubmit=${submit}><h3>إضافة جامعة</h3><${ErrorBox} error=${error} /><div class="form-grid">
       <div class="field"><label>اسم الجامعة</label><input ...${bind("name")} required /></div>
       <div class="field"><label>الرمز (حروف لاتينية صغيرة)</label><input class="ltr" ...${bind("code")} required pattern="[a-z0-9-]+" /></div>
@@ -303,4 +311,41 @@ export function UniversitiesView() {
       <div class="field"><label>بريد مسؤول الجامعة</label><input type="email" class="ltr" ...${bind("admin_email")} required /></div></div>
       <button disabled=${busy}>إنشاء</button></form>
     ${temp ? html`<${TempPassword} value=${temp} onClose=${() => setTemp(null)} />` : null}</div>`;
+}
+
+const PERM_ROLES = ["faculty_admin", "staff", "teacher", "assistant"];
+
+export function PermissionsView() {
+  const state = useAsync(() => api.get("/api/permissions"), []);
+  const [draft, setDraft] = useState(null);
+  const [busy, setBusy] = useState(false);
+  if (!state.data) return html`<${Async} state=${state}>${() => null}<//>`;
+  const { capabilities, current, editable } = state.data;
+  const m = draft || current;
+  const has = (k, r) => (m[k] || []).includes(r);
+  const flip = (k, r) => setDraft({ ...m, [k]: has(k, r) ? m[k].filter((x) => x !== r) : [...(m[k] || []), r] });
+  const save = async () => {
+    setBusy(true);
+    try {
+      await api.put("/api/settings", { settings: { permissions: m } });
+      toast("حُفظت الصلاحيات", "success");
+      setDraft(null);
+      state.reload();
+    } catch (e) { toastError(e); } finally { setBusy(false); }
+  };
+  const groups = [...new Set(capabilities.map((c) => c.group))];
+  return html`<div><h1>الصلاحيات</h1>
+    <p class="muted">من يملك كل صلاحية في هذه الجامعة. إدارة الجامعة تملك كل الصلاحيات دائماً حتى لا تُقفل الإدارة،
+      وتبقى حدود النطاق كما هي (إدارة الكلية لكليتها، الأستاذ لمقرراته). ${editable ? "" : "يعدّلها مشرف المنصة فقط."}</p>
+    ${groups.map((g) => html`<div class="card"><h3>${g}</h3><div class="table-wrap"><table>
+      <thead><tr><th>الصلاحية</th><th>${ROLE.university_admin}</th>${PERM_ROLES.map((r) => html`<th>${ROLE[r]}</th>`)}</tr></thead>
+      <tbody>${capabilities.filter((c) => c.group === g).map((c) => html`<tr><td>${c.label}</td><td>✔</td>
+        ${PERM_ROLES.map((r) => html`<td>${c.options.includes(r)
+          ? html`<input type="checkbox" checked=${has(c.key, r)} disabled=${!editable} onChange=${() => flip(c.key, r)}
+              aria-label=${`${c.label} — ${ROLE[r]}`} />`
+          : html`<span class="muted">—</span>`}</td>`)}</tr>`)}</tbody></table></div></div>`)}
+    ${editable ? html`<div class="row"><button disabled=${busy || !draft} onClick=${save}>حفظ الصلاحيات</button>
+      ${draft ? html`<button class="secondary" onClick=${() => setDraft(null)}>تراجع</button>` : null}
+      <button class="secondary" onClick=${() => setDraft(Object.fromEntries(capabilities.map((c) => [c.key, c.default])))}>استعادة الافتراضي</button></div>` : null}
+  </div>`;
 }

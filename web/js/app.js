@@ -1,5 +1,5 @@
-import { html, render, useState, useEffect, ROLE } from "./ui.js";
-import { api, setToken, setLogoutHandler, tryRefresh } from "./api.js";
+import { html, render, useState, useEffect, ROLE, toastError } from "./ui.js";
+import { api, setToken, setLogoutHandler, tryRefresh, getActing, setActing } from "./api.js";
 import { Login } from "./views/login.js";
 import { Home } from "./views/home.js";
 import { CoursesView, CourseDetail } from "./views/courses.js";
@@ -9,7 +9,7 @@ import { AttendanceView, ScanView, SessionView, DisplayView } from "./views/atte
 import { NotificationsView, SendNotification } from "./views/notifications.js";
 import { MessagesView, ThreadView } from "./views/messages.js";
 import { RequestsView, RequestDetail } from "./views/requests.js";
-import { UsersView, StructureView, SettingsView, AuditView, AbuseReportsView, UniversitiesView } from "./views/admin.js";
+import { UsersView, StructureView, SettingsView, AuditView, AbuseReportsView, UniversitiesView, PermissionsView } from "./views/admin.js";
 import { ReportsView } from "./views/reports.js";
 import { ProfileView } from "./views/profile.js";
 import { BannerStrip, BannersView, ArchiveView, ArchiveDetail } from "./views/manage.js";
@@ -17,6 +17,8 @@ import { GuideView } from "./views/guide.js";
 
 const isAdmin = (r) => r === "university_admin" || r === "faculty_admin";
 const isInstructor = (r) => r === "teacher" || r === "assistant";
+// a configurable capability (see the permissions page); university admins hold all of them
+const can = (u, key) => u.role === "university_admin" || (u.can || []).includes(key);
 
 // [hash, label, icon, roles predicate, mobile tab?]
 const NAV = [
@@ -25,7 +27,7 @@ const NAV = [
   ["#/courses", "المقررات", "📚", (r) => r !== "staff" && r !== "platform_admin", false],
   ["#/assignments", "المهام والواجبات", "📝", (r) => r === "student" || isInstructor(r), true],
   ["#/grades", "الدرجات", "🎓", (r) => r === "student" || isInstructor(r), false],
-  ["#/results", "اعتماد النتائج", "✅", isAdmin, false],
+  ["#/results", "اعتماد النتائج", "✅", (r, u) => isAdmin(r) && can(u, "results.approve"), false],
   ["#/attendance", "الحضور", "📷", (r) => r !== "platform_admin", true],
   ["#/notifications", "الإشعارات", "🔔", (r) => r !== "platform_admin", true],
   ["#/messages", "الرسائل", "💬", (r) => r !== "platform_admin", false],
@@ -33,11 +35,13 @@ const NAV = [
   ["#/reports", "التقارير", "📊", (r) => isAdmin(r) || isInstructor(r), false],
   ["#/users", "المستخدمون", "👥", (r) => isAdmin(r), false],
   ["#/structure", "الهيكل التنظيمي", "🏢", isAdmin, false],
-  ["#/banners", "الإعلانات المثبتة", "📌", isAdmin, false],
-  ["#/archive", "أرشيف الطلبة", "🗂", (r, u) => isAdmin(r) || (r === "staff" && u.office === "registrar"), false],
+  ["#/banners", "الإعلانات المثبتة", "📌", (r, u) => isAdmin(r) && can(u, "banners.manage"), false],
+  ["#/archive", "أرشيف الطلبة", "🗂", (r, u) => (isAdmin(r) || (r === "staff" && u.office)) && can(u, "archive.access")
+    && (r !== "staff" || (u.archive_offices || ["registrar"]).includes(u.office)), false],
   ["#/abuse", "بلاغات الرسائل", "⚑", isAdmin, false],
   ["#/audit", "سجل التدقيق", "🛡", (r) => isAdmin(r) || r === "platform_admin", false],
   ["#/settings", "إعدادات المؤسسة", "⚙", (r) => r === "university_admin", false],
+  ["#/permissions", "الصلاحيات", "🔑", (r) => r === "university_admin", false],
   ["#/profile", "حسابي", "👤", () => true, true],
   ["#/guide", "دليل الاستخدام", "❓", () => true, false],
 ];
@@ -72,6 +76,7 @@ function route(hash, user) {
     case "banners": return html`<${BannersView} user=${user} />`;
     case "archive": return b ? html`<${ArchiveDetail} id=${b} user=${user} />` : html`<${ArchiveView} user=${user} />`;
     case "guide": return html`<${GuideView} user=${user} />`;
+    case "permissions": return html`<${PermissionsView} user=${user} />`;
     default: return html`<div class="card empty">الصفحة غير موجودة</div>`;
   }
 }
@@ -119,6 +124,8 @@ function Shell({ user, onLogout }) {
         <div><strong>${user.full_name}</strong><div class="who">${ROLE[user.role]}${user.faculty ? ` — ${user.faculty.name}` : ""}</div></div>
         <div class="row only-mobile"><a class="btn secondary small" href="#/messages">💬</a></div>
       </div>
+      ${user.acting ? html`<div class="alert info row between"><span>🛡 أنت مشرف المنصة وتدير «${user.university?.name}» بصلاحيات إدارتها الكاملة. كل إجراء يُسجَّل باسمك.</span>
+        <button class="small secondary" onClick=${() => { setActing(null); location.hash = "#/universities"; }}>العودة لإدارة المنصة</button></div>` : null}
       ${user.must_change_password ? html`<div class="alert warning">تستخدم كلمة مرور مؤقتة. <a href="#/profile">غيّرها الآن</a>.</div>` : null}
       ${user.role !== "platform_admin" ? html`<${BannerStrip} key=${hash.split("/")[1] || "home"} />` : null}
       ${route(hash, user)}
@@ -140,6 +147,28 @@ function applyBranding(user) {
   document.title = b?.display_name || user?.university?.name || "منصة الجامعة الذكية";
 }
 
+// The platform administrator either manages the platform or, after choosing a university,
+// works inside it with its administration's full powers (the server enforces and audits this).
+function PlatformShell({ user, onLogout }) {
+  const [acting, setActingState] = useState(getActing());
+  const [eff, setEff] = useState(null);
+  useEffect(() => {
+    const on = () => setActingState(getActing());
+    window.addEventListener("nus:acting", on);
+    return () => window.removeEventListener("nus:acting", on);
+  }, []);
+  useEffect(() => {
+    setEff(null);
+    if (!acting) return;
+    api.get("/api/me").then(setEff).catch((e) => { toastError(e); setActing(null); });
+  }, [acting]);
+  useEffect(() => { applyBranding(eff || user); }, [eff]);
+  const logout = () => { setActing(null); onLogout(); };
+  if (!acting) return html`<${Shell} user=${user} onLogout=${logout} />`;
+  if (!eff) return html`<div class="boot">جارٍ فتح الجامعة…</div>`;
+  return html`<${Shell} key=${acting} user=${eff} onLogout=${logout} />`;
+}
+
 function App() {
   const [user, setUser] = useState(undefined);
 
@@ -159,6 +188,7 @@ function App() {
 
   if (user === undefined) return html`<div class="boot">جارٍ التحميل…</div>`;
   if (!user) return html`<${Login} onLogin=${(data) => { setToken(data.access_token); setUser(data.user); }} />`;
+  if (user.role === "platform_admin") return html`<${PlatformShell} user=${user} onLogout=${logout} />`;
   return html`<${Shell} user=${user} onLogout=${logout} />`;
 }
 

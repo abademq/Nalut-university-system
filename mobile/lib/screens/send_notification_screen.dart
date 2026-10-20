@@ -12,7 +12,17 @@ const _senders = {
   'admin_notice': ['university_admin', 'faculty_admin', 'staff'],
 };
 
-bool canSendNotifications(String role) => _senders.values.any((r) => r.contains(role));
+/// Categories the user may send. The university's permission matrix (the profile's `can`
+/// list) decides; the role table is only a fallback for an older server.
+List<String> sendableCategories(Map<String, dynamic>? user) {
+  final role = user?['role'] as String? ?? '';
+  if (role == 'university_admin') return _senders.keys.toList();
+  final can = user?['can'];
+  if (can is List) return [for (final k in _senders.keys) if (can.contains('notify.$k')) k];
+  return [for (final e in _senders.entries) if (e.value.contains(role)) e.key];
+}
+
+bool canSendNotifications(Map<String, dynamic>? user) => sendableCategories(user).isNotEmpty;
 
 class SendNotificationScreen extends StatefulWidget {
   const SendNotificationScreen({super.key, this.presetUsers});
@@ -47,7 +57,7 @@ class _SendNotificationScreenState extends State<SendNotificationScreen> {
   void initState() {
     super.initState();
     final role = context.read<Session>().role;
-    _category = _senders.entries.firstWhere((e) => e.value.contains(role)).key;
+    _category = sendableCategories(context.read<Session>().user).first;
     _targetType = widget.presetUsers != null ? 'users' : (_instructorRole(role) ? 'course' : 'users');
     if (widget.presetUsers != null) _users.addAll(widget.presetUsers!);
     _loadOptions();
@@ -134,7 +144,6 @@ class _SendNotificationScreenState extends State<SendNotificationScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final role = _s.role;
     final faculties = (_structure?['faculties'] as List<dynamic>?) ?? [];
     return Scaffold(
       appBar: AppBar(title: const Text('إرسال إشعار')),
@@ -143,8 +152,8 @@ class _SendNotificationScreenState extends State<SendNotificationScreen> {
           initialValue: _category,
           decoration: const InputDecoration(labelText: 'النوع'),
           items: [
-            for (final e in _senders.entries.where((e) => e.value.contains(role)))
-              DropdownMenuItem(value: e.key, child: Text(categoryLabels[e.key] ?? e.key)),
+            for (final k in sendableCategories(_s.user))
+              DropdownMenuItem(value: k, child: Text(categoryLabels[k] ?? k)),
           ],
           onChanged: (v) => setState(() => _category = v!),
         ),

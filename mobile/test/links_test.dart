@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nalut_university/links.dart';
 import 'package:nalut_university/push.dart';
+import 'package:nalut_university/screens/send_notification_screen.dart';
 
 void main() {
   const base = 'https://u.example';
@@ -33,5 +34,14 @@ void main() {
     expect(o.notificationId, 42);
     expect(o.link, '#/messages/3');
     expect(PushOpen.fromData({'link': ''}).link, isNull);
+  });
+
+  test('notification categories follow the university permission matrix', () {
+    expect(sendableCategories({'role': 'staff', 'can': ['notify.announcement']}), ['announcement']);
+    expect(sendableCategories({'role': 'teacher', 'can': <String>[]}), isEmpty);
+    expect(canSendNotifications({'role': 'student', 'can': <String>[]}), isFalse);
+    expect(sendableCategories({'role': 'university_admin'}).length, 4);
+    // older server without `can`: role table
+    expect(sendableCategories({'role': 'staff'}), ['admin_notice']);
   });
 }

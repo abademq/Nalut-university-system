@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
-from .. import audit
+from .. import audit, permissions
 from ..config import settings
 from ..db import get_db, utcnow
 from ..deps import client_ip, get_current_user, tenant_settings
@@ -80,6 +80,11 @@ def user_profile(db: Session, user: User) -> dict:
         "must_change_password": user.must_change_password,
         "notification_prefs": user.notification_prefs or {},
         "branding": cfg["branding"] if cfg else None,
+        # the platform administrator managing this university (see deps.ACT_HEADER)
+        "acting": bool(getattr(user, "acting_platform_admin", False)),
+        # configurable capabilities this account holds, so clients show only what will work
+        "archive_offices": cfg["archive"]["offices"] if cfg else [],
+        "can": [k for k in permissions.CAPABILITIES if permissions.allowed(db, user, k)] if uni else [],
     }
 
 

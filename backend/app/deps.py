@@ -45,8 +45,45 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
         uni = db.get(University, user.university_id)
         if not uni or not uni.is_active:
             raise HTTPException(status_code=401, detail="المؤسسة غير مفعلة")
+    acting = request.headers.get(ACT_HEADER)
+    if acting and user.role == Role.PLATFORM_ADMIN and _may_act(request):
+        user = _acting_user(db, user, acting)
     request.state.user = user
     return user
+
+
+# The platform administrator can manage any university with the full powers of its
+# university administrator by sending this header. Account endpoints (password, MFA, devices,
+# logout) always act on the real platform account and ignore it.
+ACT_HEADER = "X-Act-As-University"
+
+
+def _may_act(request: Request) -> bool:
+    path = request.url.path
+    if path == "/api/me":
+        return True
+    return not (path.startswith("/api/auth") or path.startswith("/api/me"))
+
+
+def _acting_user(db: Session, user: User, university_id: str) -> User:
+    try:
+        uni = db.get(University, int(university_id))
+    except ValueError:
+        uni = None
+    if not uni:
+        raise HTTPException(status_code=400, detail="الجامعة المحددة غير موجودة")
+    # A detached copy: changing its role here can never be written back to the account.
+    acting = User(**{c.key: getattr(user, c.key) for c in User.__table__.columns})
+    acting.role = Role.UNIVERSITY_ADMIN
+    acting.university_id = uni.id
+    acting.faculty_id = acting.department_id = None
+    acting.acting_platform_admin = True
+    return acting
+
+
+def is_platform_actor(user: User) -> bool:
+    """The platform administrator, directly or while managing a university."""
+    return user.role == Role.PLATFORM_ADMIN or getattr(user, "acting_platform_admin", False)
 
 
 def require_roles(*roles: str):
@@ -148,10 +185,16 @@ MANAGEABLE_ROLES = {
 }
 
 
+def manageable_roles(actor: User) -> set[str]:
+    if getattr(actor, "acting_platform_admin", False):
+        return set(Role.ALL) - {Role.PLATFORM_ADMIN}  # every role inside the university, incl. its admins
+    return MANAGEABLE_ROLES.get(actor.role, set())
+
+
 def can_manage_user(actor: User, target: User) -> bool:
     if actor.id == target.id:
         return False  # nobody edits their own role/status through admin endpoints
-    if target.role not in MANAGEABLE_ROLES.get(actor.role, set()):
+    if target.role not in manageable_roles(actor):
         return False
     if actor.role == Role.PLATFORM_ADMIN:
         return True

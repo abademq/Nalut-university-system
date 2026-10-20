@@ -4,6 +4,16 @@
 let accessToken = null;
 let onLogout = () => {};
 
+// Platform administrator managing a university: every request carries its id (per tab).
+let acting = null;
+try { acting = sessionStorage.getItem("nus-acting"); } catch { /* storage unavailable */ }
+export function getActing() { return acting; }
+export function setActing(id) {
+  acting = id ? String(id) : null;
+  try { if (acting) sessionStorage.setItem("nus-acting", acting); else sessionStorage.removeItem("nus-acting"); } catch { /* ignore */ }
+  window.dispatchEvent(new Event("nus:acting"));
+}
+
 export function setToken(token) { accessToken = token; }
 export function hasToken() { return !!accessToken; }
 export function setLogoutHandler(fn) { onLogout = fn; }
@@ -38,6 +48,7 @@ function errorMessage(body, status) {
 export async function request(method, path, { json, form, raw = false, retry = true, headers = {} } = {}) {
   const opts = { method, headers: { ...headers }, credentials: "same-origin" };
   if (accessToken) opts.headers.Authorization = `Bearer ${accessToken}`;
+  if (acting) opts.headers["X-Act-As-University"] = acting;
   if (json !== undefined) {
     opts.headers["Content-Type"] = "application/json";
     opts.body = JSON.stringify(json);

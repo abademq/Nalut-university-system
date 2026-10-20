@@ -162,7 +162,7 @@ def _announce(db: Session, sender: User, a: Assignment, course: Course) -> None:
         db, sender=sender, university_id=course.university_id, category="announcement",
         title=f"مهمة جديدة: {a.title}", body=f"مقرر {course.title} — آخر موعد للتسليم {a.due_at:%Y-%m-%d %H:%M} UTC",
         target_type="course", target_ids=[course.id], course_id=course.id, link=f"#/assignments/{a.id}",
-        priority="normal", scheduled_at=a.open_at if a.open_at > utcnow() else None,
+        priority="normal", scheduled_at=a.open_at if a.open_at > utcnow() else None, automatic=True,
     )
 
 
@@ -192,7 +192,8 @@ def patch_assignment(aid: int, body: AssignmentPatch, request: Request, user: Us
         notifications.create(
             db, sender=user, university_id=course.university_id, category="announcement", priority="important",
             title=f"تغيير موعد التسليم: {a.title}", body=f"الموعد الجديد {a.due_at:%Y-%m-%d %H:%M} UTC",
-            target_type="course", target_ids=[course.id], course_id=course.id, link=f"#/assignments/{a.id}")
+            target_type="course", target_ids=[course.id], course_id=course.id, link=f"#/assignments/{a.id}",
+            automatic=True)
     audit.record(db, "assignment.updated", actor=user, target_type="assignment", target_id=a.id,
                  details={"fields": sorted(data)}, ip=client_ip(request))
     db.commit()

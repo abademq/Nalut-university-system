@@ -31,6 +31,8 @@ def record(db: Session, action: str, *, actor: User | None = None, university_id
            target_type: str | None = None, target_id: object = None, details: dict | None = None,
            ip: str | None = None) -> AuditLog:
     """Add an audit row to the current transaction (caller commits)."""
+    if actor is not None and getattr(actor, "acting_platform_admin", False):
+        details = {**(details or {}), "by_platform_admin": True}
     with _lock:
         prev = db.scalar(select(AuditLog.hash).order_by(AuditLog.id.desc()).limit(1))
         row = AuditLog(

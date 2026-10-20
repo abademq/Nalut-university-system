@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import copy
 
+from .permissions import DEFAULT_PERMISSIONS
+
 DEFAULT_SETTINGS: dict = {
     "branding": {
         "display_name": None,
@@ -59,6 +61,8 @@ DEFAULT_SETTINGS: dict = {
         "offices": ["registrar"],
         "max_file_mb": 10,
     },
+    # which roles hold each configurable capability (see permissions.py); platform admin only
+    "permissions": DEFAULT_PERMISSIONS,
     "uploads": {
         "allowed_extensions": ["pdf", "docx", "doc", "pptx", "xlsx", "txt", "png", "jpg", "jpeg", "zip"],
         "max_file_mb": 20,

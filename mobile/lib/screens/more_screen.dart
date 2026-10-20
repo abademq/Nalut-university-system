@@ -44,7 +44,7 @@ class MoreScreen extends StatelessWidget {
               trailing: const Icon(Icons.chevron_left),
               onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ResultsScreen())),
             ),
-          if (canSendNotifications(s.role))
+          if (canSendNotifications(s.user))
             ListTile(
               leading: const Icon(Icons.campaign_outlined),
               title: const Text('إرسال إشعار'),

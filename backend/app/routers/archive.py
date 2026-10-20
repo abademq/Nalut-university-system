@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
-from .. import audit, files
+from .. import audit, files, permissions
 from ..db import get_db, utcnow
 from ..deps import client_ip, forbidden, get_current_user, not_found, tenant_settings
 from ..models import Department, Role, StoredFile, StudentDocument, StudentRecord, User
@@ -42,9 +42,10 @@ def can_manage(db: Session, user: User, student: User | None = None) -> bool:
     if user.role == Role.UNIVERSITY_ADMIN:
         ok = True
     elif user.role == Role.FACULTY_ADMIN:
-        ok = True
+        ok = permissions.allowed(db, user, "archive.access")
     elif user.role == Role.STAFF:
-        ok = user.office in tenant_settings(db, user)["archive"]["offices"]
+        ok = (permissions.allowed(db, user, "archive.access")
+              and user.office in tenant_settings(db, user)["archive"]["offices"])
     else:
         ok = False
     if not ok or student is None:

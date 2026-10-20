@@ -20,7 +20,7 @@ import jwt
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from . import audit
+from . import audit, permissions
 from .config import settings
 from .db import utcnow
 from .models import (
@@ -44,15 +44,7 @@ CATEGORIES = ["announcement", "academic_note", "official_warning", "admin_notice
 PRIORITIES = ["normal", "important", "urgent"]
 TARGET_TYPES = ["user", "users", "course", "department", "faculty", "university", "cohort"]
 
-# Who may issue which category (the target scope is checked separately).
-CATEGORY_ISSUERS = {
-    "announcement": {Role.UNIVERSITY_ADMIN, Role.FACULTY_ADMIN, Role.TEACHER, Role.ASSISTANT},
-    "academic_note": {Role.UNIVERSITY_ADMIN, Role.FACULTY_ADMIN, Role.TEACHER, Role.ASSISTANT},
-    # formal academic warnings are an official act of the faculty / university administration
-    "official_warning": {Role.UNIVERSITY_ADMIN, Role.FACULTY_ADMIN},
-    "admin_notice": {Role.UNIVERSITY_ADMIN, Role.FACULTY_ADMIN, Role.STAFF},
-    "system": set(),
-}
+# Who may issue which category: permissions.CAPABILITIES ("notify.*"), configurable per university.
 
 # Categories a user can never mute.
 UNMUTABLE = {"official_warning", "system"}
@@ -263,8 +255,17 @@ def _ensure_scope(db: Session, sender: User, n: Notification) -> None:
     raise NotificationError("غير مصرح لك بإرسال الإشعارات")
 
 
-def validate_new(db: Session, sender: User, n: Notification) -> None:
-    if n.category not in CATEGORIES or sender.role not in CATEGORY_ISSUERS[n.category]:
+def may_issue(db: Session, sender: User, category: str) -> bool:
+    """Category rights come from the university's permission matrix (see permissions.py)."""
+    if category not in CATEGORIES or category == "system":
+        return False
+    return permissions.allowed(db, sender, f"notify.{category}")
+
+
+def validate_new(db: Session, sender: User, n: Notification, *, automatic: bool = False) -> None:
+    # automatic notices (an assignment published, results released) follow from an action the
+    # sender is already allowed to take, so they skip the category rights check
+    if n.category not in CATEGORIES or (not automatic and not may_issue(db, sender, n.category)):
         raise NotificationError("غير مصرح لك بإصدار هذا النوع من الإشعارات")
     if n.priority not in PRIORITIES:
         raise NotificationError("أولوية غير صحيحة")
@@ -397,7 +398,7 @@ def send_pending_pushes(db: Session, provider=None, limit: int = 500) -> int:
 def create(db: Session, *, sender: User | None, university_id: int, category: str, title: str, body: str,
            target_type: str, target_ids: Iterable, priority: str = "normal", audience: str = "students",
            channels: Iterable[str] = ("inapp", "push"), course_id: int | None = None, link: str | None = None,
-           scheduled_at=None, validate: bool = True) -> Notification:
+           scheduled_at=None, validate: bool = True, automatic: bool = False) -> Notification:
     n = Notification(
         university_id=university_id, sender_id=sender.id if sender else None, category=category,
         priority=priority, title=title.strip(), body=body.strip(), target_type=target_type,
@@ -407,7 +408,7 @@ def create(db: Session, *, sender: User | None, university_id: int, category: st
     if validate:
         if sender is None:
             raise NotificationError("sender required")
-        validate_new(db, sender, n)
+        validate_new(db, sender, n, automatic=automatic)
     db.add(n)
     db.flush()
     if scheduled_at is None or scheduled_at <= utcnow():

@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
-from .. import audit
+from .. import audit, permissions
 from ..db import as_utc, get_db, utcnow
 from ..deps import client_ip, forbidden, get_current_user, not_found, require_roles
 from ..models import Banner, Faculty, Role, User
@@ -16,6 +16,12 @@ from ..models import Banner, Faculty, Role, User
 router = APIRouter(prefix="/api/banners", tags=["banners"])
 
 MANAGERS = (Role.UNIVERSITY_ADMIN, Role.FACULTY_ADMIN)
+
+
+def _manager(user: User = Depends(require_roles(*MANAGERS)), db: Session = Depends(get_db)) -> User:
+    if user.role == Role.FACULTY_ADMIN and not permissions.allowed(db, user, "banners.manage"):
+        raise forbidden("نشر الإعلانات غير مفعل لإدارة الكلية في هذه الجامعة")
+    return user
 
 
 def _out(b: Banner, faculty_name: str | None = None) -> dict:
@@ -50,7 +56,7 @@ def _scoped(db: Session, user: User, bid: int) -> Banner:
 
 
 @router.get("/manage")
-def manage(user: User = Depends(require_roles(*MANAGERS)), db: Session = Depends(get_db)):
+def manage(user: User = Depends(_manager), db: Session = Depends(get_db)):
     stmt = select(Banner).where(Banner.university_id == user.university_id)
     if user.role == Role.FACULTY_ADMIN:
         stmt = stmt.where(Banner.faculty_id == user.faculty_id)
@@ -86,7 +92,7 @@ def _validate(db: Session, user: User, data: dict) -> dict:
 
 
 @router.post("")
-def create(body: BannerIn, request: Request, user: User = Depends(require_roles(*MANAGERS)),
+def create(body: BannerIn, request: Request, user: User = Depends(_manager),
            db: Session = Depends(get_db)):
     data = _validate(db, user, body.model_dump())
     data["starts_at"] = data.get("starts_at") or utcnow()
@@ -114,7 +120,7 @@ class BannerPatch(BaseModel):
 
 
 @router.patch("/{bid}")
-def patch(bid: int, body: BannerPatch, request: Request, user: User = Depends(require_roles(*MANAGERS)),
+def patch(bid: int, body: BannerPatch, request: Request, user: User = Depends(_manager),
           db: Session = Depends(get_db)):
     b = _scoped(db, user, bid)
     data = _validate(db, user, body.model_dump(exclude_unset=True))
@@ -129,7 +135,7 @@ def patch(bid: int, body: BannerPatch, request: Request, user: User = Depends(re
 
 
 @router.delete("/{bid}")
-def delete(bid: int, request: Request, user: User = Depends(require_roles(*MANAGERS)), db: Session = Depends(get_db)):
+def delete(bid: int, request: Request, user: User = Depends(_manager), db: Session = Depends(get_db)):
     b = _scoped(db, user, bid)
     audit.record(db, "banner.deleted", actor=user, target_type="banner", target_id=b.id,
                  details={"title": b.title}, ip=client_ip(request))
