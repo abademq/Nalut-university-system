@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>دليل الهوية البصرية</title>
+<link rel="stylesheet" href="brand.css">
+<style>
+  @page { size: 297mm 210mm; margin: 0 }
+  body { background: var(--cream-50) }
+  .page { width: 297mm; height: 210mm; position: relative; overflow: hidden; padding: 18mm 20mm; display: flex; flex-direction: column; gap: 7mm; break-after: page }
+  .page.dark { background: var(--green-900); color: var(--cream-50) }
+  .eyebrow { font-size: 3.6mm; font-weight: 600; color: var(--gold-700) }
+  .dark .eyebrow { color: var(--gold-500) }
+  h1 { font-size: 16mm; line-height: 1.15; font-weight: 800 }
+  h2 { font-size: 10mm; line-height: 1.2; font-weight: 800; color: var(--green-900) }
+  h3 { font-size: 5mm; font-weight: 700; color: var(--green-700) }
+  p, li { font-size: 3.8mm; line-height: 1.65; color: var(--ink-soft) }
+  .dark p { color: var(--on-dark-soft) }
+  .num { position: absolute; left: 20mm; bottom: 10mm; font-size: 3mm; color: var(--ink-soft) }
+  .dark .num { color: var(--on-dark-soft) }
+  .grid { display: grid; gap: 6mm }
+  .card { background: var(--paper); border: .25mm solid #E3DED0; border-radius: 4mm; padding: 6mm }
+  .row { display: flex; gap: 8mm; align-items: flex-start }
+  .swatch { border-radius: 4mm; overflow: hidden; border: .25mm solid #E3DED0; background: var(--paper) }
+  .swatch .chip { height: 34mm }
+  .swatch div.t { padding: 3.5mm 4mm; display: flex; flex-direction: column; gap: .6mm }
+  .swatch b { font-family: var(--display); font-size: 4.4mm; color: var(--ink) }
+  .swatch span { font-size: 3mm; color: var(--ink-soft) }
+  .mono { direction: ltr; unicode-bidi: isolate; font-family: var(--text) }
+  ul { padding-right: 5mm; display: flex; flex-direction: column; gap: 1.5mm }
+  .dont { position: relative; border-radius: 4mm; background: var(--paper); border: .25mm solid #E3DED0; height: 38mm; display: grid; place-items: center }
+  .dont::after { content: "✕"; position: absolute; top: 2mm; left: 3mm; color: #A33A28; font-size: 5mm; font-weight: 700 }
+  .dont small { position: absolute; bottom: 2.5mm; right: 4mm; left: 4mm; font-size: 3mm; color: var(--ink-soft) }
+  .apps img { width: 100%; border-radius: 3mm; border: .25mm solid #E3DED0; display: block }
+</style>
+</head>
+<body>
+
+<section class="page dark" style="justify-content:center">
+  <img src="../img/arch-cover.svg" alt="" style="position:absolute;left:0;top:0;width:105mm;height:210mm;object-fit:cover;object-position:left top;opacity:.9">
+  <div style="width:150mm;display:flex;flex-direction:column;gap:6mm">
+    <img src="../logo/icon-on-dark.svg" alt="" style="width:26mm;height:26mm">
+    <p class="eyebrow">دليل الهوية البصرية · الإصدار 1</p>
+    <h1>منصة الجامعة الذكية</h1>
+    <p style="font-size:5mm">الشعار، الألوان، الخطوط، النمط الزخرفي، وطريقة الكتابة. مرجع واحد لكل ما يُطبع أو يُعرض عن المنصة.</p>
+  </div>
+</section>
+
+<section class="page">
+  <p class="eyebrow">الفكرة</p>
+  <h2>من غرف قصر نالوت إلى وحدات المنصة</h2>
+  <div class="row">
+    <div style="flex:1;display:flex;flex-direction:column;gap:4mm">
+      <p>قصر نالوت مخزن جماعي تُرصّ فيه الغرف المقوسة فوق بعضها، لكل عائلة غرفتها، ويحرسه أمين واحد. المنصة تشبهه: وحدات كثيرة (الإشعارات، المهام، النتائج، الحضور...) فوق أساس واحد، ولكل مستخدم ما يخصه فقط، وسجل يحفظ كل شيء.</p>
+      <p>من هنا جاء <b>نمط الأقواس</b>: صفوف من الغرف المقوسة بخط ذهبي، بعضها ممتلئ وبعضها فارغ، يعطي إحساساً بالمكان دون أن يصير زخرفة ثقيلة.</p>
+      <p>والشعار قبعة تخرج ذهبية على مربع أخضر: الأخضر للثقة والاستقرار، والذهبي للتميز والإنجاز.</p>
+    </div>
+    <div style="width:110mm;height:110mm;background:var(--green-900);border-radius:6mm;overflow:hidden;display:grid;place-items:center">
+      <img src="../img/arch-small.svg" alt="" style="width:100mm">
+    </div>
+  </div>
+  <p class="num">2</p>
+</section>
+
+<section class="page">
+  <p class="eyebrow">الشعار</p>
+  <h2>الرمز والصيغ المعتمدة</h2>
+  <div class="grid" style="grid-template-columns:1fr 1fr;flex:1">
+    <div class="card" style="display:flex;align-items:center;gap:6mm;justify-content:center">
+      <img src="../logo/icon.svg" alt="" style="width:26mm"><div><b style="font-family:var(--display);font-size:8.5mm;color:var(--green-900);display:block">منصة الجامعة الذكية</b><span style="font-size:4.2mm;font-weight:600;color:var(--gold-700)">جامعة نالوت</span></div>
+    </div>
+    <div class="card" style="background:var(--green-900);border:none;display:flex;align-items:center;gap:6mm;justify-content:center">
+      <img src="../logo/icon-on-dark.svg" alt="" style="width:26mm"><div><b style="font-family:var(--display);font-size:8.5mm;color:var(--cream-50);display:block">منصة الجامعة الذكية</b><span style="font-size:4.2mm;font-weight:600;color:var(--gold-500)">جامعة نالوت</span></div>
+    </div>
+    <div class="card"><h3>المساحة الحرة</h3><p>اترك حول الشعار مسافة لا تقل عن نصف عرض الرمز من كل جهة، بلا نصوص أو صور.</p></div>
+    <div class="card"><h3>أصغر حجم</h3><p>الرمز وحده: 8 مم مطبوعاً أو 24 بكسل على الشاشة. الشعار مع الاسم: 35 مم عرضاً.</p></div>
+  </div>
+  <p class="num">3</p>
+</section>
+
+<section class="page">
+  <p class="eyebrow">الشعار</p>
+  <h2>استخدامات غير صحيحة</h2>
+  <div class="grid" style="grid-template-columns:repeat(4,1fr)">
+    <div class="dont"><img src="../logo/icon.svg" alt="" style="width:20mm;transform:scaleX(1.5)"><small>لا تمطّه أو تضغطه</small></div>
+    <div class="dont"><img src="../logo/icon.svg" alt="" style="width:20mm;filter:hue-rotate(160deg)"><small>لا تغيّر ألوانه</small></div>
+    <div class="dont"><img src="../logo/icon.svg" alt="" style="width:20mm;transform:rotate(-15deg)"><small>لا تُدِره</small></div>
+    <div class="dont" style="background:#C8A24A"><img src="../logo/symbol.svg" alt="" style="width:20mm"><small style="color:#3D2E08">لا تضعه على خلفية تُضعف وضوحه</small></div>
+  </div>
+  <p>على الصور استخدم الرمز بمربعه الأخضر أو الكريمي دائماً، ولا تضف له ظلالاً أو حدوداً.</p>
+  <p class="num">4</p>
+</section>
+
+<section class="page">
+  <p class="eyebrow">الألوان</p>
+  <h2>لوحة الألوان</h2>
+  <div class="grid" style="grid-template-columns:repeat(6,1fr)">
+    <div class="swatch"><div class="chip" style="background:#0B3B32"></div><div class="t"><b>أخضر عميق</b><span class="mono">#0B3B32</span><span class="mono">RGB 11 59 50</span><span class="mono">CMYK 85 40 70 60</span></div></div>
+    <div class="swatch"><div class="chip" style="background:#0F5C4D"></div><div class="t"><b>أخضر أساسي</b><span class="mono">#0F5C4D</span><span class="mono">RGB 15 92 77</span><span class="mono">CMYK 88 30 68 25</span></div></div>
+    <div class="swatch"><div class="chip" style="background:#C8A24A"></div><div class="t"><b>ذهبي</b><span class="mono">#C8A24A</span><span class="mono">RGB 200 162 74</span><span class="mono">CMYK 20 35 80 5</span></div></div>
+    <div class="swatch"><div class="chip" style="background:#F7F4EC"></div><div class="t"><b>كريمي</b><span class="mono">#F7F4EC</span><span class="mono">RGB 247 244 236</span><span class="mono">CMYK 2 2 6 0</span></div></div>
+    <div class="swatch"><div class="chip" style="background:#E6EEEA"></div><div class="t"><b>نعناعي فاتح</b><span class="mono">#E6EEEA</span><span class="mono">RGB 230 238 234</span><span class="mono">CMYK 10 2 8 0</span></div></div>
+    <div class="swatch"><div class="chip" style="background:#14231F"></div><div class="t"><b>حبر</b><span class="mono">#14231F</span><span class="mono">RGB 20 35 31</span><span class="mono">CMYK 75 50 60 80</span></div></div>
+  </div>
+  <div class="row">
+    <div style="flex:1"><h3>النسب</h3><p>الكريمي والأخضر العميق للمساحات الكبيرة، الأخضر الأساسي للأزرار والعناوين، والذهبي لمسة صغيرة لا تتجاوز عُشر التصميم.</p></div>
+    <div style="flex:1"><h3>الوضوح</h3><p>لا نص صغير بالذهبي على الكريمي؛ استخدم الذهبي الداكن <span class="mono">#8A6A1F</span> للعناوين الصغيرة، والنص الثانوي <span class="mono">#44524D</span>.</p></div>
+    <div style="flex:1"><h3>الطباعة</h3><p>قيم CMYK تقريبية. اطلب من المطبعة بروفة لونية قبل الطباعة النهائية، خصوصاً للأخضر العميق.</p></div>
+  </div>
+  <p class="num">5</p>
+</section>
+
+<section class="page">
+  <p class="eyebrow">الخطوط</p>
+  <h2>خطان عربيان مجانيان</h2>
+  <div class="grid" style="grid-template-columns:1fr 1fr">
+    <div class="card">
+      <p class="eyebrow">للعناوين</p>
+      <p style="font-family:var(--display);font-size:16mm;font-weight:800;color:var(--green-900);line-height:1.2">Cairo</p>
+      <p style="font-family:var(--display);font-size:9mm;font-weight:800;color:var(--ink);line-height:1.3">منصة الجامعة الذكية</p>
+      <p>أوزان 600 و700 و800. هندسي واضح ويناسب العناوين الكبيرة واللافتات.</p>
+    </div>
+    <div class="card">
+      <p class="eyebrow">للنصوص</p>
+      <p style="font-size:16mm;font-weight:600;color:var(--green-900);line-height:1.2" class="mono">IBM Plex Sans Arabic</p>
+      <p style="font-size:5.5mm;color:var(--ink);line-height:1.6">كل الجامعة في تطبيق واحد: الطالب والأستاذ والإدارة، بواجهة عربية أولاً.</p>
+      <p>أوزان 400 و500 و600. مريح للقراءة الطويلة وواضح في الأحجام الصغيرة.</p>
+    </div>
+  </div>
+  <p>المقاسات المرجعية في العروض: 120 للغلاف، 72 للعناوين، 44 للعناوين الفرعية، 32 للنص، 24 للحواشي. البديل عند غياب الخطين: Tahoma. الخطان مرخّصان برخصة SIL المفتوحة ومرفقان في مجلد <span class="mono">brand/fonts</span>.</p>
+  <p class="num">6</p>
+</section>
+
+<section class="page dark">
+  <p class="eyebrow">العناصر الرسومية</p>
+  <h2 style="color:var(--cream-50)">نمط الأقواس والأيقونات</h2>
+  <div class="row" style="flex:1">
+    <div style="flex:1;display:flex;flex-direction:column;gap:4mm">
+      <p>يُستخدم نمط الأقواس على الخلفيات الداكنة: في زاوية الغلاف، أو شريطاً في أسفل التصميم. لا يوضع خلف النصوص مباشرة، ولا يُستخدم بأكثر من لونين (خط ذهبي، وتعبئة خضراء أو ذهبية لغرفة أو اثنتين).</p>
+      <p>الأيقونات خطية بسماكة موحدة وزوايا مستديرة، بالأخضر على الفاتح وبالذهبي أو الكريمي على الداكن.</p>
+      <div style="display:flex;gap:5mm;margin-top:4mm">
+        <img src="../img/icons/bell-gold.svg" alt="" style="width:11mm"><img src="../img/icons/book-gold.svg" alt="" style="width:11mm"><img src="../img/icons/cap-gold.svg" alt="" style="width:11mm"><img src="../img/icons/qr-gold.svg" alt="" style="width:11mm"><img src="../img/icons/archive-gold.svg" alt="" style="width:11mm"><img src="../img/icons/chart-gold.svg" alt="" style="width:11mm"><img src="../img/icons/shield-gold.svg" alt="" style="width:11mm"><img src="../img/icons/chat-gold.svg" alt="" style="width:11mm"><img src="../img/icons/lock-gold.svg" alt="" style="width:11mm"><img src="../img/icons/users-gold.svg" alt="" style="width:11mm">
+      </div>
+    </div>
+    <img src="../img/arch-small.svg" alt="" style="width:100mm">
+  </div>
+  <img src="../img/arch-band.svg" alt="" style="position:absolute;left:0;bottom:0;width:297mm;opacity:.8">
+  <p class="num" style="bottom:30mm">7</p>
+</section>
+
+<section class="page">
+  <p class="eyebrow">طريقة الكتابة</p>
+  <h2>نكتب كما نتكلم مع الطالب: بوضوح واحترام</h2>
+  <div class="grid" style="grid-template-columns:1fr 1fr 1fr">
+    <div class="card"><h3>العربية أولاً</h3><p>فصحى بسيطة، جمل قصيرة، وأفعال واضحة: «سلّم المهمة» لا «يتم تسليم المهمة».</p></div>
+    <div class="card"><h3>أرقام حقيقية فقط</h3><p>لا نذكر رقماً أو نتيجة لم تتحقق. الأرقام في موادنا مأخوذة من المنصة نفسها.</p></div>
+    <div class="card"><h3>الإنسان يقرر</h3><p>نقول «تُحال للمراجعة» لا «يُعاقَب». المنصة تساعد ولا تتخذ قرارات نهائية.</p></div>
+  </div>
+  <p class="num">8</p>
+</section>
+
+<section class="page">
+  <p class="eyebrow">التطبيقات</p>
+  <h2>الهوية في المطبوعات</h2>
+  <div class="row apps" style="flex:1;align-items:center">
+    <img src="../out/rollup.png" alt="" style="width:auto;height:140mm">
+    <div style="flex:1;display:flex;flex-direction:column;gap:5mm;align-items:center">
+      <img src="../out/brochure-outside.png" alt="" style="width:auto;height:66mm">
+      <img src="../out/brochure-inside.png" alt="" style="width:auto;height:66mm">
+    </div>
+  </div>
+  <p class="num">9</p>
+</section>
+
+</body>
+</html>

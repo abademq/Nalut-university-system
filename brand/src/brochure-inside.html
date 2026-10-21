@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>المطوية — الوجه الداخلي</title>
+<link rel="stylesheet" href="brand.css">
+<link rel="stylesheet" href="brochure.css">
+<style>
+  .p1 { left: 197mm; width: 100mm }
+  .p2 { left: 97mm; width: 100mm }
+  .p3 { left: 0; width: 100mm }
+  .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 3mm }
+  .stats div { border-top: .6mm solid var(--gold-500); padding-top: 2mm }
+  .stats b { display: block; font-family: var(--display); font-size: 9mm; line-height: 1.1; font-weight: 800; color: var(--gold-500) }
+  .stats span { font-size: 3mm; line-height: 1.4; color: var(--on-dark-soft) }
+  .steps { display: flex; flex-direction: column; gap: 2mm }
+  .steps div { display: flex; gap: 2.5mm; align-items: center }
+  .steps b { font-family: var(--display); width: 7mm; height: 7mm; border-radius: 3.5mm; background: var(--green-700); color: var(--cream-50); font-size: 3.4mm; display: grid; place-items: center; flex: none }
+  .steps span { font-size: 3.3mm; color: var(--ink) }
+  .dash { width: 100%; border-radius: 2.5mm; border: .25mm solid #E3DED0; display: block }
+</style>
+</head>
+<body>
+<div class="trim">
+  <section class="panel p1 bleed-r">
+    <p class="eyebrow">لماذا المنصة؟</p>
+    <h2>نظام واحد بدل الورق والمجموعات المتفرقة</h2>
+    <p>الإعلانات تضيع، والحضور بالتوقيع سهل التحايل، والنتائج تتنقل بلا سجل. المنصة تجمع الطالب والأستاذ والإدارة على بيانات واحدة وقواعد صلاحيات واحدة.</p>
+    <div class="card row"><img src="../img/icons/phone.svg" alt=""><div><h3>للطالب</h3><p>يسلّم واجباته من الهاتف، يرى درجاته بعد اعتمادها، ويسجّل حضوره بمسح رمز</p></div></div>
+    <div class="card row"><img src="../img/icons/book.svg" alt=""><div><h3>للأستاذ</h3><p>ينشر المهام، يفتح الملفات ويقيّمها، ويدير جلسة الحضور بكشف مباشر</p></div></div>
+    <div class="card row"><img src="../img/icons/chart.svg" alt=""><div><h3>للإدارة</h3><p>تعتمد النتائج، ترسل الإعلانات والإنذارات، وتتابع التقارير والمقارنات</p></div></div>
+  </section>
+
+  <section class="panel p2">
+    <p class="eyebrow">الحضور الذكي</p>
+    <h2>سريع، وصعب التحايل، وعادل</h2>
+    <div class="steps">
+      <div><b>1</b><span>الأستاذ يعرض رمزاً يتغير كل 15 ثانية</span></div>
+      <div><b>2</b><span>الطالب يمسحه من هاتفه خلال ثوانٍ</span></div>
+      <div><b>3</b><span>مؤشرات المخاطر تُجمع في درجة واحدة</span></div>
+      <div><b>4</b><span>الحالات المشكوك فيها لمراجعة بشرية</span></div>
+    </div>
+    <p>لا عقوبة تلقائية أبداً. ويمكن طلب الموقع وصورة حية في المقررات الحساسة، وتُحذف الصور تلقائياً بعد مدة محددة.</p>
+    <div class="spacer"></div>
+    <p class="eyebrow">النتائج</p>
+    <h3>لا نتيجة تُنشر قبل اعتمادها</h3>
+    <p>مسودة، ثم مرفوعة، ثم معتمدة، ثم منشورة، وكل تعديل يُسجَّل بمن فعله ومتى ولماذا.</p>
+    <img class="dash" src="../img/dean-home.png" alt="لقطة من لوحة إدارة الكلية">
+  </section>
+
+  <section class="panel dark p3 bleed-l" style="margin-top:-3mm;height:216mm;padding-top:15mm">
+    <p class="eyebrow">الثقة أولاً</p>
+    <h2>بياناتكم محمية من التصميم</h2>
+    <ul>
+      <li><p>مصادقة ثنائية إلزامية للإداريين</p></li>
+      <li><p>تشفير المستندات والرقم الوطني</p></li>
+      <li><p>سجل تدقيق متسلسل يكشف أي تعديل صامت</p></li>
+      <li><p>كل شخص يرى ما يخصه فقط، وعزل كامل بين الجامعات</p></li>
+      <li><p>جدول صلاحيات قابل للتعديل لكل جامعة</p></li>
+    </ul>
+    <div class="spacer"></div>
+    <div class="stats">
+      <div><b>125</b><span>عملية في الواجهة البرمجية</span></div>
+      <div><b>58</b><span>اختباراً آلياً للخادم</span></div>
+      <div><b>7</b><span>أدوار بصلاحيات منفصلة</span></div>
+      <div><b>8</b><span>وحدات تعمل معاً</span></div>
+    </div>
+  </section>
+</div>
+</body>
+</html>

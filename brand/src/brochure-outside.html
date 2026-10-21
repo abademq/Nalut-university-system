@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>المطوية — الوجه الخارجي</title>
+<link rel="stylesheet" href="brand.css">
+<link rel="stylesheet" href="brochure.css">
+<style>
+  .front { left: 0; width: 103mm; overflow: hidden }
+  .front .arches { position: absolute; left: 0; top: 0; width: 106mm; height: 104mm; object-fit: cover; object-position: top; opacity: .9 }
+  .front .content { position: absolute; left: 13mm; right: 13mm; top: 116mm; display: flex; flex-direction: column; gap: 4mm }
+  .front img.logo { width: 18mm; height: 18mm }
+  .front h1 { font-size: 11.5mm; line-height: 1.15; font-weight: 800; color: var(--cream-50) }
+  .front .tag { font-size: 4.4mm; line-height: 1.45; color: var(--on-dark-soft) }
+  .front .uni { font-size: 3.6mm; font-weight: 600; color: var(--gold-500) }
+
+  .back { left: 100mm; width: 100mm; align-items: center; text-align: center; justify-content: center; gap: 5mm }
+  .back .qr { width: 46mm; height: 46mm; background: var(--paper); border-radius: 4mm; padding: 2mm; border: .25mm solid #E3DED0 }
+  .back .qr img { width: 100%; height: 100% }
+  .back .url { font-family: var(--display); font-size: 6mm; font-weight: 700; color: var(--green-700) }
+  .back .note { font-size: 3mm; color: var(--ink-soft) }
+  .back img.logo { width: 12mm; height: 12mm }
+
+  .flap { left: 200mm; width: 100mm }
+  .flap .phone { align-self: center; width: 44mm; height: 92mm; background: #10201C; border-radius: 7mm; padding: 1.8mm; box-shadow: 0 2mm 5mm rgba(11,59,50,.25) }
+  .flap .phone img { width: 100%; height: 100%; object-fit: cover; object-position: top; border-radius: 5.2mm; display: block }
+</style>
+</head>
+<body>
+<div class="trim">
+  <section class="panel dark front bleed-l" style="margin-top:-3mm;height:216mm">
+    <img class="arches" src="../img/arch-cover.svg" alt="">
+    <div class="content">
+      <img class="logo" src="../logo/icon-on-dark.svg" alt="شعار المنصة">
+      <p class="uni">جامعة نالوت</p>
+      <h1>منصة الجامعة الذكية</h1>
+      <p class="tag">كل الجامعة في تطبيق واحد:<br>الطالب والأستاذ والإدارة</p>
+    </div>
+  </section>
+
+  <section class="panel back">
+    <img class="logo" src="../logo/icon.svg" alt="">
+    <h2>جرّبها الآن</h2>
+    <p>امسح الرمز بكاميرا هاتفك، أو افتح الرابط من أي متصفح</p>
+    <div class="qr"><img src="../img/qr.svg" alt="رمز QR لرابط المنصة"></div>
+    <p class="url ltr">nalut.abade.ly</p>
+    <p class="note">تطبيق أندرويد ولوحة ويب تعمل على أي جهاز</p>
+  </section>
+
+  <section class="panel mint flap bleed-r" style="margin-top:-3mm;height:216mm;padding-top:15mm">
+    <p class="eyebrow">في جيب كل طالب</p>
+    <h2>كل ما يحتاجه في شاشة واحدة</h2>
+    <p>المهام القريبة، الجدول، الإعلانات المثبتة، نسب الغياب، وتسجيل الحضور بضغطة</p>
+    <div class="spacer"></div>
+    <div class="phone"><img src="../img/student-home.png" alt="لقطة من تطبيق الطالب"></div>
+    <div class="spacer"></div>
+  </section>
+</div>
+</body>
+</html>

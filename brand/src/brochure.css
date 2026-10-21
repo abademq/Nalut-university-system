@@ -1,0 +1,27 @@
+/* Tri-fold A4 brochure, read right to left.
+   Sheet 297×210 mm + 3 mm bleed. Panels from the LEFT edge of each side:
+     outside: front 100 | back 100 | flap 97
+     inside:  fold-in 97 | 100 | 100
+   Folds: outside at 100 mm and 200 mm from the left; inside at 97 mm and 197 mm. */
+@page { size: 303mm 216mm; margin: 0 }
+body { width: 303mm; height: 216mm; position: relative; overflow: hidden; background: var(--cream-50) }
+.trim { position: absolute; left: 3mm; top: 3mm; width: 297mm; height: 210mm }
+.panel { position: absolute; top: 0; height: 210mm; padding: 12mm 10mm; display: flex; flex-direction: column; gap: 4.5mm }
+.dark { background: var(--green-900); color: var(--cream-50) }
+.mint { background: var(--mint-100) }
+.bleed-l { margin-left: -3mm; padding-left: 13mm }
+.bleed-r { margin-right: -3mm; padding-right: 13mm }
+.eyebrow { font-size: 3.3mm; font-weight: 600; color: var(--gold-700) }
+.dark .eyebrow { color: var(--gold-500) }
+h2 { font-size: 7.2mm; line-height: 1.25; font-weight: 800; color: var(--green-900) }
+.dark h2 { color: var(--cream-50) }
+h3 { font-size: 4.6mm; line-height: 1.3; font-weight: 700; color: var(--green-700) }
+p, li { font-size: 3.35mm; line-height: 1.6; color: var(--ink-soft) }
+.dark p { color: var(--on-dark-soft) }
+ul { list-style: none; display: flex; flex-direction: column; gap: 2.2mm }
+li { padding-right: 5mm; position: relative }
+li::before { content: ""; position: absolute; right: 0; top: 1.9mm; width: 2mm; height: 2mm; border-radius: 1mm 1mm 0 0; background: var(--gold-500) }
+.row { display: flex; gap: 3mm; align-items: flex-start }
+.row img { width: 7mm; height: 7mm; flex: none; margin-top: .5mm }
+.card { background: var(--paper); border: .25mm solid #E3DED0; border-radius: 3mm; padding: 3.5mm 4mm }
+.spacer { flex: 1 }

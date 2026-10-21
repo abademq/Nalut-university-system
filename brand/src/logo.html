@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>الشعار — نسخ التصدير</title>
+<link rel="stylesheet" href="brand.css">
+<style>
+  /* One sheet with every logo version; render.js also exports each .export block as a transparent PNG. */
+  @page { size: 297mm 210mm; margin: 0 }
+  body { width: 297mm; height: 210mm; background: var(--cream-50); padding: 14mm; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: auto 1fr 1fr; gap: 8mm }
+  h1 { grid-column: span 2; font-size: 8mm; font-weight: 800; color: var(--green-900) }
+  .cell { border-radius: 4mm; display: grid; place-items: center; position: relative }
+  .cell small { position: absolute; bottom: 3mm; right: 4mm; font-size: 3mm; color: var(--ink-soft) }
+  .on-dark { background: var(--green-900) } .on-dark small { color: var(--on-dark-soft) }
+  .on-light { background: var(--paper); border: .25mm solid #E3DED0 }
+  .lockup { display: inline-flex; align-items: center; gap: 5mm; padding: 4mm }
+  .lockup img { width: 22mm; height: 22mm }
+  .lockup b { display: block; font-family: var(--display); font-size: 9mm; line-height: 1.15; font-weight: 800; color: var(--green-900); white-space: nowrap }
+  .lockup span { display: block; font-size: 4.4mm; font-weight: 600; color: var(--gold-700); margin-top: 1mm }
+  .lockup.light b { color: var(--cream-50) } .lockup.light span { color: var(--gold-500) }
+  .stacked { flex-direction: column; text-align: center; gap: 3mm }
+</style>
+</head>
+<body>
+  <h1>الشعار</h1>
+  <div class="cell on-light"><div class="lockup export" data-name="lockup-horizontal"><img src="../logo/icon.svg" alt=""><div><b>منصة الجامعة الذكية</b><span>جامعة نالوت</span></div></div><small>أفقي — على الخلفيات الفاتحة</small></div>
+  <div class="cell on-dark"><div class="lockup light export" data-name="lockup-horizontal-on-dark"><img src="../logo/icon-on-dark.svg" alt=""><div><b>منصة الجامعة الذكية</b><span>جامعة نالوت</span></div></div><small>أفقي — على الخلفيات الداكنة</small></div>
+  <div class="cell on-light"><div class="lockup stacked export" data-name="lockup-stacked"><img src="../logo/icon.svg" alt=""><div><b>منصة الجامعة الذكية</b><span>جامعة نالوت</span></div></div><small>عمودي</small></div>
+  <div class="cell on-dark"><div class="lockup light stacked export" data-name="lockup-stacked-on-dark"><img src="../logo/icon-on-dark.svg" alt=""><div><b>منصة الجامعة الذكية</b><span>جامعة نالوت</span></div></div><small>عمودي — داكن</small></div>
+</body>
+</html>

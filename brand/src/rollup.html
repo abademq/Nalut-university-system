@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>ستاند رول أب 85×200 سم</title>
+<link rel="stylesheet" href="brand.css">
+<style>
+  /* 850×2000 mm trim + 5 mm bleed on every side. The bottom ~150 mm goes into the stand's base. */
+  @page { size: 860mm 2010mm; margin: 0 }
+  body { width: 860mm; height: 2010mm; position: relative; overflow: hidden; background: var(--cream-50) }
+  .trim { position: absolute; left: 5mm; top: 5mm; width: 850mm; height: 2000mm }
+  .head { position: absolute; left: -5mm; right: -5mm; top: -5mm; height: 760mm; background: var(--green-900); overflow: hidden }
+  .head .arches { position: absolute; left: -10mm; top: -5mm; width: 225mm; opacity: .95 }
+  .brand { position: absolute; right: 60mm; top: 95mm; width: 660mm; display: flex; flex-direction: column; align-items: flex-start; gap: 18mm }
+  .brand img { width: 120mm; height: 120mm }
+  .eyebrow { font-size: 30mm; font-weight: 600; color: var(--gold-500) }
+  h1 { font-size: 90mm; line-height: 1.12; font-weight: 800; color: var(--cream-50) }
+  .tag { font-size: 38mm; line-height: 1.35; font-weight: 500; color: var(--on-dark-soft) }
+
+  .phone { position: absolute; left: 60mm; top: 640mm; width: 300mm; height: 640mm; border-radius: 46mm; background: #10201C;
+           padding: 12mm; box-shadow: 0 12mm 30mm rgba(11,59,50,.35) }
+  .phone img { width: 100%; height: 100%; object-fit: cover; object-position: top; border-radius: 34mm; display: block }
+  .who { position: absolute; right: 60mm; top: 820mm; width: 420mm; display: flex; flex-direction: column; gap: 34mm }
+  .who > div { border-right: 4mm solid var(--gold-500); padding-right: 16mm }
+  .who h3 { font-size: 40mm; font-weight: 800; color: var(--green-700); line-height: 1.2 }
+  .who p { font-size: 24mm; line-height: 1.45; color: var(--ink-soft); margin-top: 4mm }
+
+  .features { position: absolute; left: 60mm; right: 60mm; top: 1330mm; display: grid; grid-template-columns: repeat(3, 1fr); gap: 14mm }
+  .features div { background: var(--paper); border: .8mm solid #E3DED0; border-radius: 14mm; padding: 16mm 14mm; display: flex; flex-direction: column; gap: 8mm; align-items: flex-start }
+  .features img { width: 34mm; height: 34mm }
+  .features b { font-family: var(--display); font-size: 26mm; white-space: nowrap; font-weight: 700; color: var(--green-900); line-height: 1.2 }
+
+  .cta { position: absolute; left: 60mm; right: 60mm; top: 1600mm; height: 235mm; background: var(--green-700); border-radius: 20mm;
+         display: flex; align-items: center; gap: 26mm; padding: 0 28mm }
+  .cta .qr { width: 190mm; height: 190mm; background: var(--cream-50); border-radius: 12mm; padding: 6mm; flex: none }
+  .cta .qr img { width: 100%; height: 100% }
+  .cta h2 { font-size: 48mm; font-weight: 800; color: var(--cream-50); line-height: 1.2 }
+  .cta p { font-size: 26mm; color: #DCEBE5; margin-top: 6mm }
+  .cta .url { font-family: var(--display); font-size: 36mm; font-weight: 700; color: var(--gold-500); margin-top: 10mm }
+
+  .base { position: absolute; left: -5mm; right: -5mm; bottom: -5mm; height: 160mm; background: var(--green-900); overflow: hidden }
+  .base img { position: absolute; left: 0; top: 18mm; width: 100%; opacity: .9 }
+  .uni { position: absolute; right: 60mm; top: 1555mm; font-size: 22mm; color: var(--ink-soft); display: none }
+</style>
+</head>
+<body>
+<div class="trim">
+  <div class="head">
+    <img class="arches" src="../img/arch-cover.svg" alt="">
+  </div>
+  <div class="brand">
+    <img src="../logo/icon-on-dark.svg" alt="شعار المنصة">
+    <p class="eyebrow">جامعة نالوت</p>
+    <h1>منصة الجامعة<br>الذكية</h1>
+    <p class="tag">كل الجامعة في تطبيق واحد:<br>الطالب والأستاذ والإدارة</p>
+  </div>
+
+  <div class="phone"><img src="../img/student-home.png" alt="لقطة من تطبيق الطالب"></div>
+  <div class="who">
+    <div><h3>للطالب</h3><p>مهامه ودرجاته وحضوره وإشعاراته في جيبه</p></div>
+    <div><h3>للأستاذ</h3><p>ينشر المهام ويقيّمها ويأخذ الحضور من هاتفه</p></div>
+    <div><h3>للإدارة</h3><p>تعتمد النتائج وتتابع وتقرر من لوحة واحدة</p></div>
+  </div>
+
+  <div class="features">
+    <div><img src="../img/icons/qr.svg" alt=""><b>حضور ذكي</b></div>
+    <div><img src="../img/icons/cap.svg" alt=""><b>نتائج معتمدة</b></div>
+    <div><img src="../img/icons/bell.svg" alt=""><b>إشعارات فورية</b></div>
+    <div><img src="../img/icons/book.svg" alt=""><b>مهام وبحوث</b></div>
+    <div><img src="../img/icons/archive.svg" alt=""><b>أرشيف مشفر</b></div>
+    <div><img src="../img/icons/shield.svg" alt=""><b>صلاحيات وتدقيق</b></div>
+  </div>
+
+  <div class="cta">
+    <div class="qr"><img src="../img/qr.svg" alt="رمز QR لرابط المنصة"></div>
+    <div>
+      <h2>جرّبها الآن</h2>
+      <p>امسح الرمز بكاميرا هاتفك</p>
+      <p class="url ltr">nalut.abade.ly</p>
+    </div>
+  </div>
+
+  <div class="base"><img src="../img/arch-band.svg" alt=""></div>
+</div>
+</body>
+</html>
