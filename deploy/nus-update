@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+# Updates the platform to one exact, already-tested commit. Installed by
+# deploy/setup-github-deploy.sh as /usr/local/sbin/nus-update (root-owned) and
+# run by the GitHub "deploy" workflow through a restricted SSH key.
+#
+#   sudo nus-update <40-character commit sha>
+#
+# Safety: one update at a time; only fast-forwards (never jumps to an unrelated or
+# older commit); backs up the database first; if the new version fails to start it
+# goes back to the previous commit and reinstalls it.
+set -euo pipefail
+
+CONF=/etc/nus/deploy.conf
+[ -f "$CONF" ] || { echo "missing $CONF (run deploy/setup-github-deploy.sh)"; exit 1; }
+# shellcheck source=/dev/null
+. "$CONF"   # DOMAIN, SRC_DIR
+
+exec 9>/run/nus-update.lock
+flock -n 9 || { echo "another update is running"; exit 1; }
+
+SHA="${1:-}"
+[[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "usage: nus-update <commit sha>"; exit 2; }
+
+cd "$SRC_DIR"
+git fetch --quiet origin
+git cat-file -e "$SHA^{commit}" 2>/dev/null || { echo "commit $SHA not found on the server's remote"; exit 3; }
+OLD=$(git rev-parse HEAD)
+if [ "$OLD" = "$SHA" ]; then
+  echo "already at $SHA"
+  exit 0
+fi
+git merge-base --is-ancestor "$OLD" "$SHA" || { echo "refusing: $SHA is not newer than the deployed $OLD"; exit 4; }
+
+DB=/var/lib/nus/nus.db
+if [ -f "$DB" ]; then
+  mkdir -p /var/lib/nus/backups
+  BK="/var/lib/nus/backups/pre-update-$(date +%F-%H%M)-${OLD:0:7}.db"
+  python3 -c "import sqlite3,sys; s=sqlite3.connect(sys.argv[1]); t=sqlite3.connect(sys.argv[2]); s.backup(t); t.close()" "$DB" "$BK"
+  chown nus:nus "$BK"
+  echo "database backup: $BK"
+fi
+
+git merge --ff-only --quiet "$SHA"
+if bash deploy/install-vps.sh "$DOMAIN"; then
+  echo "deployed ${SHA:0:7} (was ${OLD:0:7})"
+  exit 0
+fi
+
+echo "!! the new version failed to install or start; going back to ${OLD:0:7}"
+git reset --hard --quiet "$OLD"
+bash deploy/install-vps.sh "$DOMAIN" || true
+exit 5
