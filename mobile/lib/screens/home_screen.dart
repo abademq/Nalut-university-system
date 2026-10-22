@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../config.dart';
 import '../state/session.dart';
 import '../widgets/common.dart';
+import 'publications_screen.dart';
 import 'assignments_screen.dart';
 import 'scan_screen.dart';
 
@@ -14,8 +15,11 @@ class HomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final s = context.watch<Session>();
-    if (s.isStudent) return const _StudentHome();
-    return const _StaffHome();
+    // current image announcements on top, then the role's dashboard
+    return Column(children: [
+      const PosterCarousel(),
+      Expanded(child: s.isStudent ? const _StudentHome() : const _StaffHome()),
+    ]);
   }
 }
 

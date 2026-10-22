@@ -26,6 +26,7 @@ CAPABILITIES: dict[str, tuple[str, str, list[str], list[str]]] = {
     "users.manage": ("الإدارة", "إنشاء وتعديل حسابات المستخدمين في الكلية", [FA], [FA]),
     "structure.departments": ("الإدارة", "إضافة الأقسام وتعديلها وحذفها", [FA], [FA]),
     "banners.manage": ("الإدارة", "نشر الإعلانات المثبتة", [FA], [FA]),
+    "publications.manage": ("الإدارة", "نشر جداول المحاضرات والإعلانات المصورة", [FA, STAFF], [FA]),
     "results.approve": ("الإدارة", "اعتماد النتائج ونشرها وإرجاعها", [FA], [FA]),
     "archive.access": ("الإدارة", "أرشيف الطلبة (للموظف: مكاتب الأرشيف فقط)", [FA, STAFF], [FA, STAFF]),
 }

@@ -54,14 +54,27 @@ export function CoursesView({ user }) {
   </div>`;
 }
 
+// Weekly lecture slots of a course: any number of (day, from, to, room).
+function SlotsEditor({ slots, onChange }) {
+  const set = (i, k, val) => onChange(slots.map((s, j) => (j === i ? { ...s, [k]: k === "day" ? Number(val) : val } : s)));
+  return html`<div class="field"><label>مواعيد المحاضرات الأسبوعية</label>
+    ${slots.map((s, i) => html`<div class="row" style="margin-bottom:.4rem;flex-wrap:wrap">
+      <select style="max-width:130px" value=${s.day} onChange=${(e) => set(i, "day", e.target.value)}>${DAYS.map((d, k) => html`<option value=${k}>${d}</option>`)}</select>
+      <input type="time" style="max-width:120px" value=${s.start} onInput=${(e) => set(i, "start", e.target.value)} aria-label="من" />
+      <input type="time" style="max-width:120px" value=${s.end} onInput=${(e) => set(i, "end", e.target.value)} aria-label="إلى" />
+      <input style="max-width:160px" placeholder="القاعة" value=${s.room} onInput=${(e) => set(i, "room", e.target.value)} />
+      <button type="button" class="small secondary" onClick=${() => onChange(slots.filter((_, j) => j !== i))}>حذف</button></div>`)}
+    <button type="button" class="small secondary" onClick=${() => onChange([...slots, { day: 0, start: "08:30", end: "10:00", room: "" }])}>+ موعد</button>
+    <div class="small muted" style="margin-top:.2rem">تظهر في «جدولي» بالتطبيق للطلبة المسجلين وأساتذة المقرر.</div></div>`;
+}
+
 function EditCourse({ course, onChange }) {
   const structure = useAsync(() => api.get("/api/org/structure"), []);
-  const slot = course.schedule[0] || {};
+  const [slots, setSlots] = useState(course.schedule.map((s) => ({ day: s.day, start: s.start, end: s.end, room: s.room || "" })));
   const [v, bind] = useForm({ code: course.code, title: course.title, credits: course.credits,
-    department_id: course.department_id || "", term_id: course.term_id || "",
-    day: slot.day ?? 0, start: slot.start || "08:30", end: slot.end || "10:00", room: slot.room || "" });
+    department_id: course.department_id || "", term_id: course.term_id || "" });
   const [submit, busy, error] = useSubmit(async () => {
-    const schedule = v.room ? [{ day: Number(v.day), start: v.start, end: v.end, room: v.room }, ...course.schedule.slice(1)] : course.schedule.slice(1);
+    const schedule = slots.filter((s) => s.start && s.end);
     await api.patch(`/api/courses/${course.id}`, { code: v.code, title: v.title, credits: Number(v.credits),
       department_id: v.department_id ? Number(v.department_id) : null, term_id: v.term_id ? Number(v.term_id) : null, schedule });
     toast("تم حفظ المقرر");
@@ -77,11 +90,8 @@ function EditCourse({ course, onChange }) {
         ${(fac?.departments || []).map((d) => html`<option value=${d.id}>${d.name}</option>`)}</select></div>
       <div class="field"><label>الفصل الدراسي</label><select ...${bind("term_id")}><option value="">—</option>
         ${(structure.data?.terms || []).map((t) => html`<option value=${t.id}>${t.name}</option>`)}</select></div>
-      <div class="field"><label>اليوم (الموعد الأول)</label><select ...${bind("day")}>${DAYS.map((d, i) => html`<option value=${i}>${d}</option>`)}</select></div>
-      <div class="field"><label>من</label><input type="time" ...${bind("start")} /></div>
-      <div class="field"><label>إلى</label><input type="time" ...${bind("end")} /></div>
-      <div class="field"><label>القاعة (اتركها فارغة لحذف الموعد)</label><input ...${bind("room")} /></div>
     </div>
+    <${SlotsEditor} slots=${slots} onChange=${setSlots} />
     <button disabled=${busy}>حفظ</button></form>`;
 }
 

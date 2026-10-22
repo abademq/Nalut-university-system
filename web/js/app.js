@@ -14,6 +14,7 @@ import { ReportsView } from "./views/reports.js";
 import { ProfileView } from "./views/profile.js";
 import { BannerStrip, BannersView, ArchiveView, ArchiveDetail } from "./views/manage.js";
 import { GuideView } from "./views/guide.js";
+import { PublicationsView } from "./views/publications.js";
 
 const isAdmin = (r) => r === "university_admin" || r === "faculty_admin";
 const isInstructor = (r) => r === "teacher" || r === "assistant";
@@ -30,6 +31,7 @@ const NAV = [
   ["#/results", "اعتماد النتائج", "✅", (r, u) => isAdmin(r) && can(u, "results.approve"), false],
   ["#/attendance", "الحضور", "📷", (r) => r !== "platform_admin", true],
   ["#/notifications", "الإشعارات", "🔔", (r) => r !== "platform_admin", true],
+  ["#/publications", "الجداول والإعلانات المصورة", "🗓", (r) => r !== "platform_admin", false],
   ["#/messages", "الرسائل", "💬", (r) => r !== "platform_admin", false],
   ["#/requests", "الطلبات والمعاملات", "📄", (r) => r !== "platform_admin", false],
   ["#/reports", "التقارير", "📊", (r) => isAdmin(r) || isInstructor(r), false],
@@ -76,6 +78,7 @@ function route(hash, user) {
     case "banners": return html`<${BannersView} user=${user} />`;
     case "archive": return b ? html`<${ArchiveDetail} id=${b} user=${user} />` : html`<${ArchiveView} user=${user} />`;
     case "guide": return html`<${GuideView} user=${user} />`;
+    case "publications": return html`<${PublicationsView} user=${user} id=${b} />`;
     case "permissions": return html`<${PermissionsView} user=${user} />`;
     default: return html`<div class="card empty">الصفحة غير موجودة</div>`;
   }

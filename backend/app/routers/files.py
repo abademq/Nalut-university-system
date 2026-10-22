@@ -13,6 +13,7 @@ from ..models import (
     ConversationParticipant,
     Course,
     Message,
+    Publication,
     ServiceRequest,
     ServiceRequestEvent,
     StoredFile,
@@ -45,6 +46,11 @@ def can_read(db: Session, user: User, f: StoredFile) -> bool:
         ev = db.scalar(select(ServiceRequestEvent).where(ServiceRequestEvent.file_id == f.id))
         r = db.get(ServiceRequest, ev.request_id) if ev else None
         return bool(r and (r.requester_id == user.id or can_handle(user, r)))
+    if f.purpose == "publication":
+        from .publications import _manages, can_publish, visible
+
+        p = db.scalar(select(Publication).where(Publication.file_id == f.id))
+        return bool(p and (visible(user, p) or (can_publish(db, user) and _manages(user, p))))
     # selfies are only served through the attendance review endpoint
     return False
 

@@ -257,3 +257,10 @@ img.selfie { max-width: 100%; border-radius: 12px; }
 .banner { border-inline-start: 4px solid currentColor; }
 dl.guide dt { font-weight: 700; margin-top: .8rem; }
 dl.guide dd { margin: .2rem 0 0; color: var(--text); line-height: 1.8; }
+
+/* timetables and image announcements */
+.pub-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: .9rem; margin-bottom: 1rem; }
+.pub { cursor: pointer; display: flex; flex-direction: column; gap: .4rem; margin: 0; }
+.pub img, .pub .pub-ph { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 10px; background: var(--bg); }
+.pub .pub-ph { display: grid; place-items: center; font-size: 1.4rem; color: var(--muted); }
+.pub h3 { margin: 0; font-size: 1rem; }

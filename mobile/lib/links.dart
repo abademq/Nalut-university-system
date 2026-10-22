@@ -9,6 +9,7 @@ import 'screens/assignments_screen.dart';
 import 'screens/attendance_screen.dart';
 import 'screens/grades_screen.dart';
 import 'screens/messages_screen.dart';
+import 'screens/publications_screen.dart';
 import 'screens/results_screen.dart';
 import 'state/session.dart';
 import 'widgets/common.dart';
@@ -63,6 +64,8 @@ LinkTarget resolveLink(String? link, {required String baseUrl, required String r
       return isAdmin ? const AppPage('results') : WebPage('$baseUrl/$l');
     case 'attendance':
       return const AppPage('attendance');
+    case 'publications':
+      return AppPage('publication', id);
     case 'notifications':
     case '':
       return const NoTarget();
@@ -87,6 +90,8 @@ Future<void> openLink(BuildContext context, Session session, String? link, {Stri
       page = const GradesScreen();
     case AppPage(name: 'results'):
       page = const ResultsScreen();
+    case AppPage(name: 'publication', :final id):
+      page = PublicationsScreen(openId: id);
     case AppPage(name: 'attendance'):
       page = Scaffold(appBar: AppBar(title: const Text('الحضور')), body: const AttendanceScreen());
     case WebPage(:final url):

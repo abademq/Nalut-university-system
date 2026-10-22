@@ -13,6 +13,7 @@ void main() {
     expect(resolveLink('#/grades', baseUrl: base, role: 'student'), const AppPage('grades'));
     expect(resolveLink('#/results', baseUrl: base, role: 'faculty_admin'), const AppPage('results'));
     expect(resolveLink('#/attendance', baseUrl: base, role: 'student'), const AppPage('attendance'));
+    expect(resolveLink('#/publications/4', baseUrl: base, role: 'student'), const AppPage('publication', 4));
   });
 
   test('pages that exist only on the web open the browser', () {

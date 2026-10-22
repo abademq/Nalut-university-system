@@ -679,3 +679,30 @@ class OtpChallenge(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime)
     consumed_at: Mapped[datetime | None] = mapped_column(DateTime)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+# --------------------------------------------------------------------------- timetables and posters
+
+
+class Publication(Base):
+    """A lecture timetable (image/PDF) or an image announcement, shown in the app for a period.
+
+    Targeting narrows from the whole university to a faculty, a department and a cohort.
+    """
+
+    __tablename__ = "publications"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    university_id: Mapped[int] = mapped_column(ForeignKey("universities.id"), index=True)
+    kind: Mapped[str] = mapped_column(String(20))  # schedule | poster
+    title: Mapped[str] = mapped_column(String(200))
+    body: Mapped[str] = mapped_column(Text, default="")
+    file_id: Mapped[int] = mapped_column(ForeignKey("stored_files.id"))
+    audience: Mapped[str] = mapped_column(String(20), default="all")  # all | students | staff
+    faculty_id: Mapped[int | None] = mapped_column(ForeignKey("faculties.id"))
+    department_id: Mapped[int | None] = mapped_column(ForeignKey("departments.id"))
+    cohort: Mapped[str | None] = mapped_column(String(40))
+    starts_at: Mapped[datetime] = mapped_column(DateTime)
+    ends_at: Mapped[datetime | None] = mapped_column(DateTime)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)

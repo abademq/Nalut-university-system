@@ -10,6 +10,7 @@ import 'grades_screen.dart';
 import 'guide_screen.dart';
 import 'messages_screen.dart';
 import 'notification_settings_screen.dart';
+import 'publications_screen.dart';
 import 'requests_screen.dart';
 import 'results_screen.dart';
 import 'send_notification_screen.dart';
@@ -59,6 +60,10 @@ class MoreScreen extends StatelessWidget {
           if (s.isInstructor || s.isAdmin)
             _tile(context, Icons.edit_note, 'رصد الدرجات', const GradeEntryScreen(), subtitle: 'إدخال الدرجات ورفعها للاعتماد'),
           if (s.isAdmin) _tile(context, Icons.fact_check_outlined, 'اعتماد النتائج', const ResultsScreen()),
+          if (s.isStudent || s.isInstructor)
+            _tile(context, Icons.calendar_view_week_outlined, 'جدولي الأسبوعي', const TimetableScreen()),
+          _tile(context, Icons.photo_library_outlined, 'الجداول والإعلانات المصورة', const PublicationsScreen(),
+              subtitle: 'جداول المحاضرات المنشورة والإعلانات بالصور'),
           _tile(context, Icons.description_outlined, 'الطلبات والمعاملات', const RequestsScreen(),
               subtitle: s.role == 'staff' || s.isAdmin ? 'طلباتي والوارد إليّ' : 'إفادة قيد، كشف درجات، عذر غياب…'),
           if (canSendNotifications(s.user))
