@@ -71,7 +71,7 @@ export function UsersView({ user }) {
     <div class="row between"><h1>المستخدمون</h1>${creatable(user).length ? html`<button onClick=${() => setCreating(!creating)}>${creating ? "إلغاء" : "+ مستخدم"}</button>` : null}</div>
     ${creating && structure.data ? html`<${CreateUser} user=${user} structure=${structure.data} onCreated=${(pw) => { setCreating(false); setTemp(pw); state.reload(); }} />` : null}
     <div class="row" style="margin-bottom:.75rem">
-      <input style="max-width:280px" placeholder="بحث بالاسم أو الرقم أو البريد" value=${filters.q} onInput=${(e) => setFilters({ ...filters, q: e.target.value })} />
+      <input style="max-width:280px" placeholder="بحث بالاسم أو الرقم أو البريد أو الهاتف" value=${filters.q} onInput=${(e) => setFilters({ ...filters, q: e.target.value })} />
       <select style="max-width:200px" value=${filters.role} onChange=${(e) => setFilters({ ...filters, role: e.target.value })}>
         <option value="">كل الأدوار</option>${Object.entries(ROLE).filter(([k]) => k !== "platform_admin").map(([k, l]) => html`<option value=${k}>${l}</option>`)}</select></div>
     <${Async} state=${state}>${(d) => html`<div class="card"><p class="small muted">${d.total} مستخدم</p><div class="table-wrap"><table>
@@ -496,6 +496,28 @@ export function AbuseReportsView() {
     : html`<${Empty}>لا توجد بلاغات<//>`}<//></div>`;
 }
 
+// Finds any account in any university by name, email, code or phone (any format: 09…, 218…, +218…).
+function AccountFinder() {
+  const [q, setQ] = useState("");
+  const [rows, setRows] = useState(null);
+  const search = async (ev) => {
+    ev.preventDefault();
+    if (q.trim().length < 3) return;
+    const r = await api.get(`/api/users?limit=50&q=${encodeURIComponent(q.trim())}`).catch(toastError);
+    if (r) setRows(r.items);
+  };
+  return html`<div class="card"><h3>البحث عن حساب في كل الجامعات</h3>
+    <form class="row" onSubmit=${search}><input style="max-width:320px" placeholder="الاسم أو البريد أو الهاتف أو الرقم"
+      value=${q} onInput=${(e) => setQ(e.target.value)} /><button class="secondary">بحث</button></form>
+    ${rows ? (rows.length ? html`<div class="table-wrap" style="margin-top:.75rem"><table>
+      <thead><tr><th>الاسم</th><th>الدور</th><th>الجامعة</th><th>البريد</th><th>الهاتف</th><th>الحالة</th></tr></thead>
+      <tbody>${rows.map((u) => html`<tr><td>${u.full_name}</td><td>${ROLE[u.role] || u.role}</td><td>${u.university || "—"}</td>
+        <td class="ltr">${u.email || "—"}</td><td class="ltr">${u.phone || "—"}</td>
+        <td>${u.is_active ? "مفعل" : html`<${Chip} kind="danger">موقوف<//>`}</td></tr>`)}</tbody></table></div>`
+      : html`<p class="muted" style="margin-top:.75rem">لا يوجد حساب مطابق.</p>`) : null}
+  </div>`;
+}
+
 export function UniversitiesView() {
   const state = useAsync(() => api.get("/api/universities"), []);
   const [v, bind, setV] = useForm({ code: "", name: "", admin_name: "", admin_email: "" });
@@ -516,6 +538,7 @@ export function UniversitiesView() {
         <td>${u.is_active ? html`<${Chip} kind="success">مفعلة<//>` : html`<${Chip} kind="danger">موقوفة<//>`}</td>
         <td><div class="row"><button class="small" onClick=${() => { setActing(u.id); location.hash = "#/"; }}>إدارة</button>
           <button class="small secondary" onClick=${() => toggle(u)}>${u.is_active ? "إيقاف" : "تفعيل"}</button></div></td></tr>`)}</tbody></table></div></div>`}<//>
+    <${AccountFinder} />
     <form class="card" onSubmit=${submit}><h3>إضافة جامعة</h3><${ErrorBox} error=${error} /><div class="form-grid">
       <div class="field"><label>اسم الجامعة</label><input ...${bind("name")} required /></div>
       <div class="field"><label>الرمز (حروف لاتينية صغيرة)</label><input class="ltr" ...${bind("code")} required pattern="[a-z0-9-]+" /></div>

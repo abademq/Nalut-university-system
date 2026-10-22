@@ -171,3 +171,22 @@ def test_admins_edit_their_own_details(client, as_, db):
     s = as_("s.ali@nalut.edu.ly")
     assert client.patch("/api/me/profile", headers=s, json={"current_password": PASSWORD,
                                                             "full_name": "اسم جديد"}).status_code == 403
+
+
+def test_find_who_holds_a_phone(client, as_, db):
+    p = as_(PRES)
+    st = db.query(User).filter_by(email="s.ali@nalut.edu.ly").one()
+    st.phone = "0916166288"
+    db.commit()
+    # found by phone in any format
+    for q in ("0916166288", "916166288", "+218 91 616 6288", "٠٩١٦١٦٦٢٨٨"):
+        items = client.get("/api/users", headers=p, params={"q": q}).json()["items"]
+        assert [u["id"] for u in items] == [st.id], q
+    # creating another account with the same number says who has it, in any format
+    r = client.post("/api/users", headers=p, json={"full_name": "طالب جديد", "role": "student",
+                                                   "phone": "+218916166288"})
+    assert r.status_code == 400 and st.full_name in r.json()["detail"]
+    # the platform administrator searches every university
+    h = platform(client)
+    items = client.get("/api/users", headers=h, params={"q": "0916166288"}).json()["items"]
+    assert items[0]["id"] == st.id and items[0]["university"]

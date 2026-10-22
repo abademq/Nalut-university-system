@@ -451,11 +451,11 @@ def edit_profile(body: ProfileIn, request: Request, user: User = Depends(get_cur
         raise HTTPException(status_code=400, detail="رقم الهاتف غير صحيح")
     if not email and not phone:
         raise HTTPException(status_code=400, detail="يجب أن يبقى البريد أو رقم الهاتف لتسجيل الدخول")
-    for col, val in ((User.email, email), (User.phone, phone)):
-        if val:
-            other = db.scalar(select(User.id).where(col == val))
-            if other and other != user.id:
-                raise HTTPException(status_code=400, detail="البريد أو الهاتف مستخدم لحساب آخر")
+    if email and db.scalar(select(User.id).where(User.email == email, User.id != user.id)):
+        raise HTTPException(status_code=400, detail="البريد مستخدم لحساب آخر")
+    tail = re.sub(r"\D", "", phone or "")[-9:]
+    if phone and db.scalar(select(User.id).where(User.phone.like(f"%{tail}"), User.id != user.id)):
+        raise HTTPException(status_code=400, detail="رقم الهاتف مستخدم لحساب آخر")
     if phone != user.phone and user.mfa_enabled and mfa.method_of(db, user) == "sms":
         raise HTTPException(status_code=400, detail="التحقق الثنائي على هذا الرقم: غيّر طريقته أو أوقفه قبل تغيير الهاتف")
     changed = sorted(k for k, v in (("full_name", data.get("full_name", user.full_name)), ("email", email),

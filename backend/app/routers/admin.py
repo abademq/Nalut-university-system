@@ -1,6 +1,7 @@
 """Organisation structure, users, settings and audit log."""
 from __future__ import annotations
 
+import re
 import secrets
 import string
 from datetime import date
@@ -53,7 +54,7 @@ def user_out(u: User) -> dict:
     return {"id": u.id, "full_name": u.full_name, "role": u.role, "email": u.email, "phone": u.phone,
             "code": u.code, "cohort": u.cohort, "office": u.office, "faculty_id": u.faculty_id,
             "department_id": u.department_id, "is_active": u.is_active, "mfa_enabled": u.mfa_enabled,
-            "last_login_at": u.last_login_at}
+            "last_login_at": u.last_login_at, "university_id": u.university_id}
 
 
 class MfaAdminIn(BaseModel):
@@ -370,7 +371,8 @@ def list_users(role: str | None = None, q: str | None = Query(default=None, max_
                limit: int = Query(default=50, le=200), offset: int = 0,
                user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     if user.role == Role.PLATFORM_ADMIN:
-        stmt = select(User).where(User.role == Role.UNIVERSITY_ADMIN)
+        # the platform view lists university administrators; a search looks through every account
+        stmt = select(User) if q else select(User).where(User.role == Role.UNIVERSITY_ADMIN)
     else:
         stmt = select(User).where(User.university_id == user.university_id)
         if user.role == Role.UNIVERSITY_ADMIN:
@@ -391,10 +393,18 @@ def list_users(role: str | None = None, q: str | None = Query(default=None, max_
         stmt = stmt.where(User.department_id == department_id)
     if q:
         like = f"%{q.strip()}%"
-        stmt = stmt.where(or_(User.full_name.ilike(like), User.code.ilike(like), User.email.ilike(like)))
+        match = [User.full_name.ilike(like), User.code.ilike(like), User.email.ilike(like)]
+        tail = _phone_tail(q)
+        digits = re.sub(r"\D", "", q.translate(str.maketrans("٠١٢٣٤٥٦٧٨٩", "0123456789")))
+        if tail or len(digits) >= 4:
+            match.append(User.phone.like(f"%{tail or digits}%"))
+        stmt = stmt.where(or_(*match))
     total = db.scalar(select(func.count()).select_from(stmt.subquery()))
     rows = db.scalars(stmt.order_by(User.role, User.full_name).limit(limit).offset(offset)).all()
     full = user.role in Role.ADMINS
+    if user.role == Role.PLATFORM_ADMIN:
+        names = {x.id: x.name for x in db.scalars(select(University))}
+        return {"total": total, "items": [{**user_out(u), "university": names.get(u.university_id)} for u in rows]}
     return {"total": total, "items": [user_out(u) if full else
                                       {"id": u.id, "full_name": u.full_name, "role": u.role, "code": u.code}
                                       for u in rows]}
@@ -425,16 +435,48 @@ def _check_placement(db: Session, actor: User, faculty_id: int | None, departmen
             raise HTTPException(status_code=400, detail="القسم لا يتبع الكلية المحددة")
 
 
-def _normalize_contacts(db: Session, email: str | None, phone: str | None, exclude_id: int | None = None):
+def _phone_tail(phone: str | None) -> str | None:
+    """The last 9 digits, so 0916166288, 916166288, 218916166288 and +218 91 616 6288 match."""
+    digits = re.sub(r"\D", "", (phone or "").translate(str.maketrans("٠١٢٣٤٥٦٧٨٩", "0123456789")))
+    return digits[-9:] if len(digits) >= 9 else None
+
+
+def _owner_label(actor: User, other: User) -> str:
+    """Who holds a contact already, told only as far as the actor may see that account."""
+    if other.role == Role.PLATFORM_ADMIN:
+        return "حساب مشرف المنصة"
+    if actor.role == Role.PLATFORM_ADMIN or getattr(actor, "acting_platform_admin", False) \
+            or other.university_id == actor.university_id:
+        state = "" if other.is_active else "، موقوف"
+        where = "" if other.university_id == actor.university_id else " في جامعة أخرى"
+        return f"حساب «{other.full_name}» ({ROLE_LABELS.get(other.role, other.role)}{state}){where}"
+    return "حساب في جامعة أخرى"
+
+
+ROLE_LABELS = {Role.PLATFORM_ADMIN: "مشرف المنصة", Role.UNIVERSITY_ADMIN: "إدارة الجامعة",
+               Role.FACULTY_ADMIN: "إدارة الكلية", Role.STAFF: "موظف", Role.TEACHER: "عضو هيئة تدريس",
+               Role.ASSISTANT: "معيد", Role.STUDENT: "طالب"}
+
+
+def _normalize_contacts(db: Session, email: str | None, phone: str | None, exclude_id: int | None = None,
+                        actor: User | None = None):
     email = email.strip().lower() if email else None
     phone = normalize_identifier(phone)[1] if phone else None
     if not email and not phone:
         raise HTTPException(status_code=400, detail="يجب إدخال البريد أو رقم الهاتف")
-    for col, val in ((User.email, email), (User.phone, phone)):
-        if val:
-            other = db.scalar(select(User.id).where(col == val))
-            if other and other != exclude_id:
-                raise HTTPException(status_code=400, detail="البريد أو الهاتف مستخدم لحساب آخر")
+    if email:
+        other = db.scalar(select(User).where(User.email == email, User.id != (exclude_id or 0)))
+        if other:
+            who = _owner_label(actor, other) if actor else "حساب آخر"
+            raise HTTPException(status_code=400, detail=f"البريد مستخدم مسبقاً في {who}")
+    tail = _phone_tail(phone)
+    if phone:
+        # the same number written differently (0 / 218 / +218) is the same phone
+        same = User.phone == phone if not tail else User.phone.like(f"%{tail}")
+        other = db.scalar(select(User).where(same, User.id != (exclude_id or 0)))
+        if other:
+            who = _owner_label(actor, other) if actor else "حساب آخر"
+            raise HTTPException(status_code=400, detail=f"رقم الهاتف مستخدم مسبقاً في {who}")
     return email, phone
 
 
@@ -452,7 +494,7 @@ def create_user(body: UserIn, request: Request,
         raise forbidden("لا يمكنك إنشاء حساب بهذا الدور")
     faculty_id = actor.faculty_id if actor.role == Role.FACULTY_ADMIN else body.faculty_id
     _check_placement(db, actor, faculty_id, body.department_id)
-    email, phone = _normalize_contacts(db, body.email, body.phone)
+    email, phone = _normalize_contacts(db, body.email, body.phone, actor=actor)
     if body.code and db.scalar(select(User.id).where(User.university_id == actor.university_id, User.code == body.code)):
         raise HTTPException(status_code=400, detail="الرقم الجامعي مستخدم")
     pw = temp_password()
@@ -509,7 +551,7 @@ def patch_user(uid: int, body: UserPatch, request: Request,
         raise forbidden("لا يمكنك منح هذا الدور")
     if "email" in changes or "phone" in changes:
         changes["email"], changes["phone"] = _normalize_contacts(
-            db, changes.get("email", u.email), changes.get("phone", u.phone), exclude_id=u.id)
+            db, changes.get("email", u.email), changes.get("phone", u.phone), exclude_id=u.id, actor=actor)
     if "faculty_id" in changes or "department_id" in changes:
         fid = changes.get("faculty_id", u.faculty_id)
         _check_placement(db, actor, fid, changes.get("department_id", u.department_id))
