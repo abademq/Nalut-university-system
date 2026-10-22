@@ -31,7 +31,13 @@ jobs:
         run: |
           [ -n "$KEY" ] && [ -n "$HOST" ] && [ -n "$KNOWN" ] || { echo "::error::Add the DEPLOY_* secrets (see docs/deploy-vps.md)"; exit 1; }
           install -d -m 700 ~/.ssh
-          printf '%s\n' "$KEY" > ~/.ssh/deploy && chmod 600 ~/.ssh/deploy
-          printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts
-          ssh -i ~/.ssh/deploy -p "${PORT:-22}" -o StrictHostKeyChecking=yes -o BatchMode=yes \
+          printf '%s\n' "$KEY" | tr -d '\r' > ~/.ssh/deploy && chmod 600 ~/.ssh/deploy
+          # Pin the server's key whatever name it was saved under (domain, IP, [host]:port):
+          # only the "ssh-ed25519 AAAA…" part of DEPLOY_KNOWN_HOSTS is used, for the host we connect to.
+          HOSTKEY=$(printf '%s' "$KNOWN" | tr -d '\r' | grep -oE 'ssh-ed25519 [A-Za-z0-9+/=]+' | head -1)
+          [ -n "$HOSTKEY" ] || { echo "::error::DEPLOY_KNOWN_HOSTS must contain the line with ssh-ed25519 printed by setup-github-deploy.sh"; exit 1; }
+          HOST=$(printf '%s' "$HOST" | tr -d '[:space:]')
+          PORT=$(printf '%s' "${PORT:-22}" | tr -d '[:space:]')
+          if [ "$PORT" = "22" ]; then echo "$HOST $HOSTKEY" > ~/.ssh/known_hosts; else echo "[$HOST]:$PORT $HOSTKEY" > ~/.ssh/known_hosts; fi
+          ssh -i ~/.ssh/deploy -p "$PORT" -o StrictHostKeyChecking=yes -o BatchMode=yes -o ConnectTimeout=20 \
             "nus-deploy@$HOST" "$GITHUB_SHA"

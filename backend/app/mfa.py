@@ -101,7 +101,10 @@ def _deliver(phone: str) -> tuple[str, str | None]:
             pin = ResalaClient.from_env().send_pin(number, service_name=settings.resala_service_name,
                                                    test=settings.resala_test or None, sender=settings.resala_sender)
         except ResalaError as exc:
-            log.warning("Resala pin failed: %s", exc.type)
+            from .notifications import record_sms_error
+
+            log.warning("Resala pin failed: %s %s", exc.type, exc.message)
+            record_sms_error("otp", exc)
             raise OtpError("تعذر إرسال رمز التحقق الآن، حاول بعد قليل") from None
         return pin.pin, pin.id
     from .notifications import sms_provider

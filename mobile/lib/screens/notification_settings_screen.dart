@@ -176,6 +176,19 @@ class _Health extends StatelessWidget {
               Text('آخر 24 ساعة — فوري: ${fmt(push)}'),
               const SizedBox(height: 4),
               Text('آخر 24 ساعة — نصي: ${fmt(sms)}'),
+              if (d['last_sms_error'] != null) ...[
+                const Divider(),
+                const Text('آخر خطأ في الرسائل النصية:', style: TextStyle(color: AppColors.danger)),
+                SelectableText(
+                    '${d['last_sms_error']['type']} ${d['last_sms_error']['status'] ?? ''}: ${d['last_sms_error']['message']}'
+                    '${(d['last_sms_error']['errors'] as Map?)?.isNotEmpty == true ? '\n${d['last_sms_error']['errors']}' : ''}',
+                    style: const TextStyle(fontSize: 12)),
+              ],
+              const Divider(),
+              Wrap(spacing: 8, children: [
+                OutlinedButton(onPressed: () => _smsCheck(context, 'otp'), child: const Text('فحص رمز تحقق')),
+                OutlinedButton(onPressed: () => _smsCheck(context, 'template'), child: const Text('فحص رسالة إشعار')),
+              ]),
               if (d['last_push_error'] != null) ...[
                 const Divider(),
                 const Text('آخر خطأ من Firebase:', style: TextStyle(color: AppColors.danger)),
@@ -186,6 +199,32 @@ class _Health extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+
+  /// Sends one SMS to the admin's own phone and shows the provider's exact answer.
+  Future<void> _smsCheck(BuildContext context, String kind) async {
+    final s = context.read<Session>();
+    Map<String, dynamic> r;
+    try {
+      r = await s.api.post('/api/notifications/test-sms', {'kind': kind}) as Map<String, dynamic>;
+    } catch (e) {
+      r = {'ok': false, 'error_message': '$e'};
+    }
+    if (!context.mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(r['ok'] == true ? 'قبلها المزود${r['test_mode'] == true ? ' (وضع التجربة)' : ''}' : 'فشل الإرسال'),
+        content: SingleChildScrollView(
+          child: SelectableText(
+            r.entries.map((e) => '${e.key}: ${e.value}').join('\n'),
+            textDirection: TextDirection.ltr,
+            style: const TextStyle(fontSize: 12),
+          ),
+        ),
+        actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('حسناً'))],
+      ),
     );
   }
 

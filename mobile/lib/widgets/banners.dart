@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -16,11 +18,20 @@ class BannerStrip extends StatefulWidget {
 class _BannerStripState extends State<BannerStrip> {
   List<dynamic> _items = [];
   final Set<int> _hidden = {};
+  Timer? _timer;
 
   @override
   void initState() {
     super.initState();
     _load();
+    // a banner published from the dashboard shows up within a minute without reopening the app
+    _timer = Timer.periodic(const Duration(minutes: 1), (_) => _load());
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
   }
 
   Future<void> _load() async {

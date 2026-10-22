@@ -220,6 +220,17 @@ class HttpSmsProvider:
             return False
 
 
+# last SMS failure, shown to administrators in /api/notifications/health
+LAST_SMS_ERROR: dict | None = None
+
+
+def record_sms_error(kind: str, exc) -> None:
+    global LAST_SMS_ERROR
+    LAST_SMS_ERROR = {"kind": kind, "type": getattr(exc, "type", type(exc).__name__),
+                      "status": getattr(exc, "status", None), "message": getattr(exc, "message", str(exc))[:300],
+                      "errors": getattr(exc, "errors", {}), "at": time.time()}
+
+
 class ResalaSmsProvider:
     """Resala (resala.ly): one template request for the whole batch ($1 = title, $2 = body).
 
@@ -241,13 +252,17 @@ class ResalaSmsProvider:
             if number:  # the API only delivers notifications to Libyan mobiles
                 records.append(TemplateRecord(number, [title[:120], body[:300]]))
                 by_number[number[-9:]] = phone
-        if not records or not settings.resala_sms_template_id:
+        if not records:
+            return result
+        if not settings.resala_sms_template_id:
+            record_sms_error("template", Exception("RESALA_SMS_TEMPLATE_ID غير مضبوط في /etc/nus/nus.env"))
             return result
         try:
             res = self.client.send_template(settings.resala_sms_template_id, records, test=settings.resala_test or None,
                                             sender=settings.resala_sender)
         except ResalaError as exc:
-            log.warning("Resala send-template failed: %s", exc.type)
+            log.warning("Resala send-template failed: %s %s", exc.type, exc.message)
+            record_sms_error("template", exc)
             return result
         bad = {str(n)[-9:] for n in res.failed_numbers + res.invalid_numbers}
         for tail, phone in by_number.items():

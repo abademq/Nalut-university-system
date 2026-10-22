@@ -160,3 +160,24 @@ def test_libyan_mobile_normalization():
     assert resala.libyan_mobile("٠٩٢١٢٣٤٥٦٧") == "218921234567"
     assert resala.libyan_mobile("0951234567") is None  # not a Libyan mobile prefix
     assert resala.libyan_mobile("+201001234567") is None
+
+
+def test_admin_sms_check_reports_resala_errors(client, as_, monkeypatch):
+    from app.config import settings
+
+    p = as_(PRES)
+    assert client.post("/api/notifications/test-sms", headers=as_("s.ali@nalut.edu.ly"), json={}).status_code == 403
+    monkeypatch.setattr(settings, "sms_provider", "resala")
+    monkeypatch.delenv("RESALA_API_KEY", raising=False)
+    r = client.post("/api/notifications/test-sms", headers=p, json={"kind": "otp"}).json()
+    assert r["ok"] is False and r["error_type"] == "Config"
+
+    def boom(self, *a, **k):
+        raise resala.ResalaError(401, "TokenExpired", "انتهت صلاحية المفتاح")
+
+    monkeypatch.setenv("RESALA_API_KEY", "rsl_test")
+    monkeypatch.setattr(resala.ResalaClient, "send_pin", boom)
+    r = client.post("/api/notifications/test-sms", headers=p, json={"kind": "otp"}).json()
+    assert r["error_type"] == "TokenExpired" and r["error_status"] == 401
+    health = client.get("/api/notifications/health", headers=p).json()
+    assert health["last_sms_error"]["type"] == "TokenExpired"

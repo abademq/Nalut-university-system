@@ -232,8 +232,54 @@ def health(user: User = Depends(get_current_user), db: Session = Depends(get_db)
         "sms_provider": settings.sms_provider,
         "sms_ready": settings.sms_provider in ("resala", "http"),
         "users_with_devices": db.scalar(dev_q) or 0,
+        "last_sms_error": notifications.LAST_SMS_ERROR,
         "last_push_error": notifications.FcmProvider.last_error,
         "last_push_error_at": notifications.FcmProvider.last_error_at,
         "last_push_sent_at": notifications.FcmProvider.last_sent_at,
         "last_24h": {"push": counts(NotificationDelivery.push_status), "sms": counts(NotificationDelivery.sms_status)},
     }
+
+
+class TestSmsIn(BaseModel):
+    kind: str = Field(default="otp", pattern="^(otp|template)$")
+
+
+@router.post("/test-sms")
+def test_sms(body: TestSmsIn, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Sends one SMS to the administrator's own phone and returns the provider's exact answer."""
+    from ..config import settings
+    from ..resala import ResalaClient, ResalaError, TemplateRecord, libyan_mobile
+    from ..security import limiter
+
+    if user.role not in (Role.UNIVERSITY_ADMIN, Role.PLATFORM_ADMIN):
+        raise HTTPException(status_code=403, detail="غير مصرح لك بهذا الإجراء")
+    if not user.phone:
+        raise HTTPException(status_code=400, detail="أضف رقم هاتف لحسابك أولاً")
+    if not limiter.hit(f"test-sms:{user.id}", 5, 600):
+        raise HTTPException(status_code=429, detail="محاولات كثيرة، حاول بعد دقائق")
+    out = {"provider": settings.sms_provider, "test_mode": settings.resala_test, "phone": user.phone,
+           "normalized": libyan_mobile(user.phone)}
+    if settings.sms_provider != "resala":
+        sent = notifications.sms_provider().send(user.phone, "تجربة: رسالة من منصة الجامعة")
+        return {**out, "ok": bool(sent), "note": "مزود الرسائل ليس Resala (SMS_PROVIDER)"}
+    try:
+        client = ResalaClient.from_env()
+        if body.kind == "otp":
+            pin = client.send_pin(out["normalized"] or user.phone, service_name=settings.resala_service_name,
+                                  test=settings.resala_test or None, sender=settings.resala_sender)
+            return {**out, "ok": True, "sender_name": pin.sender_name, "content": pin.content}
+        if not settings.resala_sms_template_id:
+            return {**out, "ok": False, "error_type": "Config",
+                    "error_message": "RESALA_SMS_TEMPLATE_ID غير مضبوط في /etc/nus/nus.env"}
+        res = client.send_template(settings.resala_sms_template_id,
+                                   [TemplateRecord(out["normalized"] or user.phone, ["تجربة", "رسالة من منصة الجامعة"])],
+                                   test=settings.resala_test or None, sender=settings.resala_sender)
+        return {**out, "ok": res.succeeded > 0 or (settings.resala_test and not res.invalid_numbers),
+                "succeeded": res.succeeded, "failed_numbers": res.failed_numbers,
+                "invalid_numbers": res.invalid_numbers, "sender_names": res.sender_names, "is_prod": res.is_prod}
+    except ValueError as exc:  # missing key
+        return {**out, "ok": False, "error_type": "Config", "error_message": str(exc)}
+    except ResalaError as exc:
+        notifications.record_sms_error(body.kind, exc)
+        return {**out, "ok": False, "error_type": exc.type, "error_status": exc.status,
+                "error_message": exc.message, "errors": exc.errors}

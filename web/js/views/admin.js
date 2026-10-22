@@ -208,9 +208,29 @@ export function StructureView({ user }) {
   </div>`;
 }
 
+// Sends one SMS to the administrator's own phone and shows exactly what the provider answered.
+function SmsCheck() {
+  const [res, setRes] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const run = async (kind) => {
+    setBusy(true);
+    setRes(await api.post("/api/notifications/test-sms", { kind }).catch((e) => ({ ok: false, error_message: e.message })));
+    setBusy(false);
+  };
+  return html`<div class="card"><h3>فحص الرسائل النصية</h3>
+    <p class="small muted">يرسل رسالة واحدة إلى رقم هاتف حسابك ويعرض رد مزود الرسائل كما هو.</p>
+    <div class="row"><button type="button" class="secondary small" disabled=${busy} onClick=${() => run("otp")}>رمز تحقق تجريبي</button>
+      <button type="button" class="secondary small" disabled=${busy} onClick=${() => run("template")}>رسالة إشعار تجريبية</button></div>
+    ${res ? html`<div class=${`alert ${res.ok ? "success" : "error"}`} style="margin-top:.75rem">
+      <strong>${res.ok ? "تم القبول" : "فشل"}</strong>${res.test_mode ? " (وضع التجربة: لا تُرسل فعلاً)" : ""}
+      <div class="small ltr" style="white-space:pre-wrap;margin-top:.4rem">${JSON.stringify(res, null, 1)}</div></div>` : null}
+  </div>`;
+}
+
 export function SettingsView() {
   const state = useAsync(() => api.get("/api/settings"), []);
-  return html`<div><h1>إعدادات المؤسسة</h1><${Async} state=${state}>${(d) => html`<${SettingsForm} data=${d} onSaved=${state.reload} />`}<//></div>`;
+  return html`<div><h1>إعدادات المؤسسة</h1><${Async} state=${state}>${(d) => html`<${SettingsForm} data=${d} onSaved=${state.reload} />`}<//>
+    <${SmsCheck} /></div>`;
 }
 
 const HINTS = {
