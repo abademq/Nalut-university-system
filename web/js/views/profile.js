@@ -48,6 +48,26 @@ function Sessions() {
     <button class="secondary" onClick=${revoke}>تسجيل الخروج من كل الأجهزة</button></div>`;
 }
 
+// Platform and university administrators have nobody above them to correct their details.
+const selfEdit = (u) => u.acting || u.role === "platform_admin" || u.role === "university_admin";
+
+function EditDetails({ user }) {
+  const [v, bind] = useForm({ full_name: user.full_name || "", email: user.email || "", phone: user.phone || "", current_password: "" });
+  const [submit, busy, error] = useSubmit(async () => {
+    await api.patch("/api/me/profile", { full_name: v.full_name.trim(), email: v.email.trim(), phone: v.phone.trim(),
+      current_password: v.current_password });
+    toast("حُفظت بياناتك");
+    setTimeout(() => location.reload(), 900);
+  });
+  return html`<form class="card" onSubmit=${submit}><h3>تعديل بياناتي</h3><${ErrorBox} error=${error} />
+    <div class="field"><label>الاسم</label><input ...${bind("full_name")} required minlength="3" /></div>
+    <div class="field"><label>البريد الإلكتروني (للدخول)</label><input type="email" class="ltr" autocomplete="email" ...${bind("email")} /></div>
+    <div class="field"><label>رقم الهاتف (للدخول والرسائل)</label><input type="tel" class="ltr" autocomplete="tel" ...${bind("phone")} /></div>
+    <div class="field"><label>كلمة المرور الحالية للتأكيد</label><input type="password" autocomplete="current-password" ...${bind("current_password")} required /></div>
+    <p class="small muted">يجب أن يبقى البريد أو الهاتف لتسجيل الدخول.${user.acting ? " التعديل على حسابك أنت كمشرف للمنصة، لا على حسابات الجامعة." : ""}</p>
+    <button disabled=${busy}>حفظ</button></form>`;
+}
+
 export function ProfileView({ user }) {
   return html`<div><h1>حسابي</h1>
     <div class="card"><ul class="list">
@@ -55,7 +75,7 @@ export function ProfileView({ user }) {
       ${user.code ? html`<li>الرقم: <span class="mono">${user.code}</span></li>` : null}
       <li>البريد: <span class="ltr">${user.email || "—"}</span> · الهاتف: <span class="ltr">${user.phone || "—"}</span></li>
       ${user.university ? html`<li>${user.university.name}${user.faculty ? ` — ${user.faculty.name}` : ""}</li>` : null}</ul>
-      <p class="small muted">لتعديل البيانات الأساسية تواصل مع إدارة الكلية.</p></div>
-    <div class="grid cols-2"><${ChangePassword} /><${Mfa} user=${user} /><${Sessions} /></div>
+      ${selfEdit(user) ? null : html`<p class="small muted">لتعديل البيانات الأساسية تواصل مع إدارة الكلية.</p>`}</div>
+    <div class="grid cols-2">${selfEdit(user) ? html`<${EditDetails} user=${user} />` : null}<${ChangePassword} /><${Mfa} user=${user} /><${Sessions} /></div>
   </div>`;
 }

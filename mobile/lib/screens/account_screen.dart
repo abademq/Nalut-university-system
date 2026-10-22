@@ -28,6 +28,14 @@ class AccountScreen extends StatelessWidget {
           ),
         Card(
           child: Column(children: [
+            if (s.role == 'platform_admin' || s.role == 'university_admin')
+              ListTile(
+                leading: const Icon(Icons.badge_outlined),
+                title: const Text('تعديل بياناتي'),
+                subtitle: const Text('الاسم، البريد، رقم الهاتف'),
+                trailing: const Icon(Icons.chevron_left),
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EditDetailsScreen())),
+              ),
             ListTile(
               leading: const Icon(Icons.password),
               title: const Text('تغيير كلمة المرور'),
@@ -71,6 +79,88 @@ class AccountScreen extends StatelessWidget {
             },
           ),
         ),
+      ]),
+    );
+  }
+}
+
+/// Platform and university administrators correct their own name, email and phone.
+class EditDetailsScreen extends StatefulWidget {
+  const EditDetailsScreen({super.key});
+
+  @override
+  State<EditDetailsScreen> createState() => _EditDetailsScreenState();
+}
+
+class _EditDetailsScreenState extends State<EditDetailsScreen> {
+  late final Map<String, dynamic> _u = context.read<Session>().user ?? {};
+  late final _name = TextEditingController(text: _u['full_name'] as String? ?? '');
+  late final _email = TextEditingController(text: _u['email'] as String? ?? '');
+  late final _phone = TextEditingController(text: _u['phone'] as String? ?? '');
+  final _password = TextEditingController();
+  bool _busy = false;
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _email.dispose();
+    _phone.dispose();
+    _password.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    final s = context.read<Session>();
+    setState(() => _busy = true);
+    try {
+      await s.api.patch('/api/me/profile', {
+        'full_name': _name.text.trim(),
+        'email': _email.text.trim(),
+        'phone': _phone.text.trim(),
+        'current_password': _password.text,
+      });
+      await s.reloadProfile();
+      if (!mounted) return;
+      showMessage(context, 'حُفظت بياناتك');
+      Navigator.pop(context);
+    } catch (e) {
+      if (mounted) showMessage(context, e, error: true);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('تعديل بياناتي')),
+      body: ListView(padding: const EdgeInsets.all(16), children: [
+        TextField(controller: _name, decoration: const InputDecoration(labelText: 'الاسم')),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _email,
+          keyboardType: TextInputType.emailAddress,
+          textDirection: TextDirection.ltr,
+          decoration: const InputDecoration(labelText: 'البريد الإلكتروني (للدخول)'),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _phone,
+          keyboardType: TextInputType.phone,
+          textDirection: TextDirection.ltr,
+          decoration: const InputDecoration(labelText: 'رقم الهاتف (للدخول والرسائل)'),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _password,
+          obscureText: true,
+          autofillHints: const [AutofillHints.password],
+          decoration: const InputDecoration(labelText: 'كلمة المرور الحالية للتأكيد'),
+        ),
+        const SizedBox(height: 8),
+        const Text('يجب أن يبقى البريد أو الهاتف لتسجيل الدخول.', style: TextStyle(color: Colors.grey)),
+        const SizedBox(height: 16),
+        FilledButton(onPressed: _busy ? null : _save, child: const Text('حفظ')),
       ]),
     );
   }

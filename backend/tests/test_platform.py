@@ -144,3 +144,30 @@ def test_staff_can_be_granted_banners(client, as_, db):
     assert r.status_code == 200, r.text
     r = client.post("/api/banners", headers=staff, json={"title": "إعلان من شؤون الطلبة"})
     assert r.status_code == 200, r.text
+
+
+def test_admins_edit_their_own_details(client, as_, db):
+    h = platform(client)
+    r = client.patch("/api/me/profile", headers=h, json={"current_password": "wrong", "full_name": "مشرف"})
+    assert r.status_code == 400
+    r = client.patch("/api/me/profile", headers=h, json={"current_password": PASSWORD, "full_name": "عبد الرحمن",
+                                                         "email": "Owner@Abade.ly", "phone": "0912345670"})
+    assert r.status_code == 200, r.text
+    me = r.json()
+    assert me["full_name"] == "عبد الرحمن" and me["email"] == "owner@abade.ly" and me["phone"] == "0912345670"
+    assert any(a.action == "user.profile_self_updated" for a in db.query(AuditLog).all())
+    # taken by another account / both identifiers removed
+    taken = client.patch("/api/me/profile", headers=h, json={"current_password": PASSWORD, "email": PRES})
+    assert taken.status_code == 400
+    empty = client.patch("/api/me/profile", headers=h, json={"current_password": PASSWORD, "email": "", "phone": ""})
+    assert empty.status_code == 400
+    # while managing a university it still edits the real platform account, never the university's admin
+    act = {**h, "X-Act-As-University": str(uni_id(db))}
+    r = client.patch("/api/me/profile", headers=act, json={"current_password": PASSWORD, "full_name": "اسم آخر"})
+    assert r.status_code == 200 and r.json()["role"] == "platform_admin"
+    # the new email signs in
+    assert client.post("/api/auth/login", json={"identifier": "owner@abade.ly", "password": PASSWORD}).status_code == 200
+    # other roles ask their administration
+    s = as_("s.ali@nalut.edu.ly")
+    assert client.patch("/api/me/profile", headers=s, json={"current_password": PASSWORD,
+                                                            "full_name": "اسم جديد"}).status_code == 403

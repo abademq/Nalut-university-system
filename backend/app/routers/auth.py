@@ -419,6 +419,56 @@ def reset_password(body: ResetIn, request: Request, db: Session = Depends(get_db
     return {"ok": True}
 
 
+class ProfileIn(BaseModel):
+    current_password: str = Field(min_length=1, max_length=200)
+    full_name: str | None = Field(default=None, min_length=3, max_length=200)
+    email: str | None = Field(default=None, max_length=200)
+    phone: str | None = Field(default=None, max_length=30)
+
+
+# Accounts with nobody above them to correct their details; everyone else asks their administration.
+SELF_EDIT_ROLES = (Role.PLATFORM_ADMIN, Role.UNIVERSITY_ADMIN)
+
+
+@router.patch("/me/profile")
+def edit_profile(body: ProfileIn, request: Request, user: User = Depends(get_current_user),
+                 db: Session = Depends(get_db)):
+    """Name, email and phone of one's own account (platform and university administrators)."""
+    # /api/me/* always acts on the real account, also while the platform administrator manages a university
+    if user.role not in SELF_EDIT_ROLES:
+        raise forbidden("لتعديل بياناتك تواصل مع إدارة الكلية")
+    if not limiter.hit(f"profile:{user.id}", 10, 600):
+        raise HTTPException(status_code=429, detail="محاولات كثيرة، حاول بعد دقائق")
+    if not verify_password(body.current_password, user.password_hash):
+        raise HTTPException(status_code=400, detail="كلمة المرور الحالية غير صحيحة")
+    data = body.model_dump(exclude_unset=True, exclude={"current_password"})
+    email = (data["email"] or "").strip().lower() or None if "email" in data else user.email
+    phone = (normalize_identifier(data["phone"])[1] or None) if data.get("phone") else (
+        None if "phone" in data else user.phone)
+    if email and not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
+        raise HTTPException(status_code=400, detail="البريد الإلكتروني غير صحيح")
+    if phone and not re.fullmatch(r"\+?\d{9,15}", phone):
+        raise HTTPException(status_code=400, detail="رقم الهاتف غير صحيح")
+    if not email and not phone:
+        raise HTTPException(status_code=400, detail="يجب أن يبقى البريد أو رقم الهاتف لتسجيل الدخول")
+    for col, val in ((User.email, email), (User.phone, phone)):
+        if val:
+            other = db.scalar(select(User.id).where(col == val))
+            if other and other != user.id:
+                raise HTTPException(status_code=400, detail="البريد أو الهاتف مستخدم لحساب آخر")
+    if phone != user.phone and user.mfa_enabled and mfa.method_of(db, user) == "sms":
+        raise HTTPException(status_code=400, detail="التحقق الثنائي على هذا الرقم: غيّر طريقته أو أوقفه قبل تغيير الهاتف")
+    changed = sorted(k for k, v in (("full_name", data.get("full_name", user.full_name)), ("email", email),
+                                    ("phone", phone)) if v != getattr(user, k))
+    if "full_name" in data:
+        user.full_name = data["full_name"].strip()
+    user.email, user.phone = email, phone
+    audit.record(db, "user.profile_self_updated", actor=user, target_type="user", target_id=user.id,
+                 details={"fields": changed}, ip=client_ip(request))
+    db.commit()
+    return user_profile(db, user)
+
+
 class ChangePasswordIn(BaseModel):
     current_password: str
     new_password: str = Field(max_length=200)
