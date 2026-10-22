@@ -91,7 +91,11 @@ function Forgot({ onBack }) {
     setStep(2);
   });
   const [reset, busy2, err2] = useSubmit(async () => {
-    await api.post("/api/auth/password/reset", { token: v.token.trim(), new_password: v.new_password });
+    const code = v.token.trim();
+    // a 6-digit code comes by SMS; a long token by e-mail
+    await api.post("/api/auth/password/reset", /^\d{4,8}$/.test(code)
+      ? { identifier: v.identifier.trim(), code, new_password: v.new_password }
+      : { token: code, new_password: v.new_password });
     setMsg("تم تغيير كلمة المرور، يمكنك تسجيل الدخول الآن");
     setStep(3);
   });

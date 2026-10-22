@@ -255,3 +255,121 @@ def my_insights(user: User = Depends(get_current_user), db: Session = Depends(ge
         if not s or s.status == "in_progress":
             pending.append({"id": a.id, "title": a.title, "course": c.title, "due_at": a.due_at})
     return {"attention": tips, "due_soon": pending}
+
+
+# --------------------------------------------------------------------------- one person, simplified
+
+
+def _can_see_person(db: Session, viewer: User, target: User) -> bool:
+    if viewer.id == target.id:
+        return True
+    if viewer.university_id != target.university_id:
+        return False
+    if viewer.role == Role.UNIVERSITY_ADMIN:
+        return True
+    if viewer.role == Role.FACULTY_ADMIN:
+        return target.faculty_id == viewer.faculty_id
+    if viewer.role in Role.INSTRUCTORS and target.role == Role.STUDENT:
+        return bool(set(visible_course_ids(db, viewer)) & _enrolled_ids(db, target.id))
+    return False
+
+
+def _enrolled_ids(db: Session, student_id: int) -> set[int]:
+    return set(db.scalars(select(Enrollment.course_id).where(Enrollment.student_id == student_id,
+                                                             Enrollment.status == "active")))
+
+
+def _student_report(db: Session, viewer: User, s: User) -> dict:
+    ids = _enrolled_ids(db, s.id)
+    if viewer.role in Role.INSTRUCTORS:
+        ids &= set(visible_course_ids(db, viewer))  # a teacher sees only the courses they share
+    cfg = tenant_settings(db, s)
+    staff_view = viewer.id != s.id
+    courses = []
+    for c in db.scalars(select(Course).where(Course.id.in_(ids or [-1])).order_by(Course.code)):
+        absence = att.course_absence(db, c.id, s.id)
+        due = db.scalars(select(Assignment).where(Assignment.course_id == c.id, Assignment.status == "published",
+                                                  Assignment.due_at <= utcnow())).all()
+        subs = {x.assignment_id: x for x in db.scalars(select(Submission).where(
+            Submission.student_id == s.id, Submission.assignment_id.in_([a.id for a in due] or [-1])))}
+        done = sum(1 for a in due if a.id in subs and subs[a.id].status in ("submitted", "reviewed"))
+        scored = [100 * subs[a.id].score / a.max_score for a in due
+                  if a.id in subs and subs[a.id].score is not None and subs[a.id].grade_released]
+        res = grade_svc.result_for(db, c.id)
+        summary = grade_svc.student_summary(db, c, s.id, cfg["grading"])
+        published = res.status == "published"
+        courses.append({
+            "course": {"id": c.id, "code": c.code, "title": c.title},
+            "absence_percent": absence["absence_percent"], "sessions": absence["sessions"],
+            "late": absence["late"], "submitted": done, "due": len(due),
+            "avg_score_percent": round(sum(scored) / len(scored), 1) if scored else None,
+            "grade": {"letter": summary["letter"], "label": summary["label"], "percent": summary["percent"]}
+            if published else None,
+            # running total before publication, for the course's staff and administration only
+            "running_percent": summary["percent"] if staff_view and not published else None,
+            "alerts": _student_risk(db, c, s.id, cfg["attendance"], cfg["grading"]),
+        })
+    due_total = sum(c["due"] for c in courses)
+    scores = [c["avg_score_percent"] for c in courses if c["avg_score_percent"] is not None]
+    return {"kind": "student", "summary": {
+        "courses": len(courses),
+        "absence_percent": round(sum(c["absence_percent"] for c in courses) / len(courses), 1) if courses else None,
+        "submission_rate": _pct(sum(c["submitted"] for c in courses), due_total),
+        "avg_score_percent": round(sum(scores) / len(scores), 1) if scores else None,
+        "alerts": sum(len(c["alerts"]) for c in courses)}, "courses": courses}
+
+
+def _teacher_report(db: Session, t: User) -> dict:
+    since = utcnow() - timedelta(days=30)
+    courses = list(db.scalars(select(Course).where(Course.id.in_(visible_course_ids(db, t) or [-1])).order_by(Course.code)))
+    stats = [course_stats(db, c) for c in courses]
+    held = db.scalar(select(func.count(AttendanceSession.id)).where(
+        AttendanceSession.course_id.in_([c.id for c in courses] or [-1]), AttendanceSession.starts_at >= since)) or 0
+    pending = db.scalar(select(func.count(AttendanceRecord.id)).join(
+        AttendanceSession, AttendanceSession.id == AttendanceRecord.session_id).where(
+        AttendanceSession.course_id.in_([c.id for c in courses] or [-1]),
+        AttendanceRecord.status == "pending_review")) or 0
+    rates = [s["attendance_rate"] for s in stats if s["attendance_rate"] is not None]
+    subs = [s["submission_rate"] for s in stats if s["submission_rate"] is not None]
+    return {"kind": "teacher", "summary": {
+        "courses": len(stats), "students": sum(s["enrolled"] for s in stats), "sessions_30d": held,
+        "pending_reviews": pending, "attendance_rate": round(sum(rates) / len(rates), 1) if rates else None,
+        "submission_rate": round(sum(subs) / len(subs), 1) if subs else None},
+        "courses": stats}
+
+
+def _staff_report(db: Session, u: User) -> dict:
+    from ..models import ServiceRequestEvent
+
+    since = utcnow() - timedelta(days=30)
+    rows = db.execute(select(AttendanceRecord.status, AttendanceSession.starts_at).join(
+        AttendanceSession, AttendanceSession.id == AttendanceRecord.session_id).where(
+        AttendanceRecord.user_id == u.id, AttendanceSession.kind == "staff",
+        AttendanceSession.starts_at >= since)).all()
+    handled = db.scalar(select(func.count(ServiceRequestEvent.id)).where(
+        ServiceRequestEvent.actor_id == u.id, ServiceRequestEvent.created_at >= since,
+        ServiceRequestEvent.action.in_(["in_review", "needs_documents", "forwarded", "approved", "rejected"]))) or 0
+    open_q = select(func.count(ServiceRequest.id)).where(ServiceRequest.university_id == u.university_id,
+                                                         ServiceRequest.status.not_in(["approved", "rejected"]))
+    if u.role == Role.STAFF:
+        open_q = open_q.where(ServiceRequest.office == u.office)
+    if u.faculty_id:
+        open_q = open_q.where(ServiceRequest.faculty_id == u.faculty_id)
+    return {"kind": "staff", "summary": {
+        "days_present_30d": sum(1 for st, _ in rows if st in ("present", "late")),
+        "late_30d": sum(1 for st, _ in rows if st == "late"),
+        "requests_handled_30d": handled, "open_requests": db.scalar(open_q) or 0}}
+
+
+@router.get("/reports/person/{uid}")
+def person_report(uid: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """A short, readable summary of one student, teacher or staff member (or yourself)."""
+    target = db.get(User, uid)
+    if not target or not _can_see_person(db, user, target):
+        raise forbidden()
+    who = {"id": target.id, "full_name": target.full_name, "role": target.role, "code": target.code}
+    if target.role == Role.STUDENT:
+        return {"user": who, **_student_report(db, user, target)}
+    if target.role in Role.INSTRUCTORS:
+        return {"user": who, **_teacher_report(db, target)}
+    return {"user": who, **_staff_report(db, target)}

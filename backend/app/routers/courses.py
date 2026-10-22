@@ -12,6 +12,7 @@ from ..deps import (
     client_ip,
     forbidden,
     get_course_for,
+    can_teach_course,
     get_current_user,
     is_course_admin,
     not_found,
@@ -126,13 +127,13 @@ class CoursePatch(BaseModel):
 
 
 @router.patch("/courses/{course_id}")
-def patch_course(course_id: int, body: CoursePatch, request: Request,
-                 user: User = Depends(require_roles(Role.UNIVERSITY_ADMIN, Role.FACULTY_ADMIN)),
+def patch_course(course_id: int, body: CoursePatch, request: Request, user: User = Depends(get_current_user),
                  db: Session = Depends(get_db)):
     c = get_course_for(db, user, course_id)
-    if not is_course_admin(user, c):
-        raise forbidden()
     data = body.model_dump(exclude_unset=True)
+    # the course's teachers may move their own lecture times; everything else is the administration's
+    if not is_course_admin(user, c) and not (set(data) <= {"schedule"} and can_teach_course(db, user, c)):
+        raise forbidden()
     if data.get("department_id") is not None:
         dep = db.get(Department, data["department_id"])
         if not dep or dep.faculty_id != c.faculty_id:

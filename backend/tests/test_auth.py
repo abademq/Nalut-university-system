@@ -75,8 +75,12 @@ def test_mfa_enforced_for_admins(client, db):
                                                                   "password": PASSWORD}).json()
 
 
-def test_password_reset_flow(client, caplog):
+def test_password_reset_flow(client, caplog, monkeypatch):
+    """Long token path, used when no SMS provider is set up (the token goes by e-mail / dev log)."""
     import logging
+
+    from app import mfa
+    monkeypatch.setattr(mfa, "sms_available", lambda: False)
     caplog.set_level(logging.INFO, logger="nus.auth")
     assert client.post("/api/auth/password/forgot", json={"identifier": "nobody@x.ly"}).json()["ok"]
     client.post("/api/auth/password/forgot", json={"identifier": "s.ali@nalut.edu.ly"})

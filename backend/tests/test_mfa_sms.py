@@ -181,3 +181,25 @@ def test_admin_sms_check_reports_resala_errors(client, as_, monkeypatch):
     assert r["error_type"] == "TokenExpired" and r["error_status"] == 401
     health = client.get("/api/notifications/health", headers=p).json()
     assert health["last_sms_error"]["type"] == "TokenExpired"
+
+
+def test_password_reset_by_sms_code(client, db):
+    r = client.post("/api/auth/password/forgot", json={"identifier": "s.ali@nalut.edu.ly"})
+    assert r.status_code == 200
+    code = last_code()
+    bad = client.post("/api/auth/password/reset", json={"identifier": "s.ali@nalut.edu.ly", "code": "000000",
+                                                        "new_password": "Brand2026New"})
+    assert bad.status_code == 400
+    weak = client.post("/api/auth/password/reset", json={"identifier": "s.ali@nalut.edu.ly", "code": code,
+                                                         "new_password": "short"})
+    assert weak.status_code == 400  # rules checked before the code is used
+    ok = client.post("/api/auth/password/reset", json={"identifier": "s.ali@nalut.edu.ly", "code": code,
+                                                       "new_password": "Brand2026New"})
+    assert ok.status_code == 200, ok.text
+    assert login(client, "s.ali@nalut.edu.ly").status_code == 401  # old password
+    r = client.post("/api/auth/login", json={"identifier": "s.ali@nalut.edu.ly", "password": "Brand2026New"})
+    assert r.status_code == 200 and r.json()["access_token"]
+    # the code works once
+    again = client.post("/api/auth/password/reset", json={"identifier": "s.ali@nalut.edu.ly", "code": code,
+                                                          "new_password": "Brand2026Again"})
+    assert again.status_code == 400

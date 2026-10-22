@@ -5,12 +5,16 @@ import 'package:url_launcher/url_launcher.dart';
 import '../state/session.dart';
 import '../widgets/common.dart';
 import 'account_screen.dart';
+import 'courses_screen.dart';
 import 'grade_entry_screen.dart';
 import 'grades_screen.dart';
 import 'guide_screen.dart';
 import 'messages_screen.dart';
 import 'notification_settings_screen.dart';
+import 'oversight_screens.dart';
 import 'publications_screen.dart';
+import 'publish_screen.dart';
+import 'reports_screen.dart';
 import 'requests_screen.dart';
 import 'results_screen.dart';
 import 'send_notification_screen.dart';
@@ -60,12 +64,27 @@ class MoreScreen extends StatelessWidget {
           if (s.isInstructor || s.isAdmin)
             _tile(context, Icons.edit_note, 'رصد الدرجات', const GradeEntryScreen(), subtitle: 'إدخال الدرجات ورفعها للاعتماد'),
           if (s.isAdmin) _tile(context, Icons.fact_check_outlined, 'اعتماد النتائج', const ResultsScreen()),
+          if (s.isInstructor || s.isAdmin)
+            _tile(context, Icons.event_note_outlined, 'المقررات والمحاضرات', const CoursesScreen(),
+                subtitle: s.isAdmin ? 'إضافة مقررات، مواعيد المحاضرات، عناصر التقييم' : 'مواعيد محاضراتك وعناصر التقييم'),
+          if (s.isInstructor || s.isAdmin)
+            _tile(context, Icons.insights_outlined, 'التقارير والإحصاءات', const ReportsScreen(),
+                subtitle: 'تقرير مبسط لكل طالب أو أستاذ أو موظف'),
+          if (u['id'] != null && s.role != 'platform_admin')
+            _tile(context, Icons.assessment_outlined, 'تقريري', PersonReportScreen(userId: u['id'] as int, title: 'تقريري')),
           if (s.isStudent || s.isInstructor)
             _tile(context, Icons.calendar_view_week_outlined, 'جدولي الأسبوعي', const TimetableScreen()),
           _tile(context, Icons.photo_library_outlined, 'الجداول والإعلانات المصورة', const PublicationsScreen(),
               subtitle: 'جداول المحاضرات المنشورة والإعلانات بالصور'),
           _tile(context, Icons.description_outlined, 'الطلبات والمعاملات', const RequestsScreen(),
               subtitle: s.role == 'staff' || s.isAdmin ? 'طلباتي والوارد إليّ' : 'إفادة قيد، كشف درجات، عذر غياب…'),
+          if (s.isAdmin && s.can('banners.manage'))
+            _tile(context, Icons.push_pin_outlined, 'الإعلانات المثبتة', const ManageBannersScreen()),
+          if (s.can('publications.manage') && (s.isAdmin || s.role == 'staff'))
+            _tile(context, Icons.add_photo_alternate_outlined, 'نشر الجداول والإعلانات', const ManagePublicationsScreen(),
+                subtitle: 'جدول محاضرات أو إعلان مصور من الكاميرا أو المعرض أو PDF'),
+          if (s.isAdmin) _tile(context, Icons.policy_outlined, 'سجل التدقيق', const AuditScreen()),
+          if (s.isAdmin) _tile(context, Icons.flag_outlined, 'بلاغات الرسائل', const AbuseReportsScreen()),
           if (canSendNotifications(s.user))
             _tile(context, Icons.campaign_outlined, 'إرسال إشعار', const SendNotificationScreen()),
           _tile(context, Icons.notifications_active_outlined, 'الإشعارات', const NotificationSettingsScreen(),

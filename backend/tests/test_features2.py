@@ -144,3 +144,14 @@ def test_push_open_marks_read(client, as_):
     r = client.post(f"/api/notifications/by-id/{n['id']}/read", headers=s)
     assert r.status_code == 200
     assert client.post(f"/api/notifications/by-id/{n['id']}/read", headers=as_("student2@nalut.edu.ly")).status_code == 404
+
+
+def test_teacher_moves_own_lecture_times_only(client, as_):
+    t = as_("t.ahmed@nalut.edu.ly")
+    course = client.get("/api/courses", headers=t).json()[0]
+    slots = [{"day": 1, "start": "10:00", "end": "11:30", "room": "قاعة 4"}]
+    r = client.patch(f"/api/courses/{course['id']}", headers=t, json={"schedule": slots})
+    assert r.status_code == 200, r.text
+    assert client.patch(f"/api/courses/{course['id']}", headers=t, json={"title": "اسم آخر"}).status_code == 403
+    s = as_("s.ali@nalut.edu.ly")
+    assert client.patch(f"/api/courses/{course['id']}", headers=s, json={"schedule": []}).status_code in (403, 404)

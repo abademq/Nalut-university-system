@@ -115,6 +115,11 @@ class ApiClient {
     return _handle(await _send(call), call, path);
   }
 
+  Future<dynamic> delete(String path) async {
+    call() => _http.delete(_uri(path), headers: _headers());
+    return _handle(await _send(call), call, path);
+  }
+
   Future<dynamic> multipart(String path,
       {Map<String, String> fields = const {}, List<UploadFile> files = const [], Map<String, String>? headers}) async {
     Future<http.Response> call() async {

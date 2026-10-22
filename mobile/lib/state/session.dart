@@ -29,6 +29,8 @@ class Session extends ChangeNotifier {
   bool get isStudent => role == 'student';
   bool get isInstructor => role == 'teacher' || role == 'assistant';
   bool get isAdmin => role == 'faculty_admin' || role == 'university_admin';
+  /// A configurable capability from the permission matrix (the profile's `can` list).
+  bool can(String capability) => (user?['can'] as List?)?.contains(capability) ?? false;
   bool get canCheckIn => role.isNotEmpty && role != 'platform_admin';
   String get firstName => (user?['full_name'] as String? ?? '').split(' (').first;
 

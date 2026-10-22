@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../config.dart';
 import '../state/session.dart';
+import 'forgot_password_screen.dart';
 
 enum _Step { credentials, code, chooseMethod, setupSms, setupTotp }
 
@@ -237,9 +238,9 @@ class _LoginScreenState extends State<LoginScreen> {
             child: Text(_busy ? 'جارٍ الدخول…' : 'تسجيل الدخول'),
           ),
           TextButton(
-            onPressed: () =>
-                launchUrl(Uri.parse(context.read<Session>().api.baseUrl), mode: LaunchMode.externalApplication),
-            child: const Text('نسيت كلمة المرور؟ (من بوابة الويب)'),
+            onPressed: () => Navigator.push(context,
+                MaterialPageRoute(builder: (_) => ForgotPasswordScreen(identifier: _identifier.text.trim()))),
+            child: const Text('نسيت كلمة المرور؟'),
           ),
         ];
       case _Step.code:

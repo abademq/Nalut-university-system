@@ -179,7 +179,14 @@ class _CourseGradesScreenState extends State<CourseGradesScreen> {
             .where((st) => q.isEmpty || '${st['full_name']} ${st['code'] ?? ''}'.contains(q))
             .toList();
         return Scaffold(
-          appBar: AppBar(title: Text('${d['course']['code']} — الدرجات')),
+          appBar: AppBar(title: Text('${d['course']['code']} — الدرجات'), actions: [
+            IconButton(
+              tooltip: 'سجل التعديلات',
+              icon: const Icon(Icons.history),
+              onPressed: () => Navigator.push(
+                  context, MaterialPageRoute(builder: (_) => GradeHistoryScreen(courseId: widget.courseId))),
+            ),
+          ]),
           bottomNavigationBar: editable
               ? SafeArea(
                   child: Padding(
@@ -261,6 +268,44 @@ class _CourseGradesScreenState extends State<CourseGradesScreen> {
           ]),
         );
       },
+    );
+  }
+}
+
+
+/// Every change to the course's grades: who, when, from what to what, and why.
+class GradeHistoryScreen extends StatelessWidget {
+  const GradeHistoryScreen({super.key, required this.courseId});
+  final int courseId;
+
+  static String _v(Object? v) => v == null ? '—' : _CourseGradesScreenState._fmt(v);
+
+  @override
+  Widget build(BuildContext context) {
+    final s = context.read<Session>();
+    return Scaffold(
+      appBar: AppBar(title: const Text('سجل تعديلات الدرجات')),
+      body: AsyncView<List<dynamic>>(
+        load: () async => await s.api.get('/api/courses/$courseId/grades/history') as List<dynamic>,
+        builder: (context, rows, reload) => ListView.separated(
+          padding: const EdgeInsets.all(12),
+          itemCount: rows.isEmpty ? 1 : rows.length,
+          separatorBuilder: (_, _) => const Divider(height: 1),
+          itemBuilder: (context, i) {
+            if (rows.isEmpty) return const EmptyView('لا توجد تعديلات بعد', icon: Icons.history);
+            final r = rows[i] as Map<String, dynamic>;
+            return ListTile(
+              contentPadding: EdgeInsets.zero,
+              title: Text('${r['student']} — ${r['component']}'),
+              subtitle: Text('${r['reason']}\n${r['actor']} · ${fmtDate(r['created_at'])}'
+                  '${r['source'] == 'import' ? ' · استيراد' : ''}'),
+              isThreeLine: true,
+              trailing: Text('${_v(r['old'])} ← ${_v(r['new'])}',
+                  textDirection: TextDirection.rtl, style: const TextStyle(fontWeight: FontWeight.bold)),
+            );
+          },
+        ),
+      ),
     );
   }
 }

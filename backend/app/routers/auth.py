@@ -356,23 +356,32 @@ def forgot_password(body: ForgotIn, request: Request, db: Session = Depends(get_
     if not limiter.hit(f"forgot:{client_ip(request)}", 5, 900):
         raise HTTPException(status_code=429, detail="محاولات كثيرة، حاول لاحقاً")
     user = find_user(db, body.identifier)
-    if user and user.is_active:
+    if user and user.is_active and user.phone and mfa.sms_available():
+        # a 6-digit code by SMS (easy to type on a phone), used with the identifier
+        try:
+            mfa.start(db, user, "reset")
+            audit.record(db, "auth.reset_requested", actor=user, ip=client_ip(request), details={"via": "sms"})
+        except mfa.OtpError:
+            pass  # same answer either way; the user can ask again after a minute
+        db.commit()
+    elif user and user.is_active:
         token = new_opaque_token()
         db.add(PasswordResetToken(user_id=user.id, token_hash=sha256_hex(token),
                                   expires_at=utcnow() + timedelta(minutes=30)))
         audit.record(db, "auth.reset_requested", actor=user, ip=client_ip(request))
         db.commit()
-        message = f"رمز استعادة كلمة المرور (صالح 30 دقيقة): {token}"
-        if user.phone:
-            sms_provider().send(user.phone, message)
-        # E-mail delivery plugs in here; in development the token is written to the server log only.
-        log.info("password reset token for user %s: %s", user.id, token)
+        # E-mail delivery plugs in here; during development the token is written to the server log.
+        if settings.env == "development":
+            log.info("password reset token for user %s: %s", user.id, token)
     # identical answer whether or not the account exists
     return {"ok": True, "message": "إذا كان الحساب موجوداً فسيصلك رمز الاستعادة"}
 
 
 class ResetIn(BaseModel):
-    token: str = Field(min_length=10, max_length=200)
+    # either the long token, or the identifier with the 6-digit SMS code
+    token: str | None = Field(default=None, min_length=10, max_length=200)
+    identifier: str | None = Field(default=None, max_length=200)
+    code: str | None = Field(default=None, max_length=10)
     new_password: str = Field(min_length=1, max_length=200)
 
 
@@ -380,17 +389,29 @@ class ResetIn(BaseModel):
 def reset_password(body: ResetIn, request: Request, db: Session = Depends(get_db)):
     if not limiter.hit(f"reset:{client_ip(request)}", 10, 900):
         raise HTTPException(status_code=429, detail="محاولات كثيرة، حاول لاحقاً")
-    rt = db.scalar(select(PasswordResetToken).where(PasswordResetToken.token_hash == sha256_hex(body.token)))
-    if not rt or rt.used_at or rt.expires_at < utcnow():
-        raise HTTPException(status_code=400, detail="رمز الاستعادة غير صالح أو منتهي")
-    user = db.get(User, rt.user_id)
+    rt = None
+    if body.token:
+        rt = db.scalar(select(PasswordResetToken).where(PasswordResetToken.token_hash == sha256_hex(body.token)))
+        if not rt or rt.used_at or rt.expires_at < utcnow():
+            raise HTTPException(status_code=400, detail="رمز الاستعادة غير صالح أو منتهي")
+        user = db.get(User, rt.user_id)
+    else:
+        user = find_user(db, body.identifier or "") if body.code else None
+        # check the password rules first so a weak password does not use up the code
+        if user and password_problems(body.new_password, identifiers=(user.email, user.phone)):
+            raise HTTPException(status_code=400, detail="؛ ".join(
+                password_problems(body.new_password, identifiers=(user.email, user.phone))))
+        if not user or not mfa.verify(db, user, "reset", body.code or ""):
+            db.commit()  # keep the attempt count
+            raise HTTPException(status_code=400, detail="رمز الاستعادة غير صالح أو منتهي")
     problems = password_problems(body.new_password, identifiers=(user.email, user.phone))
     if problems:
         raise HTTPException(status_code=400, detail="؛ ".join(problems))
     user.password_hash = hash_password(body.new_password)
     user.must_change_password = False
     user.failed_logins, user.locked_until = 0, None
-    rt.used_at = utcnow()
+    if rt:
+        rt.used_at = utcnow()
     db.execute(update(AuthSession).where(AuthSession.user_id == user.id, AuthSession.revoked_at.is_(None))
                .values(revoked_at=utcnow()))
     audit.record(db, "auth.password_reset", actor=user, ip=client_ip(request))
