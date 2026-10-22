@@ -4,14 +4,36 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../state/session.dart';
 import '../widgets/common.dart';
+import 'account_screen.dart';
+import 'grade_entry_screen.dart';
 import 'grades_screen.dart';
+import 'guide_screen.dart';
 import 'messages_screen.dart';
 import 'notification_settings_screen.dart';
+import 'requests_screen.dart';
 import 'results_screen.dart';
 import 'send_notification_screen.dart';
 
 class MoreScreen extends StatelessWidget {
   const MoreScreen({super.key});
+
+  Widget _tile(BuildContext context, IconData icon, String title, Widget page, {String? subtitle}) => ListTile(
+        leading: Icon(icon),
+        title: Text(title),
+        subtitle: subtitle == null ? null : Text(subtitle),
+        trailing: const Icon(Icons.chevron_left),
+        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => page)),
+      );
+
+  /// One-time link (60 s) that signs the browser in as this user.
+  Future<void> _openDashboard(BuildContext context, Session s) async {
+    try {
+      final r = await s.api.post('/api/auth/handoff/start') as Map<String, dynamic>;
+      await launchUrl(Uri.parse('${s.api.baseUrl}${r['path']}'), mode: LaunchMode.externalApplication);
+    } catch (e) {
+      if (context.mounted) showMessage(context, e, error: true);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -31,54 +53,28 @@ class MoreScreen extends StatelessWidget {
       ),
       Card(
         child: Column(children: [
-          if (s.isStudent)
-            ListTile(
-              leading: const Icon(Icons.grade_outlined),
-              title: const Text('درجاتي ونتائجي'),
-              trailing: const Icon(Icons.chevron_left),
-              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const GradesScreen())),
-            ),
-          if (s.isAdmin)
-            ListTile(
-              leading: const Icon(Icons.fact_check_outlined),
-              title: const Text('اعتماد النتائج'),
-              trailing: const Icon(Icons.chevron_left),
-              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ResultsScreen())),
-            ),
+          _tile(context, Icons.manage_accounts_outlined, 'حسابي', const AccountScreen(),
+              subtitle: 'كلمة المرور، التحقق الثنائي، التفضيلات'),
+          if (s.isStudent) _tile(context, Icons.grade_outlined, 'درجاتي ونتائجي', const GradesScreen()),
+          if (s.isInstructor || s.isAdmin)
+            _tile(context, Icons.edit_note, 'رصد الدرجات', const GradeEntryScreen(), subtitle: 'إدخال الدرجات ورفعها للاعتماد'),
+          if (s.isAdmin) _tile(context, Icons.fact_check_outlined, 'اعتماد النتائج', const ResultsScreen()),
+          _tile(context, Icons.description_outlined, 'الطلبات والمعاملات', const RequestsScreen(),
+              subtitle: s.role == 'staff' || s.isAdmin ? 'طلباتي والوارد إليّ' : 'إفادة قيد، كشف درجات، عذر غياب…'),
           if (canSendNotifications(s.user))
+            _tile(context, Icons.campaign_outlined, 'إرسال إشعار', const SendNotificationScreen()),
+          _tile(context, Icons.notifications_active_outlined, 'الإشعارات', const NotificationSettingsScreen(),
+              subtitle: 'حالة هاتفك وتجربة النغمات'),
+          _tile(context, Icons.chat_outlined, 'الرسائل', const MessagesScreen()),
+          _tile(context, Icons.help_outline, 'دليل الاستخدام', const GuideScreen()),
+          if (s.isAdmin || s.role == 'staff' || s.isInstructor)
             ListTile(
-              leading: const Icon(Icons.campaign_outlined),
-              title: const Text('إرسال إشعار'),
-              trailing: const Icon(Icons.chevron_left),
-              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SendNotificationScreen())),
+              leading: const Icon(Icons.dashboard_outlined),
+              title: const Text('لوحة التحكم الكاملة'),
+              subtitle: const Text('تفتح لوحة الويب مسجّلاً دون كلمة مرور'),
+              trailing: const Icon(Icons.open_in_new),
+              onTap: () => _openDashboard(context, s),
             ),
-          ListTile(
-            leading: const Icon(Icons.music_note_outlined),
-            title: const Text('الإشعارات والنغمات'),
-            subtitle: const Text('جرّب نغمة كل نوع وغيّرها'),
-            trailing: const Icon(Icons.chevron_left),
-            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationSettingsScreen())),
-          ),
-          ListTile(
-            leading: const Icon(Icons.chat_outlined),
-            title: const Text('الرسائل'),
-            trailing: const Icon(Icons.chevron_left),
-            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MessagesScreen())),
-          ),
-          ListTile(
-            leading: const Icon(Icons.help_outline),
-            title: const Text('دليل الاستخدام'),
-            subtitle: const Text('شرح كل الأزرار والإعدادات'),
-            trailing: const Icon(Icons.chevron_left),
-            onTap: () => launchUrl(Uri.parse('${s.api.baseUrl}/#/guide'), mode: LaunchMode.externalApplication),
-          ),
-          ListTile(
-            leading: const Icon(Icons.open_in_browser),
-            title: const Text('بوابة الويب'),
-            subtitle: const Text('الطلبات والمعاملات، كلمة المرور، المصادقة الثنائية، لوحة التحكم'),
-            trailing: const Icon(Icons.chevron_left),
-            onTap: () => launchUrl(Uri.parse(s.api.baseUrl), mode: LaunchMode.externalApplication),
-          ),
         ]),
       ),
       Card(

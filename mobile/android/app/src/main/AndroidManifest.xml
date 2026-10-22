@@ -15,7 +15,7 @@
         <!-- pushes without an explicit channel use the "normal" tone; the server picks the channel per priority -->
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_channel_id"
-            android:value="nus_normal" />
+            android:value="nus_tone_chime" />
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_icon"
             android:resource="@drawable/ic_stat_notify" />

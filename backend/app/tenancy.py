@@ -60,6 +60,8 @@ DEFAULT_SETTINGS: dict = {
         # categories whose urgent messages also go out by SMS when SMS is enabled
         "sms_categories": ["official_warning", "admin_notice"],
         "due_reminder_hours": 24,
+        # tone each kind of notification plays on phones (names in notifications.TONES)
+        "tones": {"normal": "chime", "important": "rising", "urgent": "alarm", "official_warning": "siren"},
     },
     "archive": {
         # staff offices (besides faculty / university administration) allowed to manage student files

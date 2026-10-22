@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 
 import 'api/api_client.dart';
 import 'firebase_options.dart';
@@ -11,26 +12,48 @@ import 'firebase_options.dart';
 /// platform, or the user refuses permission, the app keeps working with the in-app inbox.
 /// A notification the user tapped in the phone's notification tray.
 class PushOpen {
-  const PushOpen({this.notificationId, this.link, this.title, this.body});
+  const PushOpen({this.notificationId, this.link, this.title, this.body, this.tone});
   final int? notificationId;
   final String? link;
   final String? title;
   final String? body;
+  final String? tone; // chosen by the university administration
 
   factory PushOpen.fromData(Map<String, dynamic> data, {String? title, String? body}) => PushOpen(
         notificationId: int.tryParse('${data['notification_id'] ?? ''}'),
         link: (data['link'] as String?)?.isEmpty == true ? null : data['link'] as String?,
         title: title,
         body: body,
+        tone: data['tone'] as String?,
       );
+}
+
+/// Plays a bundled tone and opens the phone's notification settings (MainActivity.kt).
+class NativeNotifications {
+  static const _channel = MethodChannel('nus/notifications');
+
+  static Future<void> playTone(String? tone) async {
+    try {
+      await _channel.invokeMethod('playTone', {'tone': tone ?? 'chime'});
+    } catch (_) {}
+  }
+
+  static Future<void> openSettings() async {
+    try {
+      await _channel.invokeMethod('openAppSettings');
+    } catch (_) {}
+  }
 }
 
 abstract class PushService {
   Future<void> start(ApiClient api,
-      {void Function(String title, String body)? onForeground,
+      {void Function(PushOpen message)? onForeground,
       VoidCallback? onMessage,
       void Function(PushOpen open)? onOpened});
   Future<void> stop(ApiClient api);
+
+  /// Where registration got to, shown on the notification settings screen.
+  String get status;
 }
 
 // Uses the classic FCM registration token, which the server sends to through the
@@ -41,21 +64,29 @@ abstract class PushService {
 class FirebasePushService implements PushService {
   String? _token;
   final List<StreamSubscription<dynamic>> _subs = [];
+  @override
+  String status = 'not_started'; // no_firebase | denied | registered | error: …
 
   String get _platform => defaultTargetPlatform == TargetPlatform.iOS ? 'ios' : 'android';
 
   @override
   Future<void> start(ApiClient api,
-      {void Function(String title, String body)? onForeground,
+      {void Function(PushOpen message)? onForeground,
       VoidCallback? onMessage,
       void Function(PushOpen open)? onOpened}) async {
     try {
       final options = DefaultFirebaseOptions.currentPlatform;
-      if (options == null) return;
+      if (options == null) {
+        status = 'no_firebase';
+        return;
+      }
       if (Firebase.apps.isEmpty) await Firebase.initializeApp(options: options);
       final messaging = FirebaseMessaging.instance;
       final perm = await messaging.requestPermission();
-      if (perm.authorizationStatus == AuthorizationStatus.denied) return;
+      if (perm.authorizationStatus == AuthorizationStatus.denied) {
+        status = 'denied';
+        return;
+      }
 
       Future<void> register(String token) async {
         _token = token;
@@ -63,15 +94,23 @@ class FirebasePushService implements PushService {
       }
 
       final token = await messaging.getToken();
-      if (token != null) await register(token);
+      if (token == null) {
+        status = 'error: لم يُصدر Firebase رمزاً لهذا الهاتف';
+        return;
+      }
+      await register(token);
+      status = 'registered';
       await _cancel();
       _subs.add(messaging.onTokenRefresh.listen((t) => register(t).catchError((_) {})));
       // Android/iOS show notifications themselves when the app is in the background;
-      // while it is open we refresh the badge and show a short banner.
+      // while it is open the system stays silent, so we play the tone and show a banner.
       _subs.add(FirebaseMessaging.onMessage.listen((m) {
         onMessage?.call();
         final n = m.notification;
-        if (n != null) onForeground?.call(n.title ?? '', n.body ?? '');
+        if (n != null) {
+          NativeNotifications.playTone(m.data['tone'] as String?);
+          onForeground?.call(PushOpen.fromData(m.data, title: n.title, body: n.body));
+        }
       }));
       PushOpen opened(RemoteMessage m) =>
           PushOpen.fromData(m.data, title: m.notification?.title, body: m.notification?.body);
@@ -84,6 +123,7 @@ class FirebasePushService implements PushService {
       final initial = await messaging.getInitialMessage();
       if (initial != null) onOpened?.call(opened(initial));
     } catch (e) {
+      status = 'error: $e';
       debugPrint('push disabled: $e');
     }
   }

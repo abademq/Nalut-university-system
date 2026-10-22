@@ -99,14 +99,14 @@ def test_provider_selection(tmp_path, monkeypatch):
 
 def test_tones_follow_priority_and_test_push(client, as_, db, monkeypatch):
     assert notifications.tone_for("urgent", "announcement") == "urgent"
-    assert notifications.tone_for("normal", "official_warning") == "urgent"
+    assert notifications.tone_for("normal", "official_warning") == "official_warning"
     assert notifications.tone_for("important", "announcement") == "important"
     assert notifications.tone_for("normal", "announcement") == "normal"
     sent = []
 
     class Fake:
         def send(self, token, title, body, data):
-            sent.append((token, data["priority"]))
+            sent.append((token, data["tone"]))
             return "invalid" if token.startswith("old") else "sent"
 
     monkeypatch.setattr(notifications, "push_provider", lambda: Fake())
@@ -114,7 +114,7 @@ def test_tones_follow_priority_and_test_push(client, as_, db, monkeypatch):
     client.post("/api/me/devices", headers=h, json={"platform": "android", "token": "new-token-123456"})
     client.post("/api/me/devices", headers=h, json={"platform": "android", "token": "old-token-123456"})
     r = client.post("/api/notifications/test-push", headers=h, json={"priority": "urgent"}).json()
-    assert r == {"provider": "fake", "devices": 2, "sent": 1, "invalid_removed": 1, "tone": "urgent"}
+    assert r == {"provider": "fake", "devices": 2, "sent": 1, "invalid_removed": 1, "tone": "alarm"}
     assert db.query(DeviceToken).filter_by(token="old-token-123456").count() == 0
     assert client.get("/api/notifications/health", headers=h).status_code == 403
     health = client.get("/api/notifications/health", headers=as_("president@nalut.edu.ly")).json()
@@ -136,3 +136,26 @@ def test_resala_sms_batch_marks_invalid_numbers(monkeypatch):
         [("0912222222", "t", "b"), ("0921111111", "t", "b"), ("+20100", "t", "b")])
     assert out == {"0912222222": True, "0921111111": False, "+20100": False}
     assert [r.phone for r in fake.records] == ["218912222222", "218921111111"]
+
+
+def test_admin_chooses_the_tones(client, as_, monkeypatch):
+    p = as_("president@nalut.edu.ly")
+    r = client.put("/api/settings", headers=p, json={"settings": {"notifications": {
+        "tones": {"normal": "bell", "important": "pulse", "urgent": "siren", "official_warning": "alarm"}}}})
+    assert r.status_code == 200, r.text
+    assert client.put("/api/settings", headers=p, json={"settings": {"notifications": {
+        "tones": {"normal": "mystery"}}}}).status_code == 400
+    s = as_("s.ali@nalut.edu.ly")
+    slots = {x["slot"]: x["tone"] for x in client.get("/api/notifications/tones", headers=s).json()["slots"]}
+    assert slots == {"normal": "bell", "important": "pulse", "urgent": "siren", "official_warning": "alarm"}
+    seen = []
+
+    class Fake:
+        def send(self, token, title, body, data):
+            seen.append(data["tone"])
+            return "sent"
+
+    monkeypatch.setattr(notifications, "push_provider", lambda: Fake())
+    client.post("/api/me/devices", headers=s, json={"platform": "android", "token": "tok-tone-123456"})
+    client.post("/api/notifications/test-push", headers=s, json={"priority": "important"})
+    assert seen == ["pulse"]

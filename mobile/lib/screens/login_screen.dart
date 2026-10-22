@@ -89,9 +89,16 @@ class _LoginScreenState extends State<LoginScreen> {
     await _run(() async {
       final session = context.read<Session>();
       final withCode = _step == _Step.code && !resend;
-      final r = await session.login(_identifier.text.trim(), _password.text,
-          mfaCode: withCode ? _code.text.trim() : null);
-      if (!mounted || r == null) return;
+      final r = await session.login(
+        _identifier.text.trim(),
+        _password.text,
+        mfaCode: withCode ? _code.text.trim() : null,
+      );
+      if (r == null) {
+        TextInput.finishAutofillContext(); // signed in: offer to save the credentials
+        return;
+      }
+      if (!mounted) return;
       setState(() {
         if (r['mfa_required'] == true) {
           _step = _Step.code;
@@ -108,42 +115,43 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _startSms() => _run(() async {
-        final r = await context.read<Session>().api.postWithSetupToken('/api/auth/mfa/sms/start', _setupToken!);
-        if (mounted) {
-          setState(() {
-            _step = _Step.setupSms;
-            _code.clear();
-            _afterSms(r);
-          });
-        }
+    final r = await context.read<Session>().api.postWithSetupToken('/api/auth/mfa/sms/start', _setupToken!);
+    if (mounted) {
+      setState(() {
+        _step = _Step.setupSms;
+        _code.clear();
+        _afterSms(r);
       });
+    }
+  });
 
   Future<void> _startTotp() => _run(() async {
-        final r = await context.read<Session>().api.postWithSetupToken('/api/auth/mfa/setup', _setupToken!);
-        if (mounted) {
-          setState(() {
-            _totpSecret = r['secret'] as String?;
-            _totpUri = r['otpauth_uri'] as String?;
-            _code.clear();
-            _step = _Step.setupTotp;
-          });
-        }
+    final r = await context.read<Session>().api.postWithSetupToken('/api/auth/mfa/setup', _setupToken!);
+    if (mounted) {
+      setState(() {
+        _totpSecret = r['secret'] as String?;
+        _totpUri = r['otpauth_uri'] as String?;
+        _code.clear();
+        _step = _Step.setupTotp;
       });
+    }
+  });
 
   Future<void> _finishSetup() => _run(() async {
-        final session = context.read<Session>();
-        final path = _step == _Step.setupSms ? '/api/auth/mfa/sms/enable' : '/api/auth/mfa/enable';
-        final r = await session.api.postWithSetupToken(path, _setupToken!, {'code': _code.text.trim()});
-        session.completeLogin(r);
-      });
+    final session = context.read<Session>();
+    final path = _step == _Step.setupSms ? '/api/auth/mfa/sms/enable' : '/api/auth/mfa/enable';
+    final r = await session.api.postWithSetupToken(path, _setupToken!, {'code': _code.text.trim()});
+    TextInput.finishAutofillContext();
+    session.completeLogin(r);
+  });
 
   void _back() => setState(() {
-        _timer?.cancel();
-        _wait = 0;
-        _step = _Step.credentials;
-        _code.clear();
-        _error = _info = null;
-      });
+    _timer?.cancel();
+    _wait = 0;
+    _step = _Step.credentials;
+    _code.clear();
+    _error = _info = null;
+  });
 
   Future<void> _editServer() async {
     final session = context.read<Session>();
@@ -169,50 +177,58 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Widget _codeField(VoidCallback onDone) => TextField(
-        controller: _code,
-        keyboardType: TextInputType.number,
-        maxLength: 6,
-        autofocus: true,
-        autofillHints: const [AutofillHints.oneTimeCode],
-        textDirection: TextDirection.ltr,
-        textAlign: TextAlign.center,
-        style: const TextStyle(fontSize: 24, letterSpacing: 8),
-        onSubmitted: (_) => onDone(),
-        decoration: const InputDecoration(labelText: 'رمز التحقق', counterText: ''),
-      );
+    controller: _code,
+    keyboardType: TextInputType.number,
+    maxLength: 6,
+    autofocus: true,
+    autofillHints: const [AutofillHints.oneTimeCode],
+    textDirection: TextDirection.ltr,
+    textAlign: TextAlign.center,
+    style: const TextStyle(fontSize: 24, letterSpacing: 8),
+    onSubmitted: (_) => onDone(),
+    decoration: const InputDecoration(labelText: 'رمز التحقق', counterText: ''),
+  );
 
   Widget _resend(VoidCallback onTap) => TextButton(
-        onPressed: _busy || _wait > 0 ? null : onTap,
-        child: Text(_wait > 0 ? 'إعادة الإرسال بعد $_wait ثانية' : 'إعادة إرسال الرمز'),
-      );
+    onPressed: _busy || _wait > 0 ? null : onTap,
+    child: Text(_wait > 0 ? 'إعادة الإرسال بعد $_wait ثانية' : 'إعادة إرسال الرمز'),
+  );
+
+  // Kept mounted (hidden) during the code steps so the autofill service still sees the
+  // credentials when sign-in completes and can offer to save them in Google Password Manager.
+  Widget _credentialFields() => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      TextField(
+        key: const Key('identifier'),
+        controller: _identifier,
+        keyboardType: TextInputType.emailAddress,
+        textDirection: TextDirection.ltr,
+        autofillHints: const [AutofillHints.username, AutofillHints.email, AutofillHints.telephoneNumber],
+        decoration: const InputDecoration(labelText: 'البريد الإلكتروني أو رقم الهاتف'),
+      ),
+      const SizedBox(height: 12),
+      TextField(
+        key: const Key('password'),
+        controller: _password,
+        obscureText: _hide,
+        autofillHints: const [AutofillHints.password],
+        onSubmitted: (_) => _submit(),
+        decoration: InputDecoration(
+          labelText: 'كلمة المرور',
+          suffixIcon: IconButton(
+            icon: Icon(_hide ? Icons.visibility : Icons.visibility_off),
+            onPressed: () => setState(() => _hide = !_hide),
+          ),
+        ),
+      ),
+    ],
+  );
 
   List<Widget> _stepBody() {
     switch (_step) {
       case _Step.credentials:
         return [
-          TextField(
-            key: const Key('identifier'),
-            controller: _identifier,
-            keyboardType: TextInputType.emailAddress,
-            textDirection: TextDirection.ltr,
-            autofillHints: const [AutofillHints.username],
-            decoration: const InputDecoration(labelText: 'البريد الإلكتروني أو رقم الهاتف'),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            key: const Key('password'),
-            controller: _password,
-            obscureText: _hide,
-            autofillHints: const [AutofillHints.password],
-            onSubmitted: (_) => _submit(),
-            decoration: InputDecoration(
-              labelText: 'كلمة المرور',
-              suffixIcon: IconButton(
-                icon: Icon(_hide ? Icons.visibility : Icons.visibility_off),
-                onPressed: () => setState(() => _hide = !_hide),
-              ),
-            ),
-          ),
           const SizedBox(height: 16),
           FilledButton(
             key: const Key('login'),
@@ -221,16 +237,18 @@ class _LoginScreenState extends State<LoginScreen> {
             child: Text(_busy ? 'جارٍ الدخول…' : 'تسجيل الدخول'),
           ),
           TextButton(
-            onPressed: () => launchUrl(Uri.parse(context.read<Session>().api.baseUrl),
-                mode: LaunchMode.externalApplication),
+            onPressed: () =>
+                launchUrl(Uri.parse(context.read<Session>().api.baseUrl), mode: LaunchMode.externalApplication),
             child: const Text('نسيت كلمة المرور؟ (من بوابة الويب)'),
           ),
         ];
       case _Step.code:
         return [
-          Text(_method == 'sms'
-              ? 'أدخل الرمز المرسل برسالة نصية إلى ${_phoneHint ?? 'هاتفك'}'
-              : 'أدخل الرمز الظاهر في تطبيق المصادقة'),
+          Text(
+            _method == 'sms'
+                ? 'أدخل الرمز المرسل برسالة نصية إلى ${_phoneHint ?? 'هاتفك'}'
+                : 'أدخل الرمز الظاهر في تطبيق المصادقة',
+          ),
           const SizedBox(height: 8),
           _codeField(_submit),
           const SizedBox(height: 8),
@@ -244,17 +262,21 @@ class _LoginScreenState extends State<LoginScreen> {
         ];
       case _Step.chooseMethod:
         return [
-          const Text('حسابك يتطلب تحققاً ثنائياً. اختر الطريقة التي تناسبك:',
-              style: TextStyle(fontWeight: FontWeight.bold)),
+          const Text(
+            'حسابك يتطلب تحققاً ثنائياً. اختر الطريقة التي تناسبك:',
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
           const SizedBox(height: 12),
           if (_methods.contains('sms'))
             Card(
               child: ListTile(
                 leading: const Icon(Icons.sms_outlined, color: AppColors.primary),
                 title: const Text('رسالة نصية'),
-                subtitle: Text(_phoneHint == null
-                    ? 'لا يوجد رقم هاتف في حسابك، تواصل مع الإدارة'
-                    : 'يصلك رمز على $_phoneHint عند كل دخول'),
+                subtitle: Text(
+                  _phoneHint == null
+                      ? 'لا يوجد رقم هاتف في حسابك، تواصل مع الإدارة'
+                      : 'يصلك رمز على $_phoneHint عند كل دخول',
+                ),
                 enabled: _phoneHint != null && !_busy,
                 onTap: _startSms,
               ),
@@ -301,8 +323,12 @@ class _LoginScreenState extends State<LoginScreen> {
             },
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 8),
-              child: SelectableText(_totpSecret ?? '', textDirection: TextDirection.ltr,
-                  textAlign: TextAlign.center, style: const TextStyle(fontFamily: 'monospace', fontSize: 16)),
+              child: SelectableText(
+                _totpSecret ?? '',
+                textDirection: TextDirection.ltr,
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontFamily: 'monospace', fontSize: 16),
+              ),
             ),
           ),
           const Text('2. أدخل الرمز الظاهر في التطبيق'),
@@ -323,27 +349,39 @@ class _LoginScreenState extends State<LoginScreen> {
             padding: const EdgeInsets.all(20),
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 420),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                Center(child: Image.asset('assets/logo.png', width: 72, height: 72)),
-                const SizedBox(height: 12),
-                Text('منصة الجامعة الذكية',
-                    textAlign: TextAlign.center, style: Theme.of(context).textTheme.headlineSmall),
-                const SizedBox(height: 4),
-                const Text('بوابة موحدة للطلبة وأعضاء هيئة التدريس والإدارة',
-                    textAlign: TextAlign.center, style: TextStyle(color: Colors.grey)),
-                const SizedBox(height: 24),
-                if (_error != null)
-                  _Note(text: _error!, color: AppColors.danger)
-                else if (_info != null && _step != _Step.credentials)
-                  _Note(text: _info!, color: AppColors.primary),
-                ..._stepBody(),
-                const SizedBox(height: 24),
-                TextButton.icon(
-                  onPressed: _editServer,
-                  icon: const Icon(Icons.dns_outlined, size: 18),
-                  label: Text(server, textDirection: TextDirection.ltr, style: const TextStyle(fontSize: 12)),
+              child: AutofillGroup(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Center(child: Image.asset('assets/logo.png', width: 72, height: 72)),
+                    const SizedBox(height: 12),
+                    Text(
+                      'منصة الجامعة الذكية',
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.headlineSmall,
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'بوابة موحدة للطلبة وأعضاء هيئة التدريس والإدارة',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: Colors.grey),
+                    ),
+                    const SizedBox(height: 24),
+                    if (_error != null)
+                      _Note(text: _error!, color: AppColors.danger)
+                    else if (_info != null && _step != _Step.credentials)
+                      _Note(text: _info!, color: AppColors.primary),
+                    Offstage(offstage: _step != _Step.credentials, child: _credentialFields()),
+                    ..._stepBody(),
+                    const SizedBox(height: 24),
+                    TextButton.icon(
+                      onPressed: _editServer,
+                      icon: const Icon(Icons.dns_outlined, size: 18),
+                      label: Text(server, textDirection: TextDirection.ltr, style: const TextStyle(fontSize: 12)),
+                    ),
+                  ],
                 ),
-              ]),
+              ),
             ),
           ),
         ),
@@ -359,9 +397,9 @@ class _Note extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.all(12),
-        margin: const EdgeInsets.only(bottom: 12),
-        decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10)),
-        child: Text(text, style: TextStyle(color: color)),
-      );
+    padding: const EdgeInsets.all(12),
+    margin: const EdgeInsets.only(bottom: 12),
+    decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10)),
+    child: Text(text, style: TextStyle(color: color)),
+  );
 }

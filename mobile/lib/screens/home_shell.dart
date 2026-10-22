@@ -23,6 +23,8 @@ class HomeShell extends StatefulWidget {
 class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   int _index = 0;
   int _bannerVersion = 0;
+  // bumping a tab's version rebuilds it, so tapping a tab always shows fresh data
+  final Map<String, int> _versions = {};
   Timer? _poll;
 
   @override
@@ -74,11 +76,22 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       appBar: AppBar(title: Text(tabs[index].$1)),
       body: Column(children: [
         BannerStrip(key: ValueKey(_bannerVersion)),
-        Expanded(child: IndexedStack(index: index, children: [for (final t in tabs) t.$3])),
+        Expanded(
+          child: IndexedStack(index: index, children: [
+            for (final t in tabs) KeyedSubtree(key: ValueKey('${t.$1}-${_versions[t.$1] ?? 0}'), child: t.$3),
+          ]),
+        ),
       ]),
       bottomNavigationBar: NavigationBar(
         selectedIndex: index,
-        onDestinationSelected: (i) => setState(() => _index = i),
+        onDestinationSelected: (i) {
+          setState(() {
+            _index = i;
+            _versions[tabs[i].$1] = (_versions[tabs[i].$1] ?? 0) + 1;
+            _bannerVersion++;
+          });
+          session.refreshUnread();
+        },
         destinations: [
           for (final t in tabs)
             NavigationDestination(

@@ -1,23 +1,21 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../config.dart';
+import '../push.dart';
 import '../state/session.dart';
 import '../widgets/common.dart';
 
-const _channel = MethodChannel('nus/notifications');
+const _slotIcons = {
+  'normal': (Icons.notifications_none, AppColors.primary),
+  'important': (Icons.notification_important_outlined, AppColors.warning),
+  'urgent': (Icons.campaign_outlined, AppColors.danger),
+  'official_warning': (Icons.gavel_outlined, AppColors.danger),
+};
 
-/// The three notification tones (one Android channel each): try each one, change it in the
-/// phone's settings, and for administrators a delivery overview.
-const tones = [
-  ('normal', 'nus_normal', 'الإعلانات العادية', 'نغمة هادئة قصيرة', Icons.notifications_none, AppColors.primary),
-  ('important', 'nus_important', 'الإشعارات المهمة', 'ثلاث نغمات صاعدة', Icons.notification_important_outlined,
-      AppColors.warning),
-  ('urgent', 'nus_urgent', 'التنبيهات العاجلة والإنذارات الرسمية', 'تنبيه متكرر مع اهتزاز أطول',
-      Icons.campaign_outlined, AppColors.danger),
-];
+const _testPriority = {'normal': 'normal', 'important': 'important', 'urgent': 'urgent'};
 
+/// Diagnostics and the tones chosen by the university (users can listen, not change them).
 class NotificationSettingsScreen extends StatefulWidget {
   const NotificationSettingsScreen({super.key});
 
@@ -38,13 +36,13 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
       final sent = (r['sent'] as num?)?.toInt() ?? 0;
       final String msg;
       if (r['provider'] == 'logpush' || r['provider'] == 'log') {
-        msg = 'الإشعارات الفورية غير مفعلة على الخادم (لا يوجد ملف Firebase)';
+        msg = 'الإشعارات الفورية غير مفعلة على الخادم (ملف Firebase غير موجود)';
       } else if (devices == 0) {
-        msg = 'هاتفك غير مسجل لاستقبال الإشعارات. أغلق التطبيق وافتحه، واسمح بالإشعارات';
+        msg = 'هاتفك غير مسجل. اضغط «إعادة تسجيل هذا الهاتف» ثم جرّب مرة أخرى';
       } else if (sent == 0) {
-        msg = 'فشل الإرسال إلى هاتفك. أعد تسجيل الدخول ثم جرّب مرة أخرى';
+        msg = 'رفض Firebase الإرسال: ${r['error'] ?? 'سبب غير معروف'}';
       } else {
-        msg = 'أُرسل إشعار تجريبي. إن لم يظهر خلال ثوانٍ فراجع إعدادات الإشعارات في الهاتف';
+        msg = 'أُرسل. أغلق التطبيق أو اخرج للشاشة الرئيسية لترى الإشعار في شريط الهاتف';
       }
       showMessage(context, msg, error: sent == 0);
     } catch (e) {
@@ -54,59 +52,91 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
     }
   }
 
-  Future<void> _change(String channelId) async {
-    try {
-      await _channel.invokeMethod('openChannelSettings', {'channel': channelId});
-    } catch (_) {
-      if (mounted) showMessage(context, 'افتح إعدادات الهاتف ← التطبيقات ← منصة الجامعة ← الإشعارات', error: true);
-    }
+  Future<void> _register() async {
+    setState(() => _busy = 'register');
+    final status = await context.read<Session>().registerPush();
+    if (!mounted) return;
+    setState(() => _busy = null);
+    showMessage(context, _statusText(status), error: status != 'registered');
   }
+
+  static String _statusText(String status) => switch (status) {
+        'registered' => 'هذا الهاتف مسجل لاستقبال الإشعارات',
+        'denied' => 'الإشعارات ممنوعة على هذا الهاتف. اسمح بها من إعدادات الهاتف ثم أعد التسجيل',
+        'no_firebase' => 'الإشعارات الفورية غير مهيأة في هذه النسخة من التطبيق',
+        'not_started' => 'لم يُسجَّل الهاتف بعد',
+        _ => 'تعذر التسجيل: ${status.replaceFirst('error: ', '')}',
+      };
 
   @override
   Widget build(BuildContext context) {
     final s = context.watch<Session>();
+    final status = s.push?.status ?? 'no_firebase';
     final admin = s.role == 'university_admin' || s.role == 'platform_admin';
     return Scaffold(
-      appBar: AppBar(title: const Text('الإشعارات والنغمات')),
+      appBar: AppBar(title: const Text('الإشعارات')),
       body: ListView(padding: const EdgeInsets.all(12), children: [
-        const Padding(
-          padding: EdgeInsets.fromLTRB(4, 4, 4, 12),
-          child: Text('لكل نوع نغمة مختلفة حتى تعرف أهمية الإشعار قبل أن تفتحه. '
-              'جرّب كل نغمة، أو غيّرها من إعدادات الهاتف.'),
-        ),
-        for (final t in tones)
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Row(children: [
-                  Icon(t.$5, color: t.$6),
-                  const SizedBox(width: 10),
-                  Expanded(child: Text(t.$3, style: const TextStyle(fontWeight: FontWeight.bold))),
-                ]),
-                Padding(
-                  padding: const EdgeInsets.only(right: 34, top: 2),
-                  child: Text(t.$4, style: const TextStyle(color: Colors.grey)),
-                ),
-                const SizedBox(height: 8),
-                Row(children: [
-                  FilledButton.tonalIcon(
-                    onPressed: _busy == null ? () => _test(t.$1) : null,
-                    icon: _busy == t.$1
-                        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                        : const Icon(Icons.play_arrow),
-                    label: const Text('تجربة'),
-                  ),
-                  const SizedBox(width: 8),
-                  TextButton.icon(
-                    onPressed: () => _change(t.$2),
-                    icon: const Icon(Icons.music_note_outlined),
-                    label: const Text('تغيير النغمة'),
-                  ),
-                ]),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Icon(status == 'registered' ? Icons.check_circle : Icons.error_outline,
+                    color: status == 'registered' ? AppColors.success : AppColors.danger),
+                const SizedBox(width: 8),
+                Expanded(child: Text(_statusText(status))),
               ]),
-            ),
+              const SizedBox(height: 8),
+              Wrap(spacing: 8, children: [
+                OutlinedButton.icon(
+                  onPressed: _busy == null ? _register : null,
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('إعادة تسجيل هذا الهاتف'),
+                ),
+                TextButton.icon(
+                  onPressed: NativeNotifications.openSettings,
+                  icon: const Icon(Icons.settings_outlined),
+                  label: const Text('السماح بالإشعارات'),
+                ),
+              ]),
+            ]),
           ),
+        ),
+        const Padding(
+          padding: EdgeInsets.fromLTRB(4, 12, 4, 8),
+          child: Text('نغمة كل نوع تحددها إدارة الجامعة. اضغط ▶ للاستماع، أو «تجربة» لإرسال إشعار حقيقي لهاتفك.'),
+        ),
+        AsyncView<Map<String, dynamic>>(
+          load: () async => await s.api.get('/api/notifications/tones') as Map<String, dynamic>,
+          builder: (context, d, reload) {
+            final labels = {for (final t in d['library'] as List) t['name']: t['label']};
+            return Column(children: [
+              for (final slot in d['slots'] as List)
+                Card(
+                  child: ListTile(
+                    leading: Icon(_slotIcons[slot['slot']]?.$1 ?? Icons.notifications,
+                        color: _slotIcons[slot['slot']]?.$2),
+                    title: Text('${slot['label']}'),
+                    subtitle: Text('النغمة: ${labels[slot['tone']] ?? slot['tone']}'),
+                    trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                      IconButton(
+                        tooltip: 'استماع',
+                        icon: const Icon(Icons.play_arrow),
+                        onPressed: () => NativeNotifications.playTone(slot['tone'] as String?),
+                      ),
+                      if (_testPriority.containsKey(slot['slot']))
+                        TextButton(
+                          onPressed: _busy == null ? () => _test(_testPriority[slot['slot']]!) : null,
+                          child: _busy == slot['slot']
+                              ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                              : const Text('تجربة'),
+                        ),
+                    ]),
+                  ),
+                ),
+            ]);
+          },
+        ),
         if (admin) const _Health(),
       ]),
     );
@@ -115,6 +145,14 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
 
 class _Health extends StatelessWidget {
   const _Health();
+
+  static const _label = {
+    'sent': 'وصل',
+    'failed': 'فشل',
+    'pending': 'قيد الإرسال',
+    'no_device': 'بلا هاتف مسجل',
+    'skipped': 'متجاوز',
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -132,27 +170,24 @@ class _Health extends StatelessWidget {
               const Text('حالة الإرسال (للإدارة)', style: TextStyle(fontWeight: FontWeight.bold)),
               const SizedBox(height: 8),
               _row('الإشعارات الفورية', d['push_ready'] == true ? 'مفعلة' : 'غير مفعلة', d['push_ready'] == true),
-              _row('الرسائل النصية', d['sms_ready'] == true ? 'مفعلة (${d['sms_provider']})' : 'غير مفعلة',
-                  d['sms_ready'] == true),
+              _row('الرسائل النصية', d['sms_ready'] == true ? 'مفعلة' : 'غير مفعلة', d['sms_ready'] == true),
               _row('مستخدمون بهواتف مسجلة', '${d['users_with_devices']}', true),
               const Divider(),
               Text('آخر 24 ساعة — فوري: ${fmt(push)}'),
               const SizedBox(height: 4),
               Text('آخر 24 ساعة — نصي: ${fmt(sms)}'),
+              if (d['last_push_error'] != null) ...[
+                const Divider(),
+                const Text('آخر خطأ من Firebase:', style: TextStyle(color: AppColors.danger)),
+                SelectableText('${d['last_push_error']}', textDirection: TextDirection.ltr,
+                    style: const TextStyle(fontSize: 12)),
+              ],
             ]),
           ),
         );
       },
     );
   }
-
-  static const _label = {
-    'sent': 'وصل',
-    'failed': 'فشل',
-    'pending': 'قيد الإرسال',
-    'no_device': 'بلا هاتف مسجل',
-    'skipped': 'متجاوز',
-  };
 
   Widget _row(String k, String v, bool ok) => Padding(
         padding: const EdgeInsets.symmetric(vertical: 2),

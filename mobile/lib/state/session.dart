@@ -17,7 +17,7 @@ class Session extends ChangeNotifier {
   final PushService? push;
 
   /// Shows a banner for notifications that arrive while the app is open.
-  void Function(String title, String body)? onForegroundMessage;
+  void Function(PushOpen message)? onForegroundMessage;
   SessionStatus status = SessionStatus.loading;
 
   /// A tapped phone notification waiting for the home screen to open its page.
@@ -82,6 +82,34 @@ class Session extends ChangeNotifier {
     await refreshUnread();
   }
 
+  /// Reloads the signed-in user's profile (after changing security settings).
+  Future<void> reloadProfile() async {
+    try {
+      user = await api.get('/api/me') as Map<String, dynamic>;
+      notifyListeners();
+    } catch (_) {}
+  }
+
+  /// Asks the home screen to open a notification's page.
+  void openLater(PushOpen open) {
+    pendingOpen = open;
+    notifyListeners();
+  }
+
+  /// Registers this phone for push again (after allowing notifications, or if it failed).
+  Future<String> registerPush() async {
+    final p = push;
+    if (p == null) return 'no_firebase';
+    await p.start(api,
+        onMessage: refreshUnread,
+        onForeground: (m) => onForegroundMessage?.call(m),
+        onOpened: (o) {
+          pendingOpen = o;
+          notifyListeners();
+        }).catchError((Object e) => debugPrint('push unavailable: $e'));
+    return p.status;
+  }
+
   Future<void> logout() async {
     // needs the session still valid to unregister this phone
     await push?.stop(api).catchError((Object _) {});
@@ -105,7 +133,7 @@ class Session extends ChangeNotifier {
       push
           ?.start(api,
               onMessage: refreshUnread,
-              onForeground: (t, b) => onForegroundMessage?.call(t, b),
+              onForeground: (m) => onForegroundMessage?.call(m),
               onOpened: (o) {
                 pendingOpen = o;
                 notifyListeners();

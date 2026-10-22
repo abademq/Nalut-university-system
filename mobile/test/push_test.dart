@@ -11,11 +11,13 @@ import 'package:nalut_university/state/session.dart';
 
 class FakePush implements PushService {
   final events = <String>[];
+  @override
+  String status = 'not_started';
   bool fail = false;
 
   @override
   Future<void> start(ApiClient api,
-      {void Function(String, String)? onForeground, VoidCallback? onMessage, void Function(PushOpen)? onOpened}) async {
+      {void Function(PushOpen)? onForeground, VoidCallback? onMessage, void Function(PushOpen)? onOpened}) async {
     events.add('start:${api.hasAccessToken}');
     if (fail) throw Exception('no google play services');
   }

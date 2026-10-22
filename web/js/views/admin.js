@@ -240,13 +240,15 @@ function SettingsForm({ data, onSaved }) {
   const [mfaRoles, setMfaRoles] = useState(e.security.mfa_required_roles || []);
   const [mfaCaps, setMfaCaps] = useState(e.security.mfa_required_capabilities || []);
   const caps = useAsync(() => api.get("/api/permissions"), []);
+  const toneInfo = useAsync(() => api.get("/api/notifications/tones"), []);
+  const [tones, setTones] = useState(e.notifications.tones || {});
   const flip = (list, set, k) => set(list.includes(k) ? list.filter((x) => x !== k) : [...list, k]);
   const [submit, busy, error] = useSubmit(async () => {
     await api.put("/api/settings", { settings: {
       branding: { display_name: v.display_name, primary_color: v.primary_color, accent_color: v.accent_color },
       security: { ...e.security, require_mfa_for_admins: v.require_mfa, mfa_methods: mfaMethods,
         mfa_required_roles: mfaRoles, mfa_required_capabilities: mfaCaps },
-      notifications: { ...e.notifications, sms_enabled: v.sms_enabled, due_reminder_hours: n("due_reminder_hours") },
+      notifications: { ...e.notifications, sms_enabled: v.sms_enabled, due_reminder_hours: n("due_reminder_hours"), tones },
       attendance: { ...e.attendance, late_after_minutes: n("late_after_minutes"), rotation_seconds: n("rotation_seconds"),
         warning_absence_percent: n("warning_absence_percent"), limit_absence_percent: n("limit_absence_percent"),
         review_threshold: n("review_threshold"), selfie_retention_days: n("selfie_retention_days") },
@@ -274,6 +276,15 @@ function SettingsForm({ data, onSaved }) {
       <h4>ولكل من يملك صلاحية</h4>
       ${caps.data ? caps.data.capabilities.map((c) => html`<label class="check"><input type="checkbox" checked=${mfaCaps.includes(c.key)}
         onChange=${() => flip(mfaCaps, setMfaCaps, c.key)} /> ${c.label}</label>`) : html`<p class="small muted">جارٍ التحميل…</p>`}
+    </div>
+    <div class="card"><h3>نغمات الإشعارات على الهواتف</h3>
+      <p class="small muted">تحدد الإدارة نغمة كل نوع، وتصل كما هي لكل المستخدمين. اضغط ▶ لسماع النغمة.</p>
+      ${toneInfo.data ? html`<div class="form-grid">${toneInfo.data.slots.map((s) => html`<div class="field"><label>${s.label}</label>
+        <div class="row"><select value=${tones[s.slot] || s.tone} onChange=${(ev) => setTones({ ...tones, [s.slot]: ev.target.value })}>
+          ${toneInfo.data.library.map((t) => html`<option value=${t.name}>${t.label}</option>`)}</select>
+        <button type="button" class="small secondary" aria-label="تشغيل النغمة"
+          onClick=${() => new Audio(`/static/tones/tone_${tones[s.slot] || s.tone}.wav`).play().catch(() => {})}>▶</button></div></div>`)}</div>`
+        : html`<p class="small muted">جارٍ التحميل…</p>`}
     </div>
     <div class="card"><h3>الإشعارات</h3>
       <label class="check"><input type="checkbox" ...${bind("sms_enabled", "checkbox")} /> تفعيل الرسائل النصية SMS للإشعارات العاجلة</label>

@@ -404,8 +404,8 @@ class ChangePasswordIn(BaseModel):
 
 
 @router.post("/auth/password/change")
-def change_password(body: ChangePasswordIn, request: Request, user: User = Depends(get_current_user),
-                    db: Session = Depends(get_db)):
+def change_password(body: ChangePasswordIn, request: Request, response: Response,
+                    user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     if not verify_password(body.current_password, user.password_hash):
         raise HTTPException(status_code=400, detail="كلمة المرور الحالية غير صحيحة")
     problems = password_problems(body.new_password, identifiers=(user.email, user.phone))
@@ -416,8 +416,42 @@ def change_password(body: ChangePasswordIn, request: Request, user: User = Depen
     db.execute(update(AuthSession).where(AuthSession.user_id == user.id, AuthSession.revoked_at.is_(None))
                .values(revoked_at=utcnow()))
     audit.record(db, "auth.password_changed", actor=user, ip=client_ip(request))
+    # every other session was signed out above; this device gets a fresh one
+    out = _issue_session(db, user, request, response)
     db.commit()
-    return {"ok": True}
+    return {"ok": True, **out}
+
+
+@router.post("/auth/handoff/start")
+def handoff_start(request: Request, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """One-time link (60 s) that opens the web dashboard already signed in, e.g. from the mobile app."""
+    if getattr(user, "acting_platform_admin", False):
+        raise HTTPException(status_code=400, detail="غير متاح أثناء إدارة جامعة")
+    if not limiter.hit(f"handoff:{user.id}", 10, 300):
+        raise HTTPException(status_code=429, detail="محاولات كثيرة")
+    code = mfa.new_handoff(db, user)
+    audit.record(db, "auth.handoff_started", actor=user, ip=client_ip(request))
+    db.commit()
+    return {"path": f"/#/handoff/{code}", "expires_in": 60}
+
+
+class HandoffIn(BaseModel):
+    code: str = Field(min_length=10, max_length=200)
+
+
+@router.post("/auth/handoff")
+def handoff(body: HandoffIn, request: Request, response: Response, db: Session = Depends(get_db)):
+    ip = client_ip(request) or "?"
+    if not limiter.hit(f"handoff-ip:{ip}", 20, 300):
+        raise HTTPException(status_code=429, detail="محاولات كثيرة")
+    user = mfa.redeem_handoff(db, body.code)
+    if not user or not user.is_active:
+        db.commit()
+        raise HTTPException(status_code=401, detail="الرابط منتهي أو مستخدم، افتحه من التطبيق مرة أخرى")
+    out = _issue_session(db, user, request, response)
+    audit.record(db, "auth.login", actor=user, ip=ip, details={"via": "app_handoff"})
+    db.commit()
+    return out
 
 
 # --------------------------------------------------------------------------- profile

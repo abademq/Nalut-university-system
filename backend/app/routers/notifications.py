@@ -168,17 +168,38 @@ def test_push(body: TestPushIn, user: User = Depends(get_current_user), db: Sess
     provider = notifications.push_provider()
     devices = db.scalars(select(DeviceToken).where(DeviceToken.user_id == user.id)).all()
     title, text = TEST_TEXT[body.priority]
+    slot = notifications.tone_for(body.priority, None)
+    tone = notifications.tone_name(slot, _tones(db, user))
     sent = removed = 0
     for dev in devices:
-        result = provider.send(dev.token, title, text, {"category": "system", "priority": body.priority, "link": ""})
+        result = provider.send(dev.token, title, text,
+                               {"category": "system", "priority": body.priority, "tone": tone, "link": ""})
         if result == "invalid":
             db.delete(dev)
             removed += 1
         elif result in (True, "sent"):
             sent += 1
     db.commit()
-    return {"provider": type(provider).__name__.replace("Provider", "").lower(), "devices": len(devices),
-            "sent": sent, "invalid_removed": removed, "tone": notifications.tone_for(body.priority, None)}
+    out = {"provider": type(provider).__name__.replace("Provider", "").lower(), "devices": len(devices),
+           "sent": sent, "invalid_removed": removed, "tone": tone}
+    if devices and not sent and isinstance(provider, notifications.FcmProvider):
+        out["error"] = notifications.FcmProvider.last_error
+    return out
+
+
+def _tones(db: Session, user: User) -> dict:
+    from ..deps import tenant_settings
+
+    return tenant_settings(db, user)["notifications"].get("tones", {}) if user.university_id else {}
+
+
+@router.get("/tones")
+def tones(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """The tone library and which tone each kind of notification plays in this university."""
+    current = _tones(db, user)
+    return {"library": [{"name": k, "label": v} for k, v in notifications.TONES.items()],
+            "slots": [{"slot": k, "label": v, "tone": notifications.tone_name(k, current)}
+                      for k, v in notifications.TONE_SLOTS.items()]}
 
 
 @router.get("/health")
@@ -211,5 +232,8 @@ def health(user: User = Depends(get_current_user), db: Session = Depends(get_db)
         "sms_provider": settings.sms_provider,
         "sms_ready": settings.sms_provider in ("resala", "http"),
         "users_with_devices": db.scalar(dev_q) or 0,
+        "last_push_error": notifications.FcmProvider.last_error,
+        "last_push_error_at": notifications.FcmProvider.last_error_at,
+        "last_push_sent_at": notifications.FcmProvider.last_sent_at,
         "last_24h": {"push": counts(NotificationDelivery.push_status), "sms": counts(NotificationDelivery.sms_status)},
     }

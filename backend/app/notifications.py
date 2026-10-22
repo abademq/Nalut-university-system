@@ -81,15 +81,33 @@ class HttpPushProvider:
             return False
 
 
-# One Android channel and tone per level of urgency. The app creates these channels with
-# its bundled sounds (res/raw/tone_*); users can change each tone in the phone's settings.
-TONES = {"urgent": "nus_urgent", "important": "nus_important", "normal": "nus_normal"}
+# Tones bundled in the app (res/raw/tone_<name>.wav, one Android channel "nus_tone_<name>" each).
+# The university administration picks which tone each kind of notification plays
+# (settings.notifications.tones); users cannot change it from the app.
+TONES = {
+    "chime": "جرس هادئ",
+    "bell": "جرس",
+    "rising": "ثلاث نغمات صاعدة",
+    "pulse": "نبضتان",
+    "alarm": "إنذار متكرر",
+    "siren": "تنبيه حاد",
+}
+TONE_SLOTS = {"normal": "عادي", "important": "مهم", "urgent": "عاجل", "official_warning": "إنذار رسمي"}
+DEFAULT_TONES = {"normal": "chime", "important": "rising", "urgent": "alarm", "official_warning": "siren"}
 
 
 def tone_for(priority: str | None, category: str | None) -> str:
-    if priority == "urgent" or category == "official_warning":
+    """Which slot a notification belongs to: official_warning, urgent, important or normal."""
+    if category == "official_warning":
+        return "official_warning"
+    if priority == "urgent":
         return "urgent"
     return "important" if priority == "important" else "normal"
+
+
+def tone_name(slot: str, tones: dict | None) -> str:
+    name = (tones or {}).get(slot) or DEFAULT_TONES[slot]
+    return name if name in TONES else DEFAULT_TONES[slot]
 
 
 class FcmProvider:
@@ -128,8 +146,14 @@ class FcmProvider:
             self._expires = time.time() + int(data.get("expires_in", 3600))
             return self._token
 
+    # last outcome, shown in /api/notifications/health to diagnose delivery problems
+    last_error: str | None = None
+    last_error_at: float | None = None
+    last_sent_at: float | None = None
+
     def send(self, token: str, title: str, body: str, data: dict) -> str:
-        tone = tone_for(data.get("priority"), data.get("category"))
+        tone = data.get("tone") if data.get("tone") in TONES else \
+            DEFAULT_TONES[tone_for(data.get("priority"), data.get("category"))]
         message = {
             "message": {
                 "token": token,
@@ -137,7 +161,7 @@ class FcmProvider:
                 "data": {k: "" if v is None else str(v) for k, v in data.items()},
                 # the channel decides the tone (Android 8+); "sound" covers older phones
                 "android": {"priority": "high",
-                            "notification": {"channel_id": TONES[tone], "sound": f"tone_{tone}"}},
+                            "notification": {"channel_id": f"nus_tone_{tone}", "sound": f"tone_{tone}"}},
                 "apns": {"payload": {"aps": {"sound": "default"}}},
             }
         }
@@ -148,16 +172,25 @@ class FcmProvider:
         )
         try:
             with urllib.request.urlopen(req, timeout=15) as resp:  # noqa: S310 - fixed Google endpoint
-                return "sent" if 200 <= resp.status < 300 else "failed"
+                ok = 200 <= resp.status < 300
         except urllib.error.HTTPError as exc:
             detail = exc.read().decode(errors="replace")
             if exc.code == 404 or "UNREGISTERED" in detail or (exc.code == 400 and "registration token" in detail):
                 return "invalid"
             log.warning("FCM error %s: %s", exc.code, detail[:300])
+            self._failed(f"HTTP {exc.code}: {detail[:300]}")
             return "failed"
-        except OSError as exc:
+        except Exception as exc:  # noqa: BLE001 - network, TLS or OAuth token errors
             log.warning("FCM unreachable: %s", exc)
+            self._failed(f"{type(exc).__name__}: {str(exc)[:300]}")
             return "failed"
+        if ok:
+            FcmProvider.last_sent_at = time.time()
+        return "sent" if ok else "failed"
+
+    @staticmethod
+    def _failed(message: str) -> None:
+        FcmProvider.last_error, FcmProvider.last_error_at = message, time.time()
 
 
 class LogSmsProvider:
@@ -448,13 +481,17 @@ def send_pending_pushes(db: Session, provider=None, limit: int = 500) -> int:
     provider = provider or push_provider()
     rows = db.scalars(select(NotificationDelivery).where(NotificationDelivery.push_status == "pending")
                       .order_by(NotificationDelivery.id).limit(limit)).all()
+    tones_by_uni: dict[int, dict] = {}
     for d in rows:
         n = d.notification
+        if n.university_id not in tones_by_uni:
+            tones_by_uni[n.university_id] = effective_settings(db.get(University, n.university_id))["notifications"].get("tones", {})
+        tone = tone_name(tone_for(n.priority, n.category), tones_by_uni[n.university_id])
         results = []
         for dev in db.scalars(select(DeviceToken).where(DeviceToken.user_id == d.user_id)).all():
             result = provider.send(dev.token, n.title, n.body[:200],
                                    {"notification_id": n.id, "category": n.category, "priority": n.priority,
-                                    "link": n.link})
+                                    "tone": tone, "link": n.link})
             if result == "invalid":
                 db.delete(dev)
                 continue

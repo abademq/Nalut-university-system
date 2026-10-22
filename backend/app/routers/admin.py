@@ -586,6 +586,12 @@ def put_settings(body: SettingsIn, request: Request, user: User = Depends(requir
         raise HTTPException(status_code=400, detail="دور غير معروف في إلزام التحقق")
     if not set(sec.get("mfa_required_capabilities") or []) <= set(permissions.CAPABILITIES):
         raise HTTPException(status_code=400, detail="صلاحية غير معروفة في إلزام التحقق")
+    tones = (body.settings.get("notifications") or {}).get("tones")
+    if tones is not None:
+        from ..notifications import TONE_SLOTS, TONES
+
+        if not isinstance(tones, dict) or not set(tones) <= set(TONE_SLOTS) or not set(tones.values()) <= set(TONES):
+            raise HTTPException(status_code=400, detail="نغمة غير معروفة")
     att = body.settings.get("attendance", {})
     for key in ("warning_absence_percent", "limit_absence_percent", "review_threshold"):
         if key in att and not (0 <= float(att[key]) <= 100):

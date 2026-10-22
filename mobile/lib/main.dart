@@ -33,9 +33,12 @@ class UniversityApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    session.onForegroundMessage = (title, body) => messengerKey.currentState?.showSnackBar(SnackBar(
-          content: Text(body.isEmpty ? title : '$title\n$body'),
-          duration: const Duration(seconds: 5),
+    session.onForegroundMessage = (m) => messengerKey.currentState?.showSnackBar(SnackBar(
+          content: Text((m.body ?? '').isEmpty ? m.title ?? '' : '${m.title}\n${m.body}'),
+          duration: const Duration(seconds: 6),
+          action: m.link == null
+              ? null
+              : SnackBarAction(label: 'فتح', onPressed: () => session.openLater(m)),
         ));
     final scheme = ColorScheme.fromSeed(seedColor: AppColors.primary, primary: AppColors.primary);
     return ChangeNotifierProvider.value(

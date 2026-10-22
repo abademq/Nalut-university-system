@@ -154,6 +154,9 @@ class ApiClient {
     return data;
   }
 
+  /// Keeps the tokens of a response that issued a new session (e.g. after a password change).
+  Future<void> acceptSession(Map<String, dynamic> data) => _accept(data);
+
   Future<void> _accept(Map<String, dynamic> data) async {
     if (data['access_token'] != null) {
       _accessToken = data['access_token'] as String;

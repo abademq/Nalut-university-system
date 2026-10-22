@@ -158,3 +158,32 @@ def set_method(db: Session, user: User, method: str) -> None:
         db.add(pref)
     pref.method = method
     pref.updated_at = utcnow()
+
+
+HANDOFF_TTL = timedelta(seconds=60)
+
+
+def new_handoff(db: Session, user: User) -> str:
+    """Code "<id>.<secret>": the id finds the row, only a keyed hash of the secret is stored."""
+    secret = secrets.token_urlsafe(24)
+    salt = secrets.token_hex(8)
+    now = utcnow()
+    ch = OtpChallenge(user_id=user.id, purpose="handoff", code_hash=f"{salt}${_hash(salt, secret)}",
+                      expires_at=now + HANDOFF_TTL, created_at=now)
+    db.add(ch)
+    db.flush()
+    return f"{ch.id}.{secret}"
+
+
+def redeem_handoff(db: Session, code: str) -> User | None:
+    cid, _, secret = code.partition(".")
+    if not cid.isdigit() or not secret:
+        return None
+    ch = db.get(OtpChallenge, int(cid))
+    if not ch or ch.purpose != "handoff" or ch.consumed_at or ch.expires_at <= utcnow():
+        return None
+    ch.consumed_at = utcnow()  # one attempt only, right or wrong
+    salt, digest = ch.code_hash.split("$", 1)
+    if not hmac.compare_digest(digest, _hash(salt, secret)):
+        return None
+    return db.get(User, ch.user_id)

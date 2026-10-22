@@ -5,6 +5,7 @@ import android.app.NotificationManager
 import android.content.ContentResolver
 import android.content.Intent
 import android.media.AudioAttributes
+import android.media.RingtoneManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -14,33 +15,42 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
+    // The tones bundled in res/raw. The university administration chooses which one each kind
+    // of notification uses, and the server sends every push to channel "nus_tone_<name>".
+    private val tones = linkedMapOf(
+        "chime" to Pair(R.raw.tone_chime, "جرس هادئ"),
+        "bell" to Pair(R.raw.tone_bell, "جرس"),
+        "rising" to Pair(R.raw.tone_rising, "ثلاث نغمات صاعدة"),
+        "pulse" to Pair(R.raw.tone_pulse, "نبضتان"),
+        "alarm" to Pair(R.raw.tone_alarm, "إنذار متكرر"),
+        "siren" to Pair(R.raw.tone_siren, "تنبيه حاد"),
+    )
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         createChannels()
     }
 
-    // One channel per level of urgency, each with its own tone. The server sends every push to
-    // one of these ids. Android keeps a channel's sound once created, so the user changes a tone
-    // from the system settings (openChannelSettings below), and new tones need new channel ids.
+    private fun toneUri(res: Int) = Uri.parse("${ContentResolver.SCHEME_ANDROID_RESOURCE}://$packageName/$res")
+
     private fun createChannels() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val manager = getSystemService(NotificationManager::class.java)
-        manager.deleteNotificationChannel("nus_alerts") // the single channel of the first release
+        // channels of earlier releases
+        for (old in listOf("nus_alerts", "nus_normal", "nus_important", "nus_urgent")) {
+            manager.deleteNotificationChannel(old)
+        }
         val attributes = AudioAttributes.Builder()
             .setUsage(AudioAttributes.USAGE_NOTIFICATION)
             .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
             .build()
-        val channels = listOf(
-            Triple("nus_normal", "الإعلانات العادية", R.raw.tone_normal),
-            Triple("nus_important", "الإشعارات المهمة", R.raw.tone_important),
-            Triple("nus_urgent", "التنبيهات العاجلة والإنذارات", R.raw.tone_urgent),
-        )
-        for ((id, name, tone) in channels) {
-            val channel = NotificationChannel(id, name, NotificationManager.IMPORTANCE_HIGH).apply {
-                description = "إشعارات منصة الجامعة"
+        for ((name, tone) in tones) {
+            val channel = NotificationChannel("nus_tone_$name", "إشعارات الجامعة — ${tone.second}",
+                NotificationManager.IMPORTANCE_HIGH).apply {
+                description = "تحدد إدارة الجامعة أي نوع من الإشعارات يستخدم هذه النغمة"
                 enableVibration(true)
-                if (id == "nus_urgent") vibrationPattern = longArrayOf(0, 400, 200, 400, 200, 400)
-                setSound(Uri.parse("${ContentResolver.SCHEME_ANDROID_RESOURCE}://$packageName/$tone"), attributes)
+                if (name == "alarm" || name == "siren") vibrationPattern = longArrayOf(0, 400, 200, 400, 200, 400)
+                setSound(toneUri(tone.first), attributes)
             }
             manager.createNotificationChannel(channel)
         }
@@ -50,11 +60,15 @@ class MainActivity : FlutterActivity() {
         super.configureFlutterEngine(flutterEngine)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "nus/notifications").setMethodCallHandler { call, result ->
             when (call.method) {
-                "openChannelSettings" -> {
+                // the system plays nothing for a push that arrives while the app is open
+                "playTone" -> {
+                    val tone = tones[call.argument<String>("tone")] ?: tones.getValue("chime")
+                    RingtoneManager.getRingtone(applicationContext, toneUri(tone.first))?.play()
+                    result.success(true)
+                }
+                "openAppSettings" -> {
                     val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS)
-                            .putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
-                            .putExtra(Settings.EXTRA_CHANNEL_ID, call.argument<String>("channel"))
+                        Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
                     } else {
                         Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName"))
                     }

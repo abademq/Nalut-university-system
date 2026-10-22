@@ -181,6 +181,15 @@ function App() {
 
   useEffect(() => {
     setLogoutHandler(() => { setToken(null); setUser(null); });
+    // "Open the dashboard" from the mobile app: a one-time code signs this browser in
+    const handoff = location.hash.match(/^#\/handoff\/([\w.-]+)$/);
+    if (handoff) {
+      history.replaceState(null, "", "/#/");
+      api.post("/api/auth/handoff", { code: handoff[1] })
+        .then((data) => { setToken(data.access_token); setUser(data.user); })
+        .catch(() => tryRefresh().then((data) => setUser(data ? data.user : null)));
+      return;
+    }
     tryRefresh().then((data) => setUser(data ? data.user : null));
   }, []);
 
