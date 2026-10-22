@@ -61,6 +61,7 @@ class ComponentIn(BaseModel):
 def add_component(course_id: int, body: ComponentIn, user: User = Depends(get_current_user),
                   db: Session = Depends(get_db)):
     course = get_course_for(db, user, course_id, teach=True)
+    permissions.require(db, user, "courses.components")
     if grades.result_for(db, course.id).status != "draft":
         raise HTTPException(status_code=400, detail="لا يمكن تعديل عناصر التقييم بعد رفع النتائج")
     n = len(grades.components(db, course.id))
@@ -85,6 +86,7 @@ class EntriesIn(BaseModel):
 def save_grades(course_id: int, body: EntriesIn, request: Request, user: User = Depends(get_current_user),
                 db: Session = Depends(get_db)):
     course = get_course_for(db, user, course_id, teach=True)
+    permissions.require(db, user, "grades.enter")
     res = grades.result_for(db, course.id)
     if res.status != "draft":
         raise HTTPException(status_code=400, detail="النتائج مرفوعة للاعتماد؛ يجب إعادتها إلى المسودة أولاً")
@@ -118,6 +120,7 @@ def grade_history(course_id: int, user: User = Depends(get_current_user), db: Se
 async def import_preview(course_id: int, upload: UploadFile = File(...), user: User = Depends(get_current_user),
                          db: Session = Depends(get_db)):
     course = get_course_for(db, user, course_id, teach=True)
+    permissions.require(db, user, "grades.enter")
     data = await files.read_upload(upload, 5)
     rows, errors = grades.parse_import(db, course, upload.filename or "", data)
     imp = GradeImport(course_id=course.id, uploaded_by=user.id, filename=files.safe_filename(upload.filename or ""),
@@ -134,6 +137,7 @@ def import_commit(import_id: int, request: Request, user: User = Depends(get_cur
     if not imp:
         raise not_found()
     course = get_course_for(db, user, imp.course_id, teach=True)
+    permissions.require(db, user, "grades.enter")
     if imp.status != "preview":
         raise HTTPException(status_code=400, detail="تمت معالجة هذا الاستيراد مسبقاً")
     if imp.errors:
@@ -184,6 +188,7 @@ def _transition(db: Session, user: User, course: Course, frm: set[str], to: str,
 def results_submit(course_id: int, body: WorkflowIn, request: Request, user: User = Depends(get_current_user),
                    db: Session = Depends(get_db)):
     course = get_course_for(db, user, course_id, teach=True)
+    permissions.require(db, user, "results.submit")
     res = _transition(db, user, course, {"draft"}, "submitted", body.note, request)
     admins = db.scalars(select(User.id).where(User.faculty_id == course.faculty_id, User.role == Role.FACULTY_ADMIN))
     notifications.notify_users(db, course.university_id, list(admins), f"نتائج بانتظار الاعتماد: {course.title}",

@@ -9,7 +9,7 @@ import { AttendanceView, ScanView, SessionView, DisplayView } from "./views/atte
 import { NotificationsView, SendNotification } from "./views/notifications.js";
 import { MessagesView, ThreadView } from "./views/messages.js";
 import { RequestsView, RequestDetail } from "./views/requests.js";
-import { UsersView, StructureView, SettingsView, AuditView, AbuseReportsView, UniversitiesView, PermissionsView } from "./views/admin.js";
+import { UsersView, StructureView, SettingsView, LaunchView, AuditView, AbuseReportsView, UniversitiesView, PermissionsView } from "./views/admin.js";
 import { ReportsView } from "./views/reports.js";
 import { ProfileView } from "./views/profile.js";
 import { BannerStrip, BannersView, ArchiveView, ArchiveDetail } from "./views/manage.js";
@@ -34,16 +34,17 @@ const NAV = [
   ["#/publications", "الجداول والإعلانات المصورة", "🗓", (r) => r !== "platform_admin", false],
   ["#/messages", "الرسائل", "💬", (r) => r !== "platform_admin", false],
   ["#/requests", "الطلبات والمعاملات", "📄", (r) => r !== "platform_admin", false],
-  ["#/reports", "التقارير", "📊", (r) => isAdmin(r) || isInstructor(r), false],
+  ["#/reports", "التقارير", "📊", (r, u) => (isAdmin(r) || isInstructor(r)) && can(u, "reports.view"), false],
   ["#/users", "المستخدمون", "👥", (r) => isAdmin(r), false],
   ["#/structure", "الهيكل التنظيمي", "🏢", isAdmin, false],
-  ["#/banners", "الإعلانات المثبتة", "📌", (r, u) => isAdmin(r) && can(u, "banners.manage"), false],
+  ["#/banners", "الإعلانات المثبتة", "📌", (r, u) => (isAdmin(r) || r === "staff") && can(u, "banners.manage"), false],
   ["#/archive", "أرشيف الطلبة", "🗂", (r, u) => (isAdmin(r) || (r === "staff" && u.office)) && can(u, "archive.access")
     && (r !== "staff" || (u.archive_offices || ["registrar"]).includes(u.office)), false],
-  ["#/abuse", "بلاغات الرسائل", "⚑", isAdmin, false],
-  ["#/audit", "سجل التدقيق", "🛡", (r) => isAdmin(r) || r === "platform_admin", false],
+  ["#/abuse", "بلاغات الرسائل", "⚑", (r, u) => isAdmin(r) && can(u, "messages.moderate"), false],
+  ["#/audit", "سجل التدقيق", "🛡", (r, u) => r === "platform_admin" || (isAdmin(r) && can(u, "audit.view")), false],
   ["#/settings", "إعدادات المؤسسة", "⚙", (r) => r === "university_admin", false],
   ["#/permissions", "الصلاحيات", "🔑", (r) => r === "university_admin", false],
+  ["#/launch", "شاشة البداية والنغمات", "📱", (r, u) => !!u.acting, false],
   ["#/profile", "حسابي", "👤", () => true, true],
   ["#/guide", "دليل الاستخدام", "❓", () => true, false],
 ];
@@ -80,6 +81,7 @@ function route(hash, user) {
     case "guide": return html`<${GuideView} user=${user} />`;
     case "publications": return html`<${PublicationsView} user=${user} id=${b} />`;
     case "permissions": return html`<${PermissionsView} user=${user} />`;
+    case "launch": return html`<${LaunchView} user=${user} />`;
     default: return html`<div class="card empty">الصفحة غير موجودة</div>`;
   }
 }

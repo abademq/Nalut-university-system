@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from .. import attendance as att
 from .. import grades as grade_svc
+from .. import permissions
 from ..db import get_db, utcnow
 from ..deps import forbidden, get_course_for, get_current_user, tenant_settings, visible_course_ids
 from ..models import (
@@ -91,6 +92,7 @@ def _student_risk(db: Session, course: Course, student_id: int, att_policy: dict
 def _scoped_courses(db: Session, user: User) -> list[Course]:
     if user.role not in REPORT_ROLES:
         raise forbidden()
+    permissions.require(db, user, "reports.view")
     ids = visible_course_ids(db, user)
     return list(db.scalars(select(Course).where(Course.id.in_(ids)).order_by(Course.code))) if ids else []
 
@@ -367,6 +369,8 @@ def person_report(uid: int, user: User = Depends(get_current_user), db: Session 
     target = db.get(User, uid)
     if not target or not _can_see_person(db, user, target):
         raise forbidden()
+    if target.id != user.id:
+        permissions.require(db, user, "reports.view")
     who = {"id": target.id, "full_name": target.full_name, "role": target.role, "code": target.code}
     if target.role == Role.STUDENT:
         return {"user": who, **_student_report(db, user, target)}

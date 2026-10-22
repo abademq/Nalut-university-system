@@ -21,14 +21,27 @@ CAPABILITIES: dict[str, tuple[str, str, list[str], list[str]]] = {
                             [FA, TEACHER, ASSISTANT]),
     "notify.academic_note": ("الإشعارات", "إرسال ملاحظة أكاديمية", [FA, STAFF, TEACHER, ASSISTANT],
                              [FA, TEACHER, ASSISTANT]),
-    "notify.official_warning": ("الإشعارات", "إصدار إنذار رسمي", [FA, TEACHER], [FA]),
+    "notify.official_warning": ("الإشعارات", "إصدار إنذار رسمي", [FA, STAFF, TEACHER, ASSISTANT], [FA]),
     "notify.admin_notice": ("الإشعارات", "إرسال تعميم إداري", [FA, STAFF, TEACHER, ASSISTANT], [FA, STAFF]),
     "users.manage": ("الإدارة", "إنشاء وتعديل حسابات المستخدمين في الكلية", [FA], [FA]),
     "structure.departments": ("الإدارة", "إضافة الأقسام وتعديلها وحذفها", [FA], [FA]),
-    "banners.manage": ("الإدارة", "نشر الإعلانات المثبتة", [FA], [FA]),
+    "banners.manage": ("الإدارة", "نشر الإعلانات المثبتة", [FA, STAFF], [FA]),
     "publications.manage": ("الإدارة", "نشر جداول المحاضرات والإعلانات المصورة", [FA, STAFF], [FA]),
     "results.approve": ("الإدارة", "اعتماد النتائج ونشرها وإرجاعها", [FA], [FA]),
     "archive.access": ("الإدارة", "أرشيف الطلبة (للموظف: مكاتب الأرشيف فقط)", [FA, STAFF], [FA, STAFF]),
+    "audit.view": ("الإدارة", "الاطلاع على سجل التدقيق", [FA], [FA]),
+    "messages.moderate": ("الإدارة", "معالجة بلاغات الرسائل وإخفاء المخالف منها", [FA], [FA]),
+    "courses.manage": ("المقررات", "إنشاء المقررات وتعديلها وإسناد الأساتذة وتسجيل الطلبة", [FA], [FA]),
+    "courses.schedule": ("المقررات", "تعديل مواعيد محاضرات مقرراته", [TEACHER, ASSISTANT], [TEACHER, ASSISTANT]),
+    "courses.components": ("المقررات", "إدارة عناصر التقييم في مقرراته", [TEACHER, ASSISTANT], [TEACHER, ASSISTANT]),
+    "grades.enter": ("الدرجات", "رصد الدرجات وتعديلها واستيرادها", [TEACHER, ASSISTANT], [TEACHER, ASSISTANT]),
+    "results.submit": ("الدرجات", "رفع نتائج المقرر للاعتماد", [TEACHER, ASSISTANT], [TEACHER, ASSISTANT]),
+    "assignments.manage": ("التدريس", "إنشاء المهام وتقييم التسليمات ونشر درجاتها", [TEACHER, ASSISTANT],
+                           [TEACHER, ASSISTANT]),
+    "attendance.manage": ("التدريس", "فتح جلسات الحضور والتسجيل اليدوي ومراجعة الحالات", [TEACHER, ASSISTANT],
+                          [TEACHER, ASSISTANT]),
+    "reports.view": ("التقارير", "التقارير والإحصاءات وتقارير الأفراد", [FA, TEACHER, ASSISTANT],
+                     [FA, TEACHER, ASSISTANT]),
 }
 
 DEFAULT_PERMISSIONS = {key: list(default) for key, (_, _, _, default) in CAPABILITIES.items()}
@@ -42,6 +55,18 @@ def allowed(db: Session, user: User, key: str) -> bool:
 
     roles = tenant_settings(db, user).get("permissions", {}).get(key, DEFAULT_PERMISSIONS.get(key, []))
     return user.role in roles
+
+
+def require(db: Session, user: User, key: str) -> None:
+    """Refuses the action when the user's role can be granted ``key`` but this university has not.
+
+    Roles outside the capability's options keep their fixed rules (checked by the caller), so a
+    faculty administrator managing a course is not affected by an instructor-only capability.
+    """
+    if user.role in CAPABILITIES[key][2] and not allowed(db, user, key):
+        from .deps import forbidden
+
+        raise forbidden(f"صلاحية «{CAPABILITIES[key][1]}» غير مفعلة لحسابك")
 
 
 def validate(matrix: dict) -> dict:

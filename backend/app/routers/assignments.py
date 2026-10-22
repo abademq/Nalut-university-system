@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from .. import audit, files, notifications
+from .. import audit, files, notifications, permissions
 from ..db import as_utc, get_db, utcnow
 from ..deps import (
     can_teach_course,
@@ -131,6 +131,7 @@ class AssignmentIn(BaseModel):
 def create_assignment(course_id: int, body: AssignmentIn, request: Request, user: User = Depends(get_current_user),
                       db: Session = Depends(get_db)):
     course = get_course_for(db, user, course_id, teach=True)
+    permissions.require(db, user, "assignments.manage")
     if body.kind not in KINDS:
         raise HTTPException(status_code=400, detail="نوع المهمة غير صحيح")
     cfg = tenant_settings(db, user)["uploads"]
@@ -178,6 +179,7 @@ class AssignmentPatch(BaseModel):
 def patch_assignment(aid: int, body: AssignmentPatch, request: Request, user: User = Depends(get_current_user),
                      db: Session = Depends(get_db)):
     a, course = _get_assignment(db, user, aid, teach=True)
+    permissions.require(db, user, "assignments.manage")
     data = body.model_dump(exclude_unset=True)
     was_draft = a.status == "draft"
     old_due = a.due_at
@@ -276,6 +278,7 @@ def grade_submission(sid: int, body: GradeIn, request: Request, user: User = Dep
     if not s:
         raise not_found()
     a, course = _get_assignment(db, user, s.assignment_id, teach=True)
+    permissions.require(db, user, "assignments.manage")
     if body.score > a.max_score:
         raise HTTPException(status_code=400, detail=f"الدرجة القصوى {a.max_score}")
     if s.status == "in_progress":
@@ -308,6 +311,7 @@ def _release(db: Session, user: User, a: Assignment, course: Course, subs: list[
 @router.post("/assignments/{aid}/release-grades")
 def release_grades(aid: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     a, course = _get_assignment(db, user, aid, teach=True)
+    permissions.require(db, user, "assignments.manage")
     subs = db.scalars(select(Submission).where(Submission.assignment_id == a.id, Submission.status == "reviewed",
                                                Submission.grade_released.is_(False))).all()
     if subs:

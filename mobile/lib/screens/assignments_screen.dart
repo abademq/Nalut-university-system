@@ -23,7 +23,7 @@ class _AssignmentsScreenState extends State<AssignmentsScreen> {
   Widget build(BuildContext context) {
     final s = context.read<Session>();
     return Column(children: [
-      if (!s.isStudent)
+      if (!s.isStudent && (s.isAdmin || s.can('assignments.manage')))
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
           child: SizedBox(

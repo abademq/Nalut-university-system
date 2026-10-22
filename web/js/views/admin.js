@@ -268,9 +268,39 @@ export function SettingsView({ user }) {
   const state = useAsync(() => api.get("/api/settings"), []);
   const acting = !!user?.acting;
   return html`<div><h1>إعدادات المؤسسة</h1><${Async} state=${state}>${(d) => html`
-    ${acting ? html`<${LaunchSettings} data=${d} universityId=${user.university?.id} onSaved=${state.reload} />` : null}
+    ${acting ? html`<div class="alert info">شاشة بداية التطبيق ونغمة التشغيل ونغمات الإشعارات في صفحة مستقلة: <a href="#/launch">شاشة البداية والنغمات</a></div>` : null}
     <${SettingsForm} data=${d} acting=${acting} onSaved=${state.reload} />`}<//>
     <${NotificationStatus} /><${SmsCheck} /></div>`;
+}
+
+/** Launch screen, start-up sound and notification tones on their own page (platform administrator). */
+export function LaunchView({ user }) {
+  const state = useAsync(() => api.get("/api/settings"), []);
+  if (!user?.acting) {
+    return html`<div><h1>شاشة البداية والنغمات</h1><div class="alert info">يحددها مشرف المنصة: من «الجامعات» اضغط «إدارة» على الجامعة ثم افتح هذه الصفحة.</div></div>`;
+  }
+  return html`<div><h1>شاشة البداية والنغمات</h1><${Async} state=${state}>${(d) => html`
+    <${LaunchSettings} data=${d} universityId=${user.university?.id} onSaved=${state.reload} />
+    <${ToneSettings} data=${d} onSaved=${state.reload} />`}<//></div>`;
+}
+
+/** The tone each kind of notification plays on phones; saved on its own. */
+function ToneSettings({ data, onSaved }) {
+  const toneInfo = useAsync(() => api.get("/api/notifications/tones"), []);
+  const [tones, setTones] = useState(data.effective.notifications.tones || {});
+  const [submit, busy, error] = useSubmit(async () => {
+    await api.put("/api/settings", { settings: { notifications: { ...data.effective.notifications, tones } } });
+    toast("حُفظت نغمات الإشعارات");
+    onSaved();
+  });
+  return html`<form onSubmit=${submit}><${ErrorBox} error=${error} /><div class="card"><h3>نغمات الإشعارات</h3>
+    <p class="small muted">نغمة كل نوع على الهواتف، وتصل كما هي لكل المستخدمين. اضغط ▶ للاستماع.</p>
+    ${toneInfo.data ? html`<div class="form-grid">${toneInfo.data.slots.map((s) => html`<div class="field"><label>${s.label}</label>
+      <div class="row"><select value=${tones[s.slot] || s.tone} onChange=${(ev) => setTones({ ...tones, [s.slot]: ev.target.value })}>
+        ${toneInfo.data.library.map((t) => html`<option value=${t.name}>${t.label}</option>`)}</select>
+      <button type="button" class="small secondary" aria-label="تشغيل النغمة" onClick=${() => playSound(tones[s.slot] || s.tone)}>▶</button></div></div>`)}</div>`
+      : html`<p class="small muted">جارٍ التحميل…</p>`}
+    <button disabled=${busy}>حفظ النغمات</button></div></form>`;
 }
 
 const playSound = (name) => { if (name && name !== "none") new Audio(`/static/tones/tone_${name}.wav`).play().catch(() => {}); };

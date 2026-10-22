@@ -93,3 +93,54 @@ def test_permission_matrix_is_enforced(client, as_, db):
 def me_faculty(client, h):
     f = client.get("/api/me", headers=h).json()["faculty"]
     return f["id"] if f else 0
+
+
+def test_teaching_and_admin_actions_are_configurable(client, as_, db):
+    """Every former fixed rule is now a capability: revoke, see it refused, the rest unchanged."""
+    act = {**platform(client), "X-Act-As-University": str(uni_id(db))}
+    t, d = as_("t.ahmed@nalut.edu.ly"), as_(DEAN)
+    course = client.get("/api/courses", headers=t).json()[0]
+    cid = course["id"]
+    slots = {"schedule": [{"day": 1, "start": "10:00", "end": "11:30", "room": "قاعة 4"}]}
+    assert client.patch(f"/api/courses/{cid}", headers=t, json=slots).status_code == 200
+    assert client.get("/api/reports/overview", headers=t).status_code == 200
+    assert client.get("/api/audit", headers=d).status_code == 200
+    catalog = {c["key"] for c in client.get("/api/permissions", headers=act).json()["capabilities"]}
+    assert {"courses.schedule", "grades.enter", "attendance.manage", "reports.view", "audit.view"} <= catalog
+
+    revoke = {k: [] for k in ("courses.schedule", "courses.components", "grades.enter", "results.submit",
+                              "assignments.manage", "attendance.manage", "reports.view", "audit.view",
+                              "messages.moderate", "courses.manage")}
+    assert client.put("/api/settings", headers=act, json={"settings": {"permissions": revoke}}).status_code == 200
+    assert client.patch(f"/api/courses/{cid}", headers=t, json=slots).status_code == 403
+    assert client.post(f"/api/courses/{cid}/components", headers=t,
+                       json={"name": "عملي", "max_score": 10}).status_code == 403
+    assert client.put(f"/api/courses/{cid}/grades", headers=t, json={"entries": [], "reason": ""}).status_code == 403
+    assert client.post(f"/api/courses/{cid}/results/submit", headers=t, json={"note": ""}).status_code == 403
+    assert client.post(f"/api/courses/{cid}/assignments", headers=t,
+                       json={"title": "مهمة", "kind": "homework", "max_score": 10,
+                             "due_at": "2030-01-01T10:00:00Z"}).status_code == 403
+    r = client.post("/api/attendance/sessions", headers=t, json={"kind": "course", "course_id": cid, "title": "جلسة"})
+    assert r.status_code == 403
+    assert client.get("/api/reports/overview", headers=t).status_code == 403
+    assert client.get("/api/audit", headers=d).status_code == 403
+    assert client.get("/api/message-reports", headers=d).status_code == 403
+    assert client.patch(f"/api/courses/{cid}", headers=d, json={"title": "اسم جديد للمقرر"}).status_code == 403
+    me_id = client.get("/api/me", headers=t).json()["id"]
+    assert client.get(f"/api/reports/person/{me_id}", headers=t).status_code == 200  # own report always
+    # the university administration is never locked out
+    p = as_(PRES)
+    assert client.patch(f"/api/courses/{cid}", headers=p, json=slots).status_code == 200
+    assert client.get("/api/audit", headers=p).status_code == 200
+    # and the profile tells the app what to show
+    assert "grades.enter" not in client.get("/api/me", headers=t).json()["can"]
+
+
+def test_staff_can_be_granted_banners(client, as_, db):
+    act = {**platform(client), "X-Act-As-University": str(uni_id(db))}
+    staff = as_("registrar@nalut.edu.ly")
+    assert client.get("/api/banners/manage", headers=staff).status_code == 403
+    r = client.put("/api/settings", headers=act, json={"settings": {"permissions": {"banners.manage": ["staff"]}}})
+    assert r.status_code == 200, r.text
+    r = client.post("/api/banners", headers=staff, json={"title": "إعلان من شؤون الطلبة"})
+    assert r.status_code == 200, r.text

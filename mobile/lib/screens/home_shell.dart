@@ -69,7 +69,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     final tabs = <(String, IconData, Widget)>[
       ('الرئيسية', Icons.home_outlined, const HomeScreen()),
       if (session.isStudent || session.isInstructor) ('المهام', Icons.assignment_outlined, const AssignmentsScreen()),
-      if (session.isInstructor || session.isAdmin)
+      if (session.isAdmin || (session.isInstructor && session.can('attendance.manage')))
         ('الحضور', Icons.qr_code_2, const AttendanceManageScreen())
       else if (session.canCheckIn)
         ('الحضور', Icons.qr_code_scanner, const AttendanceScreen()),

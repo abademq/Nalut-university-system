@@ -12,7 +12,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .. import attendance as svc
-from .. import audit, files
+from .. import audit, files, permissions
 from ..db import as_utc, get_db, utcnow
 from ..deps import (
     client_ip,
@@ -90,6 +90,7 @@ def create_session(body: SessionIn, request: Request, user: User = Depends(get_c
         if not body.course_id:
             raise HTTPException(status_code=400, detail="حدد المقرر")
         course = get_course_for(db, user, body.course_id, teach=True)
+        permissions.require(db, user, "attendance.manage")
         faculty_id = course.faculty_id
     else:
         if user.role not in (Role.UNIVERSITY_ADMIN, Role.FACULTY_ADMIN):
@@ -191,6 +192,7 @@ def session_requirements(sid: int, user: User = Depends(get_current_user), db: S
 @router.post("/attendance/sessions/{sid}/close")
 def close(sid: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     s = _session_for(db, user, sid)
+    permissions.require(db, user, "attendance.manage")
     created = svc.close_session(db, s, user)
     db.commit()
     return {"absent_marked": created, **_session_out(db, s)}
@@ -229,6 +231,7 @@ class ManualIn(BaseModel):
 def manual(sid: int, body: ManualIn, request: Request, user: User = Depends(get_current_user),
            db: Session = Depends(get_db)):
     s = _session_for(db, user, sid)
+    permissions.require(db, user, "attendance.manage")
     target = db.get(User, body.user_id)
     if not target or target.university_id != user.university_id:
         raise not_found()
@@ -253,6 +256,7 @@ def _record_for(db: Session, user: User, rid: int) -> tuple[AttendanceRecord, At
 def review(rid: int, body: ReviewIn, request: Request, user: User = Depends(get_current_user),
            db: Session = Depends(get_db)):
     r, _ = _record_for(db, user, rid)
+    permissions.require(db, user, "attendance.manage")
     svc.review(db, user, r, body.approve, body.reason, ip=client_ip(request))
     db.commit()
     return _record_out(r)

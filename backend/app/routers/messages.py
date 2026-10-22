@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from .. import audit, files, notifications
+from .. import audit, files, notifications, permissions
 from ..db import get_db, utcnow
 from ..deps import client_ip, forbidden, get_current_user, not_found, tenant_settings
 from ..models import (
@@ -225,6 +225,7 @@ def report_message(mid: int, body: ReportIn, request: Request, user: User = Depe
 def list_reports(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     if user.role not in (Role.UNIVERSITY_ADMIN, Role.FACULTY_ADMIN):
         raise forbidden()
+    permissions.require(db, user, "messages.moderate")
     rows = db.execute(select(MessageReport, Message).join(Message, Message.id == MessageReport.message_id).where(
         MessageReport.university_id == user.university_id).order_by(MessageReport.id.desc()).limit(200)).all()
     out = []
@@ -249,6 +250,7 @@ def handle_report(rid: int, body: ReportAction, request: Request, user: User = D
                   db: Session = Depends(get_db)):
     if user.role not in (Role.UNIVERSITY_ADMIN, Role.FACULTY_ADMIN):
         raise forbidden()
+    permissions.require(db, user, "messages.moderate")
     rep = db.get(MessageReport, rid)
     if not rep or rep.university_id != user.university_id:
         raise not_found()

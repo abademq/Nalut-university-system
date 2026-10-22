@@ -623,6 +623,8 @@ def put_settings(body: SettingsIn, request: Request, user: User = Depends(requir
 def audit_log(action: str | None = None, limit: int = Query(default=100, le=500), offset: int = 0,
               user: User = Depends(require_roles(Role.PLATFORM_ADMIN, Role.UNIVERSITY_ADMIN, Role.FACULTY_ADMIN)),
               db: Session = Depends(get_db)):
+    if user.role == Role.FACULTY_ADMIN:
+        permissions.require(db, user, "audit.view")
     stmt = select(AuditLog)
     if user.role != Role.PLATFORM_ADMIN:
         stmt = stmt.where(AuditLog.university_id == user.university_id)

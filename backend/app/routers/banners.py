@@ -15,13 +15,18 @@ from ..models import Banner, Faculty, Role, User
 
 router = APIRouter(prefix="/api/banners", tags=["banners"])
 
-MANAGERS = (Role.UNIVERSITY_ADMIN, Role.FACULTY_ADMIN)
+MANAGERS = (Role.UNIVERSITY_ADMIN, Role.FACULTY_ADMIN, Role.STAFF)
 
 
 def _manager(user: User = Depends(require_roles(*MANAGERS)), db: Session = Depends(get_db)) -> User:
-    if user.role == Role.FACULTY_ADMIN and not permissions.allowed(db, user, "banners.manage"):
-        raise forbidden("نشر الإعلانات غير مفعل لإدارة الكلية في هذه الجامعة")
+    if not permissions.allowed(db, user, "banners.manage"):
+        raise forbidden("نشر الإعلانات المثبتة غير مفعل لحسابك في هذه الجامعة")
     return user
+
+
+def _faculty_scoped(user: User) -> bool:
+    """Faculty administrators, and staff attached to a faculty, manage their faculty's banners only."""
+    return user.role != Role.UNIVERSITY_ADMIN and user.faculty_id is not None
 
 
 def _out(b: Banner, faculty_name: str | None = None) -> dict:
@@ -50,7 +55,7 @@ def _scoped(db: Session, user: User, bid: int) -> Banner:
     b = db.get(Banner, bid)
     if not b or b.university_id != user.university_id:
         raise not_found()
-    if user.role == Role.FACULTY_ADMIN and b.faculty_id != user.faculty_id:
+    if _faculty_scoped(user) and b.faculty_id != user.faculty_id:
         raise forbidden()
     return b
 
@@ -58,7 +63,7 @@ def _scoped(db: Session, user: User, bid: int) -> Banner:
 @router.get("/manage")
 def manage(user: User = Depends(_manager), db: Session = Depends(get_db)):
     stmt = select(Banner).where(Banner.university_id == user.university_id)
-    if user.role == Role.FACULTY_ADMIN:
+    if _faculty_scoped(user):
         stmt = stmt.where(Banner.faculty_id == user.faculty_id)
     names = {f.id: f.name for f in db.scalars(select(Faculty).where(Faculty.university_id == user.university_id))}
     return [_out(b, names.get(b.faculty_id)) for b in db.scalars(stmt.order_by(Banner.id.desc()).limit(200))]
@@ -77,8 +82,8 @@ class BannerIn(BaseModel):
 
 
 def _validate(db: Session, user: User, data: dict) -> dict:
-    if user.role == Role.FACULTY_ADMIN:
-        data["faculty_id"] = user.faculty_id  # faculty admins only publish to their faculty
+    if _faculty_scoped(user):
+        data["faculty_id"] = user.faculty_id  # faculty administrations and faculty staff publish to their faculty
     elif data.get("faculty_id") is not None:
         fac = db.get(Faculty, data["faculty_id"])
         if not fac or fac.university_id != user.university_id:

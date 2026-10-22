@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from .. import audit
+from .. import audit, permissions
 from ..db import get_db
 from ..deps import (
     client_ip,
@@ -88,9 +88,15 @@ class CourseIn(BaseModel):
     components: list[ComponentIn] = Field(default_factory=list)
 
 
+def _course_manager(user: User = Depends(require_roles(Role.UNIVERSITY_ADMIN, Role.FACULTY_ADMIN)),
+                    db: Session = Depends(get_db)) -> User:
+    permissions.require(db, user, "courses.manage")
+    return user
+
+
 @router.post("/courses")
 def create_course(body: CourseIn, request: Request,
-                  user: User = Depends(require_roles(Role.UNIVERSITY_ADMIN, Role.FACULTY_ADMIN)),
+                  user: User = Depends(_course_manager),
                   db: Session = Depends(get_db)):
     faculty_id = user.faculty_id if user.role == Role.FACULTY_ADMIN else body.faculty_id
     fac = db.get(Faculty, faculty_id) if faculty_id else None
@@ -132,7 +138,11 @@ def patch_course(course_id: int, body: CoursePatch, request: Request, user: User
     c = get_course_for(db, user, course_id)
     data = body.model_dump(exclude_unset=True)
     # the course's teachers may move their own lecture times; everything else is the administration's
-    if not is_course_admin(user, c) and not (set(data) <= {"schedule"} and can_teach_course(db, user, c)):
+    if is_course_admin(user, c):
+        permissions.require(db, user, "courses.manage")
+    elif set(data) <= {"schedule"} and can_teach_course(db, user, c):
+        permissions.require(db, user, "courses.schedule")
+    else:
         raise forbidden()
     if data.get("department_id") is not None:
         dep = db.get(Department, data["department_id"])
@@ -159,7 +169,7 @@ class StaffIn(BaseModel):
 
 @router.post("/courses/{course_id}/staff")
 def assign_staff(course_id: int, body: StaffIn, request: Request,
-                 user: User = Depends(require_roles(Role.UNIVERSITY_ADMIN, Role.FACULTY_ADMIN)),
+                 user: User = Depends(_course_manager),
                  db: Session = Depends(get_db)):
     c = get_course_for(db, user, course_id)
     t = db.get(User, body.user_id)
@@ -175,7 +185,7 @@ def assign_staff(course_id: int, body: StaffIn, request: Request,
 
 @router.delete("/courses/{course_id}/staff/{user_id}")
 def remove_staff(course_id: int, user_id: int, request: Request,
-                 user: User = Depends(require_roles(Role.UNIVERSITY_ADMIN, Role.FACULTY_ADMIN)),
+                 user: User = Depends(_course_manager),
                  db: Session = Depends(get_db)):
     c = get_course_for(db, user, course_id)
     row = db.scalar(select(CourseStaff).where(CourseStaff.course_id == c.id, CourseStaff.user_id == user_id))
@@ -194,7 +204,7 @@ class EnrollIn(BaseModel):
 
 @router.post("/courses/{course_id}/enrollments")
 def enroll(course_id: int, body: EnrollIn, request: Request,
-           user: User = Depends(require_roles(Role.UNIVERSITY_ADMIN, Role.FACULTY_ADMIN)),
+           user: User = Depends(_course_manager),
            db: Session = Depends(get_db)):
     c = get_course_for(db, user, course_id)
     added, unknown = [], []
@@ -218,7 +228,7 @@ def enroll(course_id: int, body: EnrollIn, request: Request,
 
 @router.delete("/courses/{course_id}/enrollments/{student_id}")
 def unenroll(course_id: int, student_id: int, request: Request,
-             user: User = Depends(require_roles(Role.UNIVERSITY_ADMIN, Role.FACULTY_ADMIN)),
+             user: User = Depends(_course_manager),
              db: Session = Depends(get_db)):
     c = get_course_for(db, user, course_id)
     e = db.scalar(select(Enrollment).where(Enrollment.course_id == c.id, Enrollment.student_id == student_id))
@@ -263,6 +273,7 @@ def _component(db: Session, user: User, cid: int) -> tuple[AssessmentComponent, 
     if not comp:
         raise not_found()
     course = get_course_for(db, user, comp.course_id, teach=True)
+    permissions.require(db, user, "courses.components")
     if grades.result_for(db, course.id).status != "draft":
         raise HTTPException(status_code=400, detail="لا يمكن تعديل عناصر التقييم بعد رفع النتائج")
     return comp, course

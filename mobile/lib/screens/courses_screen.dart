@@ -85,6 +85,15 @@ class _CourseFormScreenState extends State<CourseFormScreen> {
   String _resultStatus = 'draft';
 
   bool get _isNew => widget.courseId == null;
+  bool get _mayEditComponents {
+    final s = context.read<Session>();
+    return s.isAdmin || s.can('courses.components');
+  }
+
+  bool get _mayEditSchedule {
+    final s = context.read<Session>();
+    return s.isAdmin || s.can('courses.schedule');
+  }
 
   @override
   void initState() {
@@ -349,7 +358,9 @@ class _CourseFormScreenState extends State<CourseFormScreen> {
         ),
         SectionCard(
           title: 'مواعيد المحاضرات الأسبوعية',
-          trailing: IconButton(tooltip: 'إضافة موعد', icon: const Icon(Icons.add), onPressed: () => _editSlot()),
+          trailing: _mayEditSchedule
+              ? IconButton(tooltip: 'إضافة موعد', icon: const Icon(Icons.add), onPressed: () => _editSlot())
+              : null,
           child: Column(children: [
             if (_slots.isEmpty) const Text('لا توجد مواعيد بعد', style: TextStyle(color: Colors.grey)),
             for (var i = 0; i < _slots.length; i++)
@@ -358,8 +369,8 @@ class _CourseFormScreenState extends State<CourseFormScreen> {
                 leading: const Icon(Icons.schedule),
                 title: Text('${dayNames[_slots[i]['day']]}  ${_slots[i]['start']} – ${_slots[i]['end']}'),
                 subtitle: (_slots[i]['room'] as String?)?.isNotEmpty == true ? Text('القاعة ${_slots[i]['room']}') : null,
-                onTap: () => _editSlot(i),
-                trailing: IconButton(
+                onTap: _mayEditSchedule ? () => _editSlot(i) : null,
+                trailing: !_mayEditSchedule ? null : IconButton(
                   icon: const Icon(Icons.delete_outline),
                   onPressed: () => setState(() => _slots.removeAt(i)),
                 ),
@@ -371,7 +382,7 @@ class _CourseFormScreenState extends State<CourseFormScreen> {
         if (!_isNew)
           SectionCard(
             title: 'عناصر التقييم (المجموع $total)',
-            trailing: _resultStatus == 'draft'
+            trailing: _resultStatus == 'draft' && _mayEditComponents
                 ? IconButton(tooltip: 'إضافة عنصر', icon: const Icon(Icons.add), onPressed: () => _componentDialog())
                 : null,
             child: Column(children: [
@@ -384,7 +395,7 @@ class _CourseFormScreenState extends State<CourseFormScreen> {
                   contentPadding: EdgeInsets.zero,
                   title: Text('${c['name']}'),
                   trailing: Text('من ${c['max_score']}'),
-                  onTap: _resultStatus == 'draft' ? () => _componentDialog(c) : null,
+                  onTap: _resultStatus == 'draft' && _mayEditComponents ? () => _componentDialog(c) : null,
                 ),
             ]),
           ),
