@@ -673,7 +673,7 @@ class OtpChallenge(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     purpose: Mapped[str] = mapped_column(String(20))  # login | verify
-    code_hash: Mapped[str] = mapped_column(String(64))
+    code_hash: Mapped[str] = mapped_column(String(100))  # "<salt>$<hmac-sha256 hex>"
     provider_ref: Mapped[str | None] = mapped_column(String(64))
     attempts: Mapped[int] = mapped_column(Integer, default=0)
     expires_at: Mapped[datetime] = mapped_column(DateTime)
