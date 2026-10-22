@@ -5,16 +5,18 @@ import 'package:provider/provider.dart';
 import 'api/api_client.dart';
 import 'api/token_store.dart';
 import 'config.dart';
+import 'launch.dart';
 import 'push.dart';
 import 'screens/home_shell.dart';
 import 'screens/login_screen.dart';
 import 'widgets/splash.dart';
 import 'state/session.dart';
 
-void main() {
+Future<void> main() async {
   // Plugins (secure storage, Firebase) talk to the OS through platform channels,
   // which need the binding before any call is made.
   WidgetsFlutterBinding.ensureInitialized();
+  final launch = await LaunchStore.load();
   final store = SecureTokenStore();
   final session = Session(
     api: ApiClient(store: store, baseUrl: defaultServerUrl),
@@ -22,14 +24,28 @@ void main() {
     push: FirebasePushService(),
   );
   session.start();
-  runApp(UniversityApp(session: session));
+  runApp(UniversityApp(session: session, launch: launch));
+  // refresh the launch screen for the next start; once signed in, for the user's university
+  var refreshedFor = launch.universityId;
+  LaunchStore.refresh(session.api, launch);
+  session.addListener(() {
+    final uni = (session.user?['university'] as Map?)?['id'] as int?;
+    if (uni != null && uni != refreshedFor) {
+      refreshedFor = uni;
+      LaunchStore.refresh(session.api, launch, universityId: uni);
+    }
+  });
 }
 
 final messengerKey = GlobalKey<ScaffoldMessengerState>();
 
 class UniversityApp extends StatelessWidget {
-  const UniversityApp({super.key, required this.session});
+  const UniversityApp({super.key, required this.session, this.launch});
   final Session session;
+
+  /// The launch screen chosen by the platform administrator; null shows the default one
+  /// only while the session is restored (tests).
+  final LaunchConfig? launch;
 
   @override
   Widget build(BuildContext context) {
@@ -67,13 +83,21 @@ class UniversityApp extends StatelessWidget {
           colorScheme: ColorScheme.fromSeed(seedColor: AppColors.primary, brightness: Brightness.dark),
           useMaterial3: true,
         ),
-        home: Consumer<Session>(
-          builder: (context, s, _) => switch (s.status) {
+        home: Consumer<Session>(builder: (context, s, _) {
+          final page = switch (s.status) {
             SessionStatus.loading => const SplashView(),
             SessionStatus.signedOut => const LoginScreen(),
             SessionStatus.signedIn => const HomeShell(),
-          },
-        ),
+          };
+          final cfg = launch;
+          if (cfg == null) return page;
+          return LaunchGate(
+            config: cfg,
+            loading: s.status == SessionStatus.loading,
+            playSound: NativeNotifications.playLaunchSound,
+            child: page,
+          );
+        }),
       ),
     );
   }

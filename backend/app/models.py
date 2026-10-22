@@ -14,6 +14,7 @@ from sqlalchemy import (
     Float,
     ForeignKey,
     Integer,
+    LargeBinary,
     String,
     Text,
     UniqueConstraint,
@@ -706,3 +707,25 @@ class Publication(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+# --------------------------------------------------------------------------- app launch screen
+
+
+class AppAsset(Base):
+    """A small image the mobile app shows before sign-in (the launch screen picture).
+
+    Kept in the database (not the file store) because it is public and fetched by the app
+    before anyone signs in; set by the platform administrator only.
+    """
+
+    __tablename__ = "app_assets"
+    __table_args__ = (UniqueConstraint("university_id", "kind"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    university_id: Mapped[int] = mapped_column(ForeignKey("universities.id"), index=True)
+    kind: Mapped[str] = mapped_column(String(20))  # splash
+    content_type: Mapped[str] = mapped_column(String(40))
+    data: Mapped[bytes] = mapped_column(LargeBinary)
+    version: Mapped[str] = mapped_column(String(16))  # first 16 hex chars of the SHA-256
+    updated_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)

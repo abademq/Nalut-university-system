@@ -1,9 +1,9 @@
-"""Generates the notification tones (WAV, 22.05 kHz mono) bundled in the app and previewed on the web.
+"""Generates the notification tones and the app's launch sounds (WAV, 22.05 kHz mono) bundled in the app and previewed on the web.
 
     python3 mobile/tool/make_tones.py
 
 Writes mobile/android/app/src/main/res/raw/tone_<name>.wav and web/tones/tone_<name>.wav.
-The names must match TONES in backend/app/notifications.py.
+The names must match TONES and LAUNCH_SOUNDS in backend/app/notifications.py.
 """
 import math
 import struct
@@ -42,6 +42,16 @@ TONES = {
                    *silence(.08)] for _ in range(3)), []),
     # fast high beeps
     "siren": sum(([*note(2093, .08, harm=(1, .6, .3), decay=2), *silence(.04)] for _ in range(6)), []),
+    # launch sounds, played once when the app opens
+    # warm rising major arpeggio
+    "welcome": note(523.25, .16, decay=6) + note(659.25, .16, decay=6) + note(783.99, .16, decay=6)
+    + note(1046.5, .8, harm=(1, .4, .15), decay=3),
+    # quick bright run up
+    "sparkle": sum((note(f, .07, harm=(1, .2), decay=14) for f in (1568, 1760, 1975.5, 2349.3, 2637)), [])
+    + note(3136, .5, harm=(1, .2), decay=6),
+    # plucked descending-then-resolving phrase
+    "harp": note(784, .22, harm=(1, .25, .08), decay=7) + note(659.25, .22, harm=(1, .25, .08), decay=7)
+    + note(523.25, .22, harm=(1, .25, .08), decay=7) + note(1046.5, .9, harm=(1, .25, .08), decay=3.2),
 }
 
 for name, samples in TONES.items():
@@ -54,4 +64,4 @@ for name, samples in TONES.items():
             w.setsampwidth(2)
             w.setframerate(SR)
             w.writeframes(data)
-print("tones:", ", ".join(TONES))
+print("sounds:", ", ".join(TONES))

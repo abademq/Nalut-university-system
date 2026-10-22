@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import copy
+import re
 
 from .permissions import DEFAULT_PERMISSIONS
 
@@ -63,6 +64,18 @@ DEFAULT_SETTINGS: dict = {
         # tone each kind of notification plays on phones (names in notifications.TONES)
         "tones": {"normal": "chime", "important": "rising", "urgent": "alarm", "official_warning": "siren"},
     },
+    # the app's launch screen and start-up sound; set by the platform administrator only
+    "launch": {
+        "enabled": True,
+        "duration_ms": 1800,  # minimum time on screen, 0-6000
+        "title": "منصة الجامعة الذكية",
+        "subtitle": "",  # empty: the university's name
+        "background": "#0B3B32",
+        "foreground": "#F7F4EC",
+        "accent": "#C8A24A",
+        "show_loader": True,
+        "sound": "welcome",  # a name from notifications.LAUNCH_SOUNDS or TONES, or "none"
+    },
     "archive": {
         # staff offices (besides faculty / university administration) allowed to manage student files
         "offices": ["registrar"],
@@ -99,3 +112,33 @@ def letter_for(percent: float, grading: dict) -> tuple[str, str]:
         if percent >= minimum:
             return letter, label
     return "F", ""
+
+
+_HEX_COLOR = re.compile(r"^#[0-9A-Fa-f]{6}$")
+
+
+def validate_launch(launch: dict) -> dict:
+    """Checks and normalises the launch screen settings (HTTP 400 on bad values)."""
+    from fastapi import HTTPException
+
+    from .notifications import LAUNCH_SOUNDS, TONES
+
+    if not isinstance(launch, dict) or set(launch) - set(DEFAULT_SETTINGS["launch"]):
+        raise HTTPException(status_code=400, detail="إعدادات شاشة البداية غير صحيحة")
+    out = dict(launch)
+    try:
+        out["duration_ms"] = int(out["duration_ms"])
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="مدة شاشة البداية غير صحيحة") from None
+    if not 0 <= out["duration_ms"] <= 6000:
+        raise HTTPException(status_code=400, detail="مدة شاشة البداية بين 0 و 6 ثوانٍ")
+    for key in ("background", "foreground", "accent"):
+        if not isinstance(out[key], str) or not _HEX_COLOR.match(out[key]):
+            raise HTTPException(status_code=400, detail="لون غير صحيح")
+    for key, limit in (("title", 60), ("subtitle", 80)):
+        out[key] = str(out[key] or "").strip()[:limit]
+    out["enabled"] = bool(out["enabled"])
+    out["show_loader"] = bool(out["show_loader"])
+    if out["sound"] != "none" and out["sound"] not in LAUNCH_SOUNDS and out["sound"] not in TONES:
+        raise HTTPException(status_code=400, detail="نغمة تشغيل غير معروفة")
+    return out

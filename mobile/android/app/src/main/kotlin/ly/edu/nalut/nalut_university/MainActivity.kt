@@ -15,7 +15,7 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
-    // The tones bundled in res/raw. The university administration chooses which one each kind
+    // The tones bundled in res/raw. The platform administrator chooses which one each kind
     // of notification uses, and the server sends every push to channel "nus_tone_<name>".
     private val tones = linkedMapOf(
         "chime" to Pair(R.raw.tone_chime, "جرس هادئ"),
@@ -24,6 +24,13 @@ class MainActivity : FlutterActivity() {
         "pulse" to Pair(R.raw.tone_pulse, "نبضتان"),
         "alarm" to Pair(R.raw.tone_alarm, "إنذار متكرر"),
         "siren" to Pair(R.raw.tone_siren, "تنبيه حاد"),
+    )
+
+    // played once when the app opens (chosen by the platform administrator); no channels
+    private val launchSounds = mapOf(
+        "welcome" to R.raw.tone_welcome,
+        "sparkle" to R.raw.tone_sparkle,
+        "harp" to R.raw.tone_harp,
     )
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -65,6 +72,12 @@ class MainActivity : FlutterActivity() {
                     val tone = tones[call.argument<String>("tone")] ?: tones.getValue("chime")
                     RingtoneManager.getRingtone(applicationContext, toneUri(tone.first))?.play()
                     result.success(true)
+                }
+                "playLaunchSound" -> {
+                    val name = call.argument<String>("sound")
+                    val res = launchSounds[name] ?: tones[name]?.first
+                    if (res != null) RingtoneManager.getRingtone(applicationContext, toneUri(res))?.play()
+                    result.success(res != null)
                 }
                 "openAppSettings" -> {
                     val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

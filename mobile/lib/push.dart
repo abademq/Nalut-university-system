@@ -38,6 +38,14 @@ class NativeNotifications {
     } catch (_) {}
   }
 
+  /// The start-up sound (a launch sound or a notification tone); "none" plays nothing.
+  static Future<void> playLaunchSound(String sound) async {
+    if (sound == 'none' || sound.isEmpty) return;
+    try {
+      await _channel.invokeMethod('playLaunchSound', {'sound': sound});
+    } catch (_) {}
+  }
+
   static Future<void> openSettings() async {
     try {
       await _channel.invokeMethod('openAppSettings');

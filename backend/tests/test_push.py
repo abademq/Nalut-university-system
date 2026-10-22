@@ -138,8 +138,10 @@ def test_resala_sms_batch_marks_invalid_numbers(monkeypatch):
     assert [r.phone for r in fake.records] == ["218912222222", "218921111111"]
 
 
-def test_admin_chooses_the_tones(client, as_, monkeypatch):
-    p = as_("president@nalut.edu.ly")
+def test_platform_admin_chooses_the_tones(client, as_, db, monkeypatch):
+    from test_platform import platform, uni_id
+
+    p = {**platform(client), "X-Act-As-University": str(uni_id(db))}
     r = client.put("/api/settings", headers=p, json={"settings": {"notifications": {
         "tones": {"normal": "bell", "important": "pulse", "urgent": "siren", "official_warning": "alarm"}}}})
     assert r.status_code == 200, r.text

@@ -36,7 +36,7 @@ from ..models import (
 )
 from ..routers.auth import normalize_identifier
 from ..security import hash_password
-from ..tenancy import DEFAULT_SETTINGS, effective_settings
+from ..tenancy import DEFAULT_SETTINGS, effective_settings, validate_launch
 
 router = APIRouter(prefix="/api", tags=["admin"])
 
@@ -586,12 +586,20 @@ def put_settings(body: SettingsIn, request: Request, user: User = Depends(requir
         raise HTTPException(status_code=400, detail="دور غير معروف في إلزام التحقق")
     if not set(sec.get("mfa_required_capabilities") or []) <= set(permissions.CAPABILITIES):
         raise HTTPException(status_code=400, detail="صلاحية غير معروفة في إلزام التحقق")
+    acting = getattr(user, "acting_platform_admin", False)
+    current = effective_settings(db.get(University, user.university_id))
     tones = (body.settings.get("notifications") or {}).get("tones")
     if tones is not None:
         from ..notifications import TONE_SLOTS, TONES
 
         if not isinstance(tones, dict) or not set(tones) <= set(TONE_SLOTS) or not set(tones.values()) <= set(TONES):
             raise HTTPException(status_code=400, detail="نغمة غير معروفة")
+        if not acting and {**current["notifications"]["tones"], **tones} != current["notifications"]["tones"]:
+            raise forbidden("نغمات الإشعارات يحددها مشرف المنصة فقط")
+    if "launch" in body.settings:
+        if not acting:
+            raise forbidden("شاشة البداية ونغمة التشغيل يحددها مشرف المنصة فقط")
+        body.settings["launch"] = validate_launch({**current["launch"], **(body.settings["launch"] or {})})
     att = body.settings.get("attendance", {})
     for key in ("warning_absence_percent", "limit_absence_percent", "review_threshold"):
         if key in att and not (0 <= float(att[key]) <= 100):

@@ -82,8 +82,8 @@ class HttpPushProvider:
 
 
 # Tones bundled in the app (res/raw/tone_<name>.wav, one Android channel "nus_tone_<name>" each).
-# The university administration picks which tone each kind of notification plays
-# (settings.notifications.tones); users cannot change it from the app.
+# The platform administrator picks which tone each kind of notification plays in each
+# university (settings.notifications.tones); nobody else can change it.
 TONES = {
     "chime": "جرس هادئ",
     "bell": "جرس",
@@ -91,6 +91,12 @@ TONES = {
     "pulse": "نبضتان",
     "alarm": "إنذار متكرر",
     "siren": "تنبيه حاد",
+}
+# Sounds the app may play once when it opens (res/raw/tone_<name>.wav as well).
+LAUNCH_SOUNDS = {
+    "welcome": "ترحيب",
+    "sparkle": "لمعة",
+    "harp": "قيثارة",
 }
 TONE_SLOTS = {"normal": "عادي", "important": "مهم", "urgent": "عاجل", "official_warning": "إنذار رسمي"}
 DEFAULT_TONES = {"normal": "chime", "important": "rising", "urgent": "alarm", "official_warning": "siren"}

@@ -1,4 +1,4 @@
-import { html, useState, useAsync, Async, Empty, Chip, ErrorBox, useForm, useSubmit, toast, toastError, Modal, ROLE, fmtDate } from "../ui.js";
+import { html, useState, useEffect, useAsync, Async, Empty, Chip, ErrorBox, useForm, useSubmit, toast, toastError, Modal, ROLE, fmtDate } from "../ui.js";
 import { api, setActing } from "../api.js";
 
 const CREATABLE = {
@@ -227,10 +227,84 @@ function SmsCheck() {
   </div>`;
 }
 
-export function SettingsView() {
+export function SettingsView({ user }) {
   const state = useAsync(() => api.get("/api/settings"), []);
-  return html`<div><h1>إعدادات المؤسسة</h1><${Async} state=${state}>${(d) => html`<${SettingsForm} data=${d} onSaved=${state.reload} />`}<//>
+  const acting = !!user?.acting;
+  return html`<div><h1>إعدادات المؤسسة</h1><${Async} state=${state}>${(d) => html`
+    ${acting ? html`<${LaunchSettings} data=${d} universityId=${user.university?.id} onSaved=${state.reload} />` : null}
+    <${SettingsForm} data=${d} acting=${acting} onSaved=${state.reload} />`}<//>
     <${SmsCheck} /></div>`;
+}
+
+const playSound = (name) => { if (name && name !== "none") new Audio(`/static/tones/tone_${name}.wav`).play().catch(() => {}); };
+
+/** The app's launch screen and start-up sound: platform administrator only (acting as the university). */
+function LaunchSettings({ data, universityId, onSaved }) {
+  const l = data.effective.launch;
+  const [v, bind] = useForm({ enabled: l.enabled, seconds: l.duration_ms / 1000, title: l.title, subtitle: l.subtitle,
+    background: l.background, foreground: l.foreground, accent: l.accent, show_loader: l.show_loader, sound: l.sound });
+  const sounds = useAsync(() => api.get("/api/app/sounds"), []);
+  const info = useAsync(() => api.get(`/api/app/launch?u=${universityId}`), [universityId]);
+  const [imgUrl, setImgUrl] = useState(null);
+  const version = info.data?.image_version;
+  useEffect(() => { setImgUrl(version ? `/api/app/launch/image?u=${universityId}&v=${version}` : null); }, [version]);
+  const [submit, busy, error] = useSubmit(async () => {
+    await api.put("/api/settings", { settings: { launch: {
+      enabled: v.enabled, duration_ms: Math.round(Number(v.seconds) * 1000), title: v.title, subtitle: v.subtitle,
+      background: v.background, foreground: v.foreground, accent: v.accent, show_loader: v.show_loader, sound: v.sound } } });
+    toast("حُفظت شاشة البداية، وتظهر في التطبيق من التشغيل التالي");
+    onSaved();
+  });
+  const upload = async (ev) => {
+    const file = ev.target.files[0];
+    ev.target.value = "";
+    if (!file) return;
+    const fd = new FormData();
+    fd.append("upload", file);
+    try { await api.form("/api/app/launch/image", fd); toast("رُفعت الصورة"); info.reload(); } catch (e) { toastError(e); }
+  };
+  const removeImage = async () => {
+    try { await api.del("/api/app/launch/image"); toast("عادت صورة الشعار الافتراضية"); info.reload(); } catch (e) { toastError(e); }
+  };
+  return html`<form onSubmit=${submit}><${ErrorBox} error=${error} />
+    <div class="card"><h3>شاشة البداية ونغمة التشغيل (مشرف المنصة)</h3>
+      <p class="small muted">تظهر عند فتح التطبيق قبل تسجيل الدخول. يحفظها الهاتف ويحدّثها في الخلفية، فيظهر التعديل من التشغيل التالي للتطبيق.</p>
+      <div class="row" style="align-items:flex-start;gap:1.25rem;flex-wrap:wrap">
+        <div style=${{ background: v.background, color: v.foreground, width: "190px", height: "340px", borderRadius: "22px",
+          display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "14px", textAlign: "center",
+          boxShadow: "0 4px 18px rgba(0,0,0,.18)" }} aria-label="معاينة شاشة البداية">
+          <img src=${imgUrl || "/static/icon.svg"} alt="" style=${{ maxWidth: "120px", maxHeight: "120px", objectFit: "contain" }}
+            onError=${(e) => { e.target.style.visibility = "hidden"; }} />
+          <strong style=${{ marginTop: "12px", fontSize: "15px" }}>${v.title}</strong>
+          <span style=${{ color: v.accent, fontSize: "12px", marginTop: "4px" }}>${v.subtitle || data.university.name}</span>
+          ${v.show_loader ? html`<span style=${{ marginTop: "18px", width: "16px", height: "16px", borderRadius: "50%",
+            border: `2px solid ${v.accent}`, borderTopColor: "transparent" }}></span>` : null}
+        </div>
+        <div style="flex:1;min-width:240px">
+          <label class="check"><input type="checkbox" ...${bind("enabled", "checkbox")} /> عرض شاشة البداية عند فتح التطبيق</label>
+          <div class="form-grid">
+            <div class="field"><label>المدة (ثانية)</label><input type="number" min="0" max="6" step="0.1" ...${bind("seconds")} /></div>
+            <div class="field"><label>العنوان</label><input maxlength="60" ...${bind("title")} /></div>
+            <div class="field"><label>السطر الثاني (فارغ = اسم الجامعة)</label><input maxlength="80" ...${bind("subtitle")} /></div>
+            <div class="field"><label>لون الخلفية</label><input type="color" ...${bind("background")} /></div>
+            <div class="field"><label>لون العنوان</label><input type="color" ...${bind("foreground")} /></div>
+            <div class="field"><label>لون السطر الثاني والمؤشر</label><input type="color" ...${bind("accent")} /></div>
+          </div>
+          <label class="check"><input type="checkbox" ...${bind("show_loader", "checkbox")} /> إظهار مؤشر التحميل</label>
+          <div class="field"><label>نغمة التشغيل</label><div class="row">
+            <select ...${bind("sound")}>
+              <option value="none">بدون صوت</option>
+              ${sounds.data ? html`<optgroup label="نغمات التشغيل">${sounds.data.launch.map((t) => html`<option value=${t.name}>${t.label}</option>`)}</optgroup>
+                <optgroup label="نغمات الإشعارات">${sounds.data.tones.map((t) => html`<option value=${t.name}>${t.label}</option>`)}</optgroup>` : null}
+            </select>
+            <button type="button" class="small secondary" aria-label="تشغيل النغمة" onClick=${() => playSound(v.sound)}>▶</button></div></div>
+          <div class="field"><label>الصورة (PNG أو JPG حتى 2 ميغابايت، يفضّل خلفية شفافة)</label>
+            <div class="row"><input type="file" accept="image/png,image/jpeg" onChange=${upload} />
+              ${version ? html`<button type="button" class="small secondary" onClick=${removeImage}>إرجاع الشعار الافتراضي</button>` : null}</div></div>
+        </div>
+      </div>
+      <button disabled=${busy}>حفظ شاشة البداية</button>
+    </div></form>`;
 }
 
 const HINTS = {
@@ -245,7 +319,7 @@ const HINTS = {
   low_performance_percent: "إذا قلّ متوسط درجات الطالب في مهام مقرر عن هذه النسبة يظهر ضمن «طلبة يحتاجون متابعة».",
 };
 
-function SettingsForm({ data, onSaved }) {
+function SettingsForm({ data, acting, onSaved }) {
   const e = data.effective;
   const [v, bind] = useForm({
     display_name: e.branding.display_name || data.university.name, primary_color: e.branding.primary_color, accent_color: e.branding.accent_color,
@@ -268,7 +342,8 @@ function SettingsForm({ data, onSaved }) {
       branding: { display_name: v.display_name, primary_color: v.primary_color, accent_color: v.accent_color },
       security: { ...e.security, require_mfa_for_admins: v.require_mfa, mfa_methods: mfaMethods,
         mfa_required_roles: mfaRoles, mfa_required_capabilities: mfaCaps },
-      notifications: { ...e.notifications, sms_enabled: v.sms_enabled, due_reminder_hours: n("due_reminder_hours"), tones },
+      notifications: { ...e.notifications, sms_enabled: v.sms_enabled, due_reminder_hours: n("due_reminder_hours"),
+        tones: acting ? tones : e.notifications.tones },
       attendance: { ...e.attendance, late_after_minutes: n("late_after_minutes"), rotation_seconds: n("rotation_seconds"),
         warning_absence_percent: n("warning_absence_percent"), limit_absence_percent: n("limit_absence_percent"),
         review_threshold: n("review_threshold"), selfie_retention_days: n("selfie_retention_days") },
@@ -298,9 +373,9 @@ function SettingsForm({ data, onSaved }) {
         onChange=${() => flip(mfaCaps, setMfaCaps, c.key)} /> ${c.label}</label>`) : html`<p class="small muted">جارٍ التحميل…</p>`}
     </div>
     <div class="card"><h3>نغمات الإشعارات على الهواتف</h3>
-      <p class="small muted">تحدد الإدارة نغمة كل نوع، وتصل كما هي لكل المستخدمين. اضغط ▶ لسماع النغمة.</p>
+      <p class="small muted">${acting ? "تحدد نغمة كل نوع، وتصل كما هي لكل المستخدمين." : "يحددها مشرف المنصة، وتصل كما هي لكل المستخدمين."} اضغط ▶ لسماع النغمة.</p>
       ${toneInfo.data ? html`<div class="form-grid">${toneInfo.data.slots.map((s) => html`<div class="field"><label>${s.label}</label>
-        <div class="row"><select value=${tones[s.slot] || s.tone} onChange=${(ev) => setTones({ ...tones, [s.slot]: ev.target.value })}>
+        <div class="row"><select disabled=${!acting} value=${tones[s.slot] || s.tone} onChange=${(ev) => setTones({ ...tones, [s.slot]: ev.target.value })}>
           ${toneInfo.data.library.map((t) => html`<option value=${t.name}>${t.label}</option>`)}</select>
         <button type="button" class="small secondary" aria-label="تشغيل النغمة"
           onClick=${() => new Audio(`/static/tones/tone_${tones[s.slot] || s.tone}.wav`).play().catch(() => {})}>▶</button></div></div>`)}</div>`
