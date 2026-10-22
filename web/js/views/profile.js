@@ -1,4 +1,4 @@
-import { html, useState, useAsync, Async, ErrorBox, useForm, useSubmit, toast, toastError, ROLE, CATEGORY, fmtDate } from "../ui.js";
+import { html, useState, useAsync, Async, ErrorBox, useForm, useSubmit, toast, toastError, ROLE, fmtDate } from "../ui.js";
 import { api } from "../api.js";
 import { MfaSetup } from "./login.js";
 
@@ -36,46 +36,6 @@ function Mfa({ user }) {
         : html`<p class="muted">أضف طبقة حماية: رمز برسالة نصية أو من تطبيق المصادقة عند تسجيل الدخول.</p><button onClick=${() => setSetup(true)}>تفعيل</button>`}</div>`;
 }
 
-// Sends a test push to the user's own phones, one per tone, and says what happened.
-function PushTest() {
-  const [busy, setBusy] = useState(null);
-  const test = async (priority) => {
-    setBusy(priority);
-    const r = await api.post("/api/notifications/test-push", { priority }).catch(toastError);
-    setBusy(null);
-    if (!r) return;
-    if (r.provider === "logpush") toast("الإشعارات الفورية غير مفعلة على الخادم (ملف Firebase غير موجود)", "error");
-    else if (!r.devices) toast("لا يوجد هاتف مسجل لحسابك. سجّل الدخول من تطبيق الهاتف واسمح بالإشعارات", "error");
-    else if (!r.sent) toast("فشل الإرسال إلى هاتفك، أعد تسجيل الدخول من التطبيق", "error");
-    else toast(`أُرسل إلى ${r.sent} من ${r.devices} جهاز`, "success");
-  };
-  return html`<div class="card"><h3>تجربة الإشعارات على هاتفي</h3>
-    <p class="small muted">لكل نوع نغمة مختلفة في تطبيق الهاتف، ويمكن تغييرها من «الإشعارات والنغمات» في التطبيق.</p>
-    <div class="row">
-      <button class="secondary small" disabled=${!!busy} onClick=${() => test("normal")}>عادي</button>
-      <button class="secondary small" disabled=${!!busy} onClick=${() => test("important")}>مهم</button>
-      <button class="secondary small" disabled=${!!busy} onClick=${() => test("urgent")}>عاجل</button>
-    </div></div>`;
-}
-
-function Prefs({ user }) {
-  const p = user.notification_prefs || {};
-  const [v, bind] = useForm({ push: p.push !== false, sms: p.sms !== false });
-  const [muted, setMuted] = useState(p.muted_categories || []);
-  const [submit, busy, error] = useSubmit(async () => {
-    await api.put("/api/me/notification-prefs", { push: v.push, sms: v.sms, muted_categories: muted });
-    toast("تم حفظ التفضيلات");
-  });
-  const toggle = (k) => setMuted(muted.includes(k) ? muted.filter((x) => x !== k) : [...muted, k]);
-  return html`<form class="card" onSubmit=${submit}><h3>تفضيلات الإشعارات</h3><${ErrorBox} error=${error} />
-    <label class="check"><input type="checkbox" ...${bind("push", "checkbox")} /> إشعارات فورية على الهاتف</label>
-    <label class="check"><input type="checkbox" ...${bind("sms", "checkbox")} /> رسائل SMS</label>
-    <p class="small muted">كتم التنبيهات الفورية لـ (تبقى في صندوق الإشعارات):</p>
-    ${["announcement", "academic_note", "admin_notice"].map((k) => html`<label class="check"><input type="checkbox" checked=${muted.includes(k)} onChange=${() => toggle(k)} /> ${CATEGORY[k]}</label>`)}
-    <p class="small muted">التحذيرات الرسمية والإشعارات العاجلة تصل دائماً.</p>
-    <button disabled=${busy}>حفظ</button></form>`;
-}
-
 function Sessions() {
   const state = useAsync(() => api.get("/api/me/sessions"), []);
   const revoke = async () => {
@@ -96,6 +56,6 @@ export function ProfileView({ user }) {
       <li>البريد: <span class="ltr">${user.email || "—"}</span> · الهاتف: <span class="ltr">${user.phone || "—"}</span></li>
       ${user.university ? html`<li>${user.university.name}${user.faculty ? ` — ${user.faculty.name}` : ""}</li>` : null}</ul>
       <p class="small muted">لتعديل البيانات الأساسية تواصل مع إدارة الكلية.</p></div>
-    <div class="grid cols-2"><${ChangePassword} /><${Mfa} user=${user} /><${Prefs} user=${user} /><${PushTest} /><${Sessions} /></div>
+    <div class="grid cols-2"><${ChangePassword} /><${Mfa} user=${user} /><${Sessions} /></div>
   </div>`;
 }

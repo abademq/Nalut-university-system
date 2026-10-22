@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from .. import audit, mfa, permissions
 from ..config import settings
 from ..db import get_db, utcnow
-from ..deps import client_ip, get_current_user, tenant_settings
+from ..deps import client_ip, forbidden, get_current_user, tenant_settings
 from ..models import AuthSession, DeviceToken, Faculty, PasswordResetToken, Role, University, User
 from ..notifications import sms_provider
 from ..security import (
@@ -483,19 +483,10 @@ def me(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     return user_profile(db, user)
 
 
-class PrefsIn(BaseModel):
-    push: bool = True
-    sms: bool = True
-    muted_categories: list[str] = Field(default_factory=list, max_length=10)
-
-
 @router.put("/me/notification-prefs")
-def set_prefs(body: PrefsIn, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    allowed = {"announcement", "academic_note", "admin_notice"}  # warnings and system alerts can't be muted
-    user.notification_prefs = {"push": body.push, "sms": body.sms,
-                               "muted_categories": [c for c in body.muted_categories if c in allowed]}
-    db.commit()
-    return user.notification_prefs
+def set_prefs(user: User = Depends(get_current_user)):
+    """Retired: what reaches each user is set by the administration from the dashboard."""
+    raise forbidden("الإشعارات تديرها إدارة الجامعة من لوحة التحكم")
 
 
 class DeviceIn(BaseModel):

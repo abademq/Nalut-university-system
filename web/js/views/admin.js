@@ -208,6 +208,43 @@ export function StructureView({ user }) {
   </div>`;
 }
 
+// Delivery status for the administration: is push / SMS configured, last 24 hours, last errors,
+// and a test push to the administrator's own phones (one per priority, each with its tone).
+function NotificationStatus() {
+  const state = useAsync(() => api.get("/api/notifications/health"), []);
+  const [busy, setBusy] = useState(null);
+  const test = async (priority) => {
+    setBusy(priority);
+    const r = await api.post("/api/notifications/test-push", { priority }).catch(toastError);
+    setBusy(null);
+    if (!r) return;
+    if (r.provider === "logpush" || r.provider === "log") toast("الإشعارات الفورية غير مفعلة على الخادم (ملف Firebase غير موجود)", "error");
+    else if (!r.devices) toast("لا يوجد هاتف مسجل لحسابك: سجّل الدخول من تطبيق الهاتف واسمح بالإشعارات", "error");
+    else if (!r.sent) toast(`رفض Firebase الإرسال: ${r.error || "سبب غير معروف"}`, "error");
+    else toast(`أُرسل إلى ${r.sent} من ${r.devices} جهاز (النغمة: ${r.tone})`, "success");
+    state.reload();
+  };
+  const PUSH = { sent: "وصل", failed: "فشل", no_device: "بلا هاتف مسجل", pending: "قيد الإرسال", skipped: "لم يُرسل" };
+  const SMS = { sent: "أُرسلت", failed: "فشلت", no_phone: "بلا رقم", skipped: "لم تُرسل", pending: "قيد الإرسال" };
+  const counts = (obj, names) => Object.entries(obj || {}).map(([k, n]) => `${names[k] || k}: ${n}`).join(" · ") || "لا شيء";
+  return html`<div class="card"><h3>حالة الإشعارات والرسائل</h3>
+    <p class="small muted">إعدادات الإشعارات تديرها الإدارة من هنا فقط، ولا يغيّرها المستخدمون من التطبيق.</p>
+    <${Async} state=${state}>${(h) => html`
+      <ul class="list">
+        <li>${h.push_ready ? "✅" : "❌"} الإشعارات الفورية (Firebase) — ${h.push_ready ? "مفعلة" : "غير مفعلة: ملف /etc/nus/firebase.json غير موجود"} · هواتف مسجلة: ${h.users_with_devices}</li>
+        <li>${h.sms_ready ? "✅" : "❌"} الرسائل النصية — ${h.sms_ready ? `المزود: ${h.sms_provider}` : "غير مفعلة: أضف SMS_PROVIDER=resala في /etc/nus/nus.env"}</li>
+        <li class="small">آخر 24 ساعة — إشعارات: ${counts(h.last_24h.push, PUSH)}<br />رسائل: ${counts(h.last_24h.sms, SMS)}</li>
+        ${h.last_push_error ? html`<li class="small">آخر خطأ Firebase (${fmtDate(h.last_push_error_at)}): <span class="ltr">${h.last_push_error}</span></li>` : null}
+        ${h.last_sms_error ? html`<li class="small">آخر خطأ رسائل: <span class="ltr">${JSON.stringify(h.last_sms_error)}</span></li>` : null}
+      </ul>`}<//>
+    <h4>تجربة على هاتفي</h4>
+    <div class="row">
+      <button type="button" class="secondary small" disabled=${!!busy} onClick=${() => test("normal")}>عادي</button>
+      <button type="button" class="secondary small" disabled=${!!busy} onClick=${() => test("important")}>مهم</button>
+      <button type="button" class="secondary small" disabled=${!!busy} onClick=${() => test("urgent")}>عاجل</button>
+    </div></div>`;
+}
+
 // Sends one SMS to the administrator's own phone and shows exactly what the provider answered.
 function SmsCheck() {
   const [res, setRes] = useState(null);
@@ -233,7 +270,7 @@ export function SettingsView({ user }) {
   return html`<div><h1>إعدادات المؤسسة</h1><${Async} state=${state}>${(d) => html`
     ${acting ? html`<${LaunchSettings} data=${d} universityId=${user.university?.id} onSaved=${state.reload} />` : null}
     <${SettingsForm} data=${d} acting=${acting} onSaved=${state.reload} />`}<//>
-    <${SmsCheck} /></div>`;
+    <${NotificationStatus} /><${SmsCheck} /></div>`;
 }
 
 const playSound = (name) => { if (name && name !== "none") new Audio(`/static/tones/tone_${name}.wav`).play().catch(() => {}); };

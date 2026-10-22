@@ -109,6 +109,7 @@ class Session extends ChangeNotifier {
           pendingOpen = o;
           notifyListeners();
         }).catchError((Object e) => debugPrint('push unavailable: $e'));
+    notifyListeners(); // the notifications tab shows a hint while the phone blocks them
     return p.status;
   }
 

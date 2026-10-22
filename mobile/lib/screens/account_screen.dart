@@ -45,7 +45,6 @@ class AccountScreen extends StatelessWidget {
             ),
           ]),
         ),
-        const _Prefs(),
         Card(
           child: ListTile(
             leading: const Icon(Icons.devices_other, color: AppColors.danger),
@@ -71,80 +70,6 @@ class AccountScreen extends StatelessWidget {
               if (context.mounted) Navigator.popUntil(context, (r) => r.isFirst);
             },
           ),
-        ),
-      ]),
-    );
-  }
-}
-
-class _Prefs extends StatefulWidget {
-  const _Prefs();
-
-  @override
-  State<_Prefs> createState() => _PrefsState();
-}
-
-class _PrefsState extends State<_Prefs> {
-  late bool _push;
-  late bool _sms;
-  late Set<String> _muted;
-  static const _mutable = {'announcement': 'الإعلانات', 'academic_note': 'الملاحظات الأكاديمية', 'admin_notice': 'التعاميم الإدارية'};
-
-  @override
-  void initState() {
-    super.initState();
-    final p = (context.read<Session>().user?['notification_prefs'] as Map?) ?? {};
-    _push = p['push'] != false;
-    _sms = p['sms'] != false;
-    _muted = {...((p['muted_categories'] as List?) ?? const []).cast<String>()};
-  }
-
-  Future<void> _save() async {
-    final s = context.read<Session>();
-    try {
-      await s.api.put('/api/me/notification-prefs', {'push': _push, 'sms': _sms, 'muted_categories': _muted.toList()});
-      await s.reloadProfile();
-      if (mounted) showMessage(context, 'حُفظت التفضيلات');
-    } catch (e) {
-      if (mounted) showMessage(context, e, error: true);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const Padding(
-          padding: EdgeInsets.fromLTRB(16, 12, 16, 0),
-          child: Text('تفضيلات الإشعارات', style: TextStyle(fontWeight: FontWeight.bold)),
-        ),
-        SwitchListTile(
-          title: const Text('إشعارات فورية على الهاتف'),
-          value: _push,
-          onChanged: (v) => setState(() => _push = v),
-        ),
-        SwitchListTile(
-          title: const Text('رسائل نصية للأمور العاجلة'),
-          value: _sms,
-          onChanged: (v) => setState(() => _sms = v),
-        ),
-        const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 16),
-          child: Text('كتم (تبقى في صندوق الإشعارات دون تنبيه):', style: TextStyle(color: Colors.grey)),
-        ),
-        for (final e in _mutable.entries)
-          CheckboxListTile(
-            title: Text(e.value),
-            value: _muted.contains(e.key),
-            onChanged: (v) => setState(() => v == true ? _muted.add(e.key) : _muted.remove(e.key)),
-          ),
-        const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 16),
-          child: Text('الإنذارات الرسمية والتنبيهات العاجلة تصل دائماً.', style: TextStyle(fontSize: 12, color: Colors.grey)),
-        ),
-        Padding(
-          padding: const EdgeInsets.all(12),
-          child: FilledButton(onPressed: _save, child: const Text('حفظ التفضيلات')),
         ),
       ]),
     );

@@ -10,7 +10,6 @@ import 'grade_entry_screen.dart';
 import 'grades_screen.dart';
 import 'guide_screen.dart';
 import 'messages_screen.dart';
-import 'notification_settings_screen.dart';
 import 'oversight_screens.dart';
 import 'publications_screen.dart';
 import 'publish_screen.dart';
@@ -87,8 +86,6 @@ class MoreScreen extends StatelessWidget {
           if (s.isAdmin) _tile(context, Icons.flag_outlined, 'بلاغات الرسائل', const AbuseReportsScreen()),
           if (canSendNotifications(s.user))
             _tile(context, Icons.campaign_outlined, 'إرسال إشعار', const SendNotificationScreen()),
-          _tile(context, Icons.notifications_active_outlined, 'الإشعارات', const NotificationSettingsScreen(),
-              subtitle: 'حالة هاتفك وتجربة النغمات'),
           _tile(context, Icons.chat_outlined, 'الرسائل', const MessagesScreen()),
           _tile(context, Icons.help_outline, 'دليل الاستخدام', const GuideScreen()),
           if (s.isAdmin || s.role == 'staff' || s.isInstructor)

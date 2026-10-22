@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../config.dart';
 import '../links.dart';
+import '../push.dart';
 import '../state/session.dart';
 import 'send_notification_screen.dart';
 import '../widgets/common.dart';
@@ -20,8 +21,20 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final s = context.read<Session>();
+    final s = context.watch<Session>();
     return Column(children: [
+      // the phone's own permission is the only thing the user controls; the rest is set by the administration
+      if (s.push?.status == 'denied')
+        Card(
+          margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+          color: AppColors.warning.withValues(alpha: 0.12),
+          child: ListTile(
+            leading: const Icon(Icons.notifications_off_outlined, color: AppColors.warning),
+            title: const Text('الإشعارات ممنوعة على هاتفك'),
+            subtitle: const Text('لن تصلك التنبيهات العاجلة والإنذارات. اسمح بها ثم ارجع للتطبيق.'),
+            trailing: TextButton(onPressed: NativeNotifications.openSettings, child: const Text('السماح')),
+          ),
+        ),
       if (canSendNotifications(s.user))
         Padding(
           padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),

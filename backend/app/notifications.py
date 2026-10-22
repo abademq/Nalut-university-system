@@ -46,9 +46,6 @@ TARGET_TYPES = ["user", "users", "course", "department", "faculty", "university"
 
 # Who may issue which category: permissions.CAPABILITIES ("notify.*"), configurable per university.
 
-# Categories a user can never mute.
-UNMUTABLE = {"official_warning", "system"}
-
 
 class NotificationError(ValueError):
     pass
@@ -429,15 +426,6 @@ def resolve_recipients(db: Session, n: Notification) -> list[int]:
 # --------------------------------------------------------------------------- dispatch
 
 
-def _wants(user: User, n: Notification, channel: str) -> bool:
-    prefs = user.notification_prefs or {}
-    if n.category in UNMUTABLE or n.priority == "urgent":
-        return True
-    if n.category in prefs.get("muted_categories", []):
-        return channel == "inapp"  # muted categories still land in the inbox, silently
-    return prefs.get(channel, True)
-
-
 def dispatch(db: Session, n: Notification) -> int:
     """Deliver a notification now. Returns the number of recipients."""
     uni = db.get(University, n.university_id)
@@ -458,14 +446,13 @@ def dispatch(db: Session, n: Notification) -> int:
         user = db.get(User, uid)
         d = NotificationDelivery(notification_id=n.id, user_id=uid)
         if push:
-            if not _wants(user, n, "push"):
-                d.push_status = "skipped"
-            elif db.scalar(select(DeviceToken.id).where(DeviceToken.user_id == uid).limit(1)):
+            # what reaches users is set by the administration only; personal preferences are not applied
+            if db.scalar(select(DeviceToken.id).where(DeviceToken.user_id == uid).limit(1)):
                 d.push_status = "pending"  # sent by the background worker, outside the request
             else:
                 d.push_status = "no_device"
         if sms:
-            if user.phone and _wants(user, n, "sms"):
+            if user.phone:
                 sms_queue.append((d, user.phone))
             else:
                 d.sms_status = "skipped"

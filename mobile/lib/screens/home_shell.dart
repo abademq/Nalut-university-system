@@ -44,7 +44,12 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      context.read<Session>().refreshUnread();
+      final s = context.read<Session>();
+      s.refreshUnread();
+      // e.g. notifications were just allowed in the phone's settings: register without asking
+      if (s.push != null && s.push!.status != 'registered' && s.push!.status != 'no_firebase') {
+        s.registerPush();
+      }
       setState(() => _bannerVersion++);
     }
   }

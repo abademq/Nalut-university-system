@@ -110,7 +110,9 @@ def test_tones_follow_priority_and_test_push(client, as_, db, monkeypatch):
             return "invalid" if token.startswith("old") else "sent"
 
     monkeypatch.setattr(notifications, "push_provider", lambda: Fake())
-    h = as_("s.ali@nalut.edu.ly")
+    s = as_("s.ali@nalut.edu.ly")
+    assert client.post("/api/notifications/test-push", headers=s, json={"priority": "urgent"}).status_code == 403
+    h = as_(DEAN)
     client.post("/api/me/devices", headers=h, json={"platform": "android", "token": "new-token-123456"})
     client.post("/api/me/devices", headers=h, json={"platform": "android", "token": "old-token-123456"})
     r = client.post("/api/notifications/test-push", headers=h, json={"priority": "urgent"}).json()
@@ -158,6 +160,6 @@ def test_platform_admin_chooses_the_tones(client, as_, db, monkeypatch):
             return "sent"
 
     monkeypatch.setattr(notifications, "push_provider", lambda: Fake())
-    client.post("/api/me/devices", headers=s, json={"platform": "android", "token": "tok-tone-123456"})
-    client.post("/api/notifications/test-push", headers=s, json={"priority": "important"})
+    client.post("/api/me/devices", headers=p, json={"platform": "android", "token": "tok-tone-123456"})
+    client.post("/api/notifications/test-push", headers=p, json={"priority": "important"})
     assert seen == ["pulse"]

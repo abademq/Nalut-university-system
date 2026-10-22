@@ -147,7 +147,7 @@ class ResalaClient:
                  opener: Callable[..., Any] | None = None):
         if not api_key:
             raise ValueError("Resala API key is missing (set RESALA_API_KEY)")
-        self.api_key = api_key
+        self.api_key = api_key.strip()
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
         self._open = opener or urllib.request.urlopen
@@ -211,7 +211,9 @@ class ResalaClient:
     def _call(self, method: str, path: str, query: dict[str, Any], body: dict | None = None) -> dict:
         params = {k: v for k, v in query.items() if v is not None}
         url = self.base_url + path + ("?" + urllib.parse.urlencode(params) if params else "")
-        headers = {"Authorization": f"Bearer {self.api_key}", "Accept": "application/json"}
+        # a browser-like client name: some API front-ends block the default "Python-urllib"
+        headers = {"Authorization": f"Bearer {self.api_key}", "Accept": "application/json",
+                   "User-Agent": "NalutUniversityPlatform/1.0 (+https://nalut.abade.ly)"}
         data = None
         if body is not None:
             headers["Content-Type"] = "application/json"
@@ -235,6 +237,7 @@ def _error_from(status: int, raw: bytes) -> ResalaError:
         payload = {}
     fallback = {400: BAD_REQUEST, 401: UNAUTHORIZED, 403: FORBIDDEN, 404: NOT_FOUND, 422: INPUT_VALIDATION}
     errors = payload.get("errors") if isinstance(payload.get("errors"), dict) else {}
-    return ResalaError(status, str(payload.get("type") or fallback.get(status, "HttpError")),
-                       str(payload.get("message", "")),
+    # a non-JSON answer (e.g. an HTML page from a proxy or firewall): keep its start for diagnosis
+    message = str(payload.get("message", "")) or raw[:200].decode("utf-8", "replace").strip()
+    return ResalaError(status, str(payload.get("type") or fallback.get(status, "HttpError")), message,
                        {k: v if isinstance(v, list) else [str(v)] for k, v in errors.items()})

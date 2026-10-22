@@ -173,6 +173,14 @@ else
   warn "Add an A record for $DOMAIN -> $SERVER_IP, wait a few minutes, then run: sudo certbot --nginx -d $DOMAIN --redirect"
 fi
 
+say "Installing the SMS check (sudo nus-sms-check [phone])"
+cat > /usr/local/sbin/nus-sms-check <<CHECK
+#!/usr/bin/env bash
+# Checks the SMS settings in $ENV_FILE and optionally sends one test code: nus-sms-check [phone]
+exec sudo -u nus bash -c 'set -a; . $ENV_FILE; set +a; cd $APP_DIR/backend; exec $APP_DIR/.venv/bin/python -m app.sms_check "\$@"' nus-sms-check "\$@"
+CHECK
+chmod 755 /usr/local/sbin/nus-sms-check
+
 say "Daily backup (03:30, keeps 14 days)"
 cat > /etc/cron.d/nus-backup <<CRON
 30 3 * * * nus $APP_DIR/.venv/bin/python -c "import sqlite3,datetime; d='$DATA_DIR/backups/nus-'+datetime.date.today().isoformat()+'.db'; s=sqlite3.connect('$DATA_DIR/nus.db'); t=sqlite3.connect(d); s.backup(t); t.close()" && tar -czf $DATA_DIR/backups/files-\$(date +\%F).tgz -C $DATA_DIR files && find $DATA_DIR/backups -mtime +14 -delete

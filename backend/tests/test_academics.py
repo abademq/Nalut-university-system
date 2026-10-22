@@ -141,11 +141,10 @@ def test_notification_authority(client, as_):
         "target_type": "user", "target_ids": [student], "channels": ["inapp", "sms"]})
     assert r.status_code == 200 and r.json()["recipients"] == 1
     assert any(a["action"] == "warning.issued" for a in client.get("/api/audit", headers=as_(DEAN)).json())
-    # students cannot mute official warnings
-    client.put("/api/me/notification-prefs", headers=as_("s.ali@nalut.edu.ly"),
-               json={"push": False, "muted_categories": ["official_warning", "announcement"]})
-    me = client.get("/api/me", headers=as_("s.ali@nalut.edu.ly")).json()
-    assert me["notification_prefs"]["muted_categories"] == ["announcement"]
+    # notification settings belong to the administration: users cannot mute anything
+    r = client.put("/api/me/notification-prefs", headers=as_("s.ali@nalut.edu.ly"),
+                   json={"push": False, "muted_categories": ["announcement"]})
+    assert r.status_code == 403
 
 
 def test_scheduled_notification(client, as_):

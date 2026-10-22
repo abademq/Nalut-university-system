@@ -159,9 +159,12 @@ TEST_TEXT = {
 
 @router.post("/test-push")
 def test_push(body: TestPushIn, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    """Sends a test push to the caller's own phones right away and reports what happened."""
+    """Sends a test push to the administrator's own phones right away and reports what happened."""
     from ..models import DeviceToken
     from ..security import limiter
+
+    if user.role not in (Role.UNIVERSITY_ADMIN, Role.FACULTY_ADMIN, Role.PLATFORM_ADMIN):
+        raise HTTPException(status_code=403, detail="تجربة الإشعارات متاحة للإدارة من لوحة التحكم")
 
     if not limiter.hit(f"test-push:{user.id}", 6, 300):
         raise HTTPException(status_code=429, detail="محاولات كثيرة، حاول بعد دقائق")
