@@ -54,14 +54,17 @@ class Session extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Returns null when signed in, otherwise 'mfa_required' or 'mfa_setup_required'.
-  Future<String?> login(String identifier, String password, {String? mfaCode}) async {
+  /// Returns null when signed in, otherwise the server's next step: `mfa_required` (with
+  /// `method` totp|sms) or `mfa_setup_required` (with `setup_token`, `methods`).
+  Future<Map<String, dynamic>?> login(String identifier, String password, {String? mfaCode}) async {
     final data = await api.login(identifier, password, mfaCode: mfaCode);
-    if (data['mfa_required'] == true) return 'mfa_required';
-    if (data['mfa_setup_required'] == true) return 'mfa_setup_required';
+    if (data['user'] == null) return data;
     _set(data['user'] as Map<String, dynamic>?);
     return null;
   }
+
+  /// Finishes a sign-in that ended with second-factor enrolment.
+  void completeLogin(Map<String, dynamic> data) => _set(data['user'] as Map<String, dynamic>?);
 
   Future<void> refreshUnread() async {
     try {

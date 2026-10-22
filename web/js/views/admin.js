@@ -117,7 +117,28 @@ function EditUser({ user, target, structure, onClose, onSaved }) {
       ${v.role === "staff" ? html`<div class="field"><label>المكتب</label><select ...${bind("office")}><option value="">—</option>
         ${Object.entries(OFFICES).map(([k, l]) => html`<option value=${k}>${l}</option>`)}</select></div>` : null}
     </div>
+    <${UserMfa} target=${target} />
     <button disabled=${busy}>حفظ</button></form><//>`;
+}
+
+// Second factor of one account: make it mandatory, or reset it (lost phone).
+function UserMfa({ target }) {
+  const state = useAsync(() => api.get(`/api/users/${target.id}`), [target.id]);
+  const [info, setInfo] = useState(null);
+  const d = info || state.data;
+  const change = async (body) => {
+    const r = await api.post(`/api/users/${target.id}/mfa`, body).catch(toastError);
+    if (r) { setInfo({ ...d, ...r }); toast("تم الحفظ"); }
+  };
+  if (!d) return null;
+  return html`<div class="card" style="margin:.75rem 0"><h4>التحقق الثنائي</h4>
+    <p class="small">${d.mfa_enabled ? `مفعّل ${d.mfa_method === "sms" ? "برسالة نصية" : "بتطبيق المصادقة"}` : "غير مفعّل"}
+      ${d.mfa_required ? " · إلزامي لهذا الحساب" : ""}</p>
+    <label class="check"><input type="checkbox" checked=${!!d.mfa_forced} onChange=${(ev) => change({ required: ev.target.checked })} />
+      إلزام هذا الحساب تحديداً بالتحقق الثنائي</label>
+    ${d.mfa_enabled ? html`<button type="button" class="small secondary" onClick=${() => confirm("إعادة تعيين التحقق؟ سيُطلب من المستخدم إعداده من جديد عند الدخول.") && change({ reset: true })}>
+      إعادة تعيين (فقد هاتفه)</button>` : null}
+  </div>`;
 }
 
 function EditModal({ title, fields, initial, onSave, onClose }) {
@@ -215,10 +236,16 @@ function SettingsForm({ data, onSaved }) {
     pass_mark: e.grading.pass_mark, low_performance_percent: e.grading.low_performance_percent,
   });
   const n = (k) => Number(v[k]);
+  const [mfaMethods, setMfaMethods] = useState(e.security.mfa_methods || ["totp", "sms"]);
+  const [mfaRoles, setMfaRoles] = useState(e.security.mfa_required_roles || []);
+  const [mfaCaps, setMfaCaps] = useState(e.security.mfa_required_capabilities || []);
+  const caps = useAsync(() => api.get("/api/permissions"), []);
+  const flip = (list, set, k) => set(list.includes(k) ? list.filter((x) => x !== k) : [...list, k]);
   const [submit, busy, error] = useSubmit(async () => {
     await api.put("/api/settings", { settings: {
       branding: { display_name: v.display_name, primary_color: v.primary_color, accent_color: v.accent_color },
-      security: { require_mfa_for_admins: v.require_mfa },
+      security: { ...e.security, require_mfa_for_admins: v.require_mfa, mfa_methods: mfaMethods,
+        mfa_required_roles: mfaRoles, mfa_required_capabilities: mfaCaps },
       notifications: { ...e.notifications, sms_enabled: v.sms_enabled, due_reminder_hours: n("due_reminder_hours") },
       attendance: { ...e.attendance, late_after_minutes: n("late_after_minutes"), rotation_seconds: n("rotation_seconds"),
         warning_absence_percent: n("warning_absence_percent"), limit_absence_percent: n("limit_absence_percent"),
@@ -235,8 +262,20 @@ function SettingsForm({ data, onSaved }) {
       <div class="field"><label>الاسم المعروض</label><input ...${bind("display_name")} /></div>
       <div class="field"><label>اللون الأساسي</label><input type="color" ...${bind("primary_color")} /></div>
       <div class="field"><label>اللون الثانوي</label><input type="color" ...${bind("accent_color")} /></div></div></div>
-    <div class="card"><h3>الأمان والإشعارات</h3>
-      <label class="check"><input type="checkbox" ...${bind("require_mfa", "checkbox")} /> إلزام الحسابات الإدارية بالمصادقة الثنائية</label>
+    <div class="card"><h3>التحقق الثنائي</h3>
+      <p class="small muted">رمز إضافي بعد كلمة المرور. يكفي سبب واحد ليصبح إلزامياً للحساب، ويمكن أيضاً إلزام حساب بعينه من صفحة المستخدمين.</p>
+      <h4>الطرق المتاحة للمستخدمين</h4>
+      <label class="check"><input type="checkbox" checked=${mfaMethods.includes("sms")} onChange=${() => flip(mfaMethods, setMfaMethods, "sms")} /> رسالة نصية إلى هاتف الحساب</label>
+      <label class="check"><input type="checkbox" checked=${mfaMethods.includes("totp")} onChange=${() => flip(mfaMethods, setMfaMethods, "totp")} /> تطبيق المصادقة (Google Authenticator وما يشبهه)</label>
+      <h4>إلزامي لـ</h4>
+      <label class="check"><input type="checkbox" ...${bind("require_mfa", "checkbox")} /> كل الحسابات الإدارية (إدارة الجامعة وإدارة الكلية)</label>
+      ${["staff", "teacher", "assistant", "student"].map((r) => html`<label class="check"><input type="checkbox" checked=${mfaRoles.includes(r)}
+        onChange=${() => flip(mfaRoles, setMfaRoles, r)} /> كل حسابات: ${ROLE[r]}</label>`)}
+      <h4>ولكل من يملك صلاحية</h4>
+      ${caps.data ? caps.data.capabilities.map((c) => html`<label class="check"><input type="checkbox" checked=${mfaCaps.includes(c.key)}
+        onChange=${() => flip(mfaCaps, setMfaCaps, c.key)} /> ${c.label}</label>`) : html`<p class="small muted">جارٍ التحميل…</p>`}
+    </div>
+    <div class="card"><h3>الإشعارات</h3>
       <label class="check"><input type="checkbox" ...${bind("sms_enabled", "checkbox")} /> تفعيل الرسائل النصية SMS للإشعارات العاجلة</label>
       <div class="form-grid">${num("due_reminder_hours", "التذكير قبل موعد التسليم (ساعة)")}</div></div>
     <div class="card"><h3>سياسة الحضور</h3><div class="form-grid">

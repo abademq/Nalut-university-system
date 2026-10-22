@@ -69,6 +69,13 @@ class Settings:
     sms_api_url: str | None = field(default_factory=lambda: _env("SMS_API_URL"))
     sms_api_key: str | None = field(default_factory=lambda: _env("SMS_API_KEY"))
     sms_sender: str = field(default_factory=lambda: _env("SMS_SENDER", "UNIV"))
+    # SMS_PROVIDER=resala: Resala (resala.ly). The key itself is read from RESALA_API_KEY by app/resala.py.
+    # Notifications go through an approved template whose $1 is the title and $2 the body.
+    resala_sms_template_id: str | None = field(default_factory=lambda: _env("RESALA_SMS_TEMPLATE_ID"))
+    resala_sender: str | None = field(default_factory=lambda: _env("RESALA_SENDER"))
+    resala_service_name: str = field(default_factory=lambda: _env("RESALA_SERVICE_NAME", "منصة الجامعة"))
+    # test mode: Resala accepts the request without sending or charging
+    resala_test: bool = field(default_factory=lambda: _env("RESALA_TEST", "false").lower() == "true")
 
     @property
     def is_production(self) -> bool:

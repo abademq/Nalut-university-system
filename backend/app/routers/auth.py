@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
-from .. import audit, permissions
+from .. import audit, mfa, permissions
 from ..config import settings
 from ..db import get_db, utcnow
 from ..deps import client_ip, get_current_user, tenant_settings
@@ -59,11 +59,11 @@ def find_user(db: Session, identifier: str) -> User | None:
 
 
 def mfa_required_for(db: Session, user: User) -> bool:
-    if user.role not in Role.ADMINS:
-        return False
-    if user.role == Role.PLATFORM_ADMIN:
-        return True
-    return bool(tenant_settings(db, user)["security"]["require_mfa_for_admins"])
+    return mfa.required_for(db, user)
+
+
+def _mfa_options(db: Session, user: User) -> dict:
+    return {"methods": mfa.allowed_methods(db, user), "phone_hint": mfa.phone_hint(user.phone)}
 
 
 def user_profile(db: Session, user: User) -> dict:
@@ -77,6 +77,8 @@ def user_profile(db: Session, user: User) -> dict:
         "faculty": {"id": fac.id, "name": fac.name} if fac else None,
         "department_id": user.department_id,
         "mfa_enabled": user.mfa_enabled, "mfa_required": mfa_required_for(db, user),
+        "mfa_method": mfa.method_of(db, user) if user.mfa_enabled else None,
+        "mfa_methods": mfa.allowed_methods(db, user),
         "must_change_password": user.must_change_password,
         "notification_prefs": user.notification_prefs or {},
         "branding": cfg["branding"] if cfg else None,
@@ -148,16 +150,30 @@ def login(body: LoginIn, request: Request, response: Response, db: Session = Dep
         raise HTTPException(status_code=403, detail="الحساب موقوف")
 
     if user.mfa_enabled:
-        if not body.mfa_code:
-            return {"mfa_required": True}
-        secret = decrypt_str(user.mfa_secret_enc or "")
-        if not secret or not verify_totp(secret, body.mfa_code):
-            fail("mfa")
+        method = mfa.method_of(db, user)
+        if method == "sms":
+            if not body.mfa_code:
+                # the password was right: send (or, within a minute, don't re-send) the SMS code
+                try:
+                    sent = mfa.start(db, user, "login")
+                except mfa.OtpError as exc:
+                    db.commit()
+                    raise HTTPException(status_code=400, detail=str(exc)) from None
+                db.commit()
+                return {"mfa_required": True, "method": "sms", **sent}
+            if not mfa.verify(db, user, "login", body.mfa_code):
+                fail("mfa")
+        else:
+            if not body.mfa_code:
+                return {"mfa_required": True, "method": "totp"}
+            secret = decrypt_str(user.mfa_secret_enc or "")
+            if not secret or not verify_totp(secret, body.mfa_code):
+                fail("mfa")
     elif mfa_required_for(db, user):
         user.failed_logins = 0
         db.commit()
         return {
-            "mfa_setup_required": True,
+            "mfa_setup_required": True, **_mfa_options(db, user),
             "setup_token": create_access_token(user.id, role=user.role, university_id=user.university_id,
                                                purpose="mfa_setup", minutes=10),
         }
@@ -187,6 +203,8 @@ def mfa_setup(request: Request, db: Session = Depends(get_db)):
     user, _ = _user_from_setup_or_access(request, db)
     if user.mfa_enabled:
         raise HTTPException(status_code=400, detail="المصادقة الثنائية مفعلة مسبقاً")
+    if "totp" not in mfa.allowed_methods(db, user):
+        raise HTTPException(status_code=400, detail="تطبيق المصادقة غير متاح في مؤسستك")
     secret = new_totp_secret()
     user.mfa_secret_enc = encrypt_str(secret)
     db.commit()
@@ -211,7 +229,8 @@ def mfa_enable(body: CodeIn, request: Request, response: Response, db: Session =
     if not secret or not verify_totp(secret, body.code):
         raise HTTPException(status_code=400, detail="رمز التحقق غير صحيح")
     user.mfa_enabled = True
-    audit.record(db, "auth.mfa_enabled", actor=user, ip=client_ip(request))
+    mfa.set_method(db, user, "totp")
+    audit.record(db, "auth.mfa_enabled", actor=user, ip=client_ip(request), details={"method": "totp"})
     out = _issue_session(db, user, request, response) if is_setup else {"ok": True}
     db.commit()
     return out
@@ -227,13 +246,59 @@ def mfa_disable(body: PasswordConfirm, request: Request, user: User = Depends(ge
                 db: Session = Depends(get_db)):
     if mfa_required_for(db, user):
         raise HTTPException(status_code=400, detail="المصادقة الثنائية إلزامية لحسابك")
-    secret = decrypt_str(user.mfa_secret_enc or "")
-    if not verify_password(body.password, user.password_hash) or not secret or not verify_totp(secret, body.code):
+    if mfa.method_of(db, user) == "sms":
+        second = mfa.verify(db, user, "verify", body.code)
+    else:
+        secret = decrypt_str(user.mfa_secret_enc or "")
+        second = bool(secret) and verify_totp(secret, body.code)
+    if not verify_password(body.password, user.password_hash) or not second:
+        db.commit()  # keep the attempt count
         raise HTTPException(status_code=400, detail="بيانات التحقق غير صحيحة")
     user.mfa_enabled, user.mfa_secret_enc = False, None
     audit.record(db, "auth.mfa_disabled", actor=user, ip=client_ip(request))
     db.commit()
     return {"ok": True}
+
+
+@router.get("/auth/mfa/options")
+def mfa_options(request: Request, db: Session = Depends(get_db)):
+    user, _ = _user_from_setup_or_access(request, db)
+    return {**_mfa_options(db, user), "enabled": user.mfa_enabled,
+            "method": mfa.method_of(db, user) if user.mfa_enabled else None}
+
+
+@router.post("/auth/mfa/sms/start")
+def mfa_sms_start(request: Request, db: Session = Depends(get_db)):
+    """Sends a code to confirm the phone (enrolment) or to confirm turning SMS verification off."""
+    user, _ = _user_from_setup_or_access(request, db)
+    if not user.mfa_enabled and "sms" not in mfa.allowed_methods(db, user):
+        raise HTTPException(status_code=400, detail="التحقق برسالة نصية غير متاح في مؤسستك")
+    try:
+        out = mfa.start(db, user, "verify")
+    except mfa.OtpError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    db.commit()
+    return out
+
+
+@router.post("/auth/mfa/sms/enable")
+def mfa_sms_enable(body: CodeIn, request: Request, response: Response, db: Session = Depends(get_db)):
+    user, is_setup = _user_from_setup_or_access(request, db)
+    if user.mfa_enabled:
+        raise HTTPException(status_code=400, detail="المصادقة الثنائية مفعلة مسبقاً")
+    if "sms" not in mfa.allowed_methods(db, user):
+        raise HTTPException(status_code=400, detail="التحقق برسالة نصية غير متاح في مؤسستك")
+    if not limiter.hit(f"mfa:{user.id}", 10, 300):
+        raise HTTPException(status_code=429, detail="محاولات كثيرة")
+    if not mfa.verify(db, user, "verify", body.code):
+        db.commit()
+        raise HTTPException(status_code=400, detail="رمز التحقق غير صحيح أو منتهي")
+    user.mfa_enabled, user.mfa_secret_enc = True, None
+    mfa.set_method(db, user, "sms")
+    audit.record(db, "auth.mfa_enabled", actor=user, ip=client_ip(request), details={"method": "sms"})
+    out = _issue_session(db, user, request, response) if is_setup else {"ok": True}
+    db.commit()
+    return out
 
 
 class RefreshIn(BaseModel):

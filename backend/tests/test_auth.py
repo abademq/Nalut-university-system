@@ -63,7 +63,7 @@ def test_mfa_enforced_for_admins(client, db):
     assert r.status_code == 200 and r.json()["access_token"]
     # next login needs the TOTP code
     r = client.post("/api/auth/login", json={"identifier": "dean.it@nalut.edu.ly", "password": PASSWORD}).json()
-    assert r == {"mfa_required": True}
+    assert r == {"mfa_required": True, "method": "totp"}
     r = client.post("/api/auth/login", json={"identifier": "dean.it@nalut.edu.ly", "password": PASSWORD,
                                              "mfa_code": totp_now(secret)})
     assert r.status_code == 200

@@ -141,3 +141,75 @@ def cancel(nid: int, user: User = Depends(get_current_user), db: Session = Depen
     n.status = "cancelled"
     db.commit()
     return {"ok": True}
+
+
+# --------------------------------------------------------------------------- diagnostics
+
+
+class TestPushIn(BaseModel):
+    priority: str = Field(default="normal", pattern="^(normal|important|urgent)$")
+
+
+TEST_TEXT = {
+    "normal": ("تجربة: إشعار عادي", "هكذا تصلك الإعلانات العادية"),
+    "important": ("تجربة: إشعار مهم", "هكذا تصلك الإشعارات المهمة"),
+    "urgent": ("تجربة: تنبيه عاجل", "هكذا تصلك التنبيهات العاجلة والإنذارات الرسمية"),
+}
+
+
+@router.post("/test-push")
+def test_push(body: TestPushIn, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Sends a test push to the caller's own phones right away and reports what happened."""
+    from ..models import DeviceToken
+    from ..security import limiter
+
+    if not limiter.hit(f"test-push:{user.id}", 6, 300):
+        raise HTTPException(status_code=429, detail="محاولات كثيرة، حاول بعد دقائق")
+    provider = notifications.push_provider()
+    devices = db.scalars(select(DeviceToken).where(DeviceToken.user_id == user.id)).all()
+    title, text = TEST_TEXT[body.priority]
+    sent = removed = 0
+    for dev in devices:
+        result = provider.send(dev.token, title, text, {"category": "system", "priority": body.priority, "link": ""})
+        if result == "invalid":
+            db.delete(dev)
+            removed += 1
+        elif result in (True, "sent"):
+            sent += 1
+    db.commit()
+    return {"provider": type(provider).__name__.replace("Provider", "").lower(), "devices": len(devices),
+            "sent": sent, "invalid_removed": removed, "tone": notifications.tone_for(body.priority, None)}
+
+
+@router.get("/health")
+def health(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Delivery overview for administrators: provider in use and the last 24 hours' results."""
+    from datetime import timedelta
+
+    from ..config import settings
+    from ..models import DeviceToken
+
+    if user.role not in (Role.UNIVERSITY_ADMIN, Role.PLATFORM_ADMIN):
+        raise HTTPException(status_code=403, detail="غير مصرح لك بهذا الإجراء")
+    since = utcnow() - timedelta(hours=24)
+    scope = select(Notification.id).where(Notification.sent_at >= since)
+    if user.university_id is not None:
+        scope = scope.where(Notification.university_id == user.university_id)
+
+    def counts(col):
+        rows = db.execute(select(col, func.count()).where(NotificationDelivery.notification_id.in_(scope))
+                          .group_by(col)).all()
+        return {str(k): v for k, v in rows if k is not None}
+
+    dev_q = select(func.count(func.distinct(DeviceToken.user_id)))
+    if user.university_id is not None:
+        dev_q = dev_q.join(User, User.id == DeviceToken.user_id).where(User.university_id == user.university_id)
+    provider = notifications.push_provider()
+    return {
+        "push_provider": type(provider).__name__.replace("Provider", "").lower(),
+        "push_ready": not isinstance(provider, notifications.LogPushProvider),
+        "sms_provider": settings.sms_provider,
+        "sms_ready": settings.sms_provider in ("resala", "http"),
+        "users_with_devices": db.scalar(dev_q) or 0,
+        "last_24h": {"push": counts(NotificationDelivery.push_status), "sms": counts(NotificationDelivery.sms_status)},
+    }

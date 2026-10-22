@@ -17,6 +17,11 @@ DEFAULT_SETTINGS: dict = {
     "security": {
         # Administrative accounts must enrol a second factor (TOTP).
         "require_mfa_for_admins": True,
+        # also required for these roles, and for whoever holds one of these capabilities
+        "mfa_required_roles": [],
+        "mfa_required_capabilities": [],
+        # second-factor methods users may choose: authenticator app and/or SMS code
+        "mfa_methods": ["totp", "sms"],
     },
     "grading": {
         "pass_mark": 50,

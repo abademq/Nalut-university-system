@@ -10,10 +10,18 @@
         android:fullBackupContent="false"
         android:label="منصة الجامعة"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round">
+        <!-- pushes without an explicit channel use the "normal" tone; the server picks the channel per priority -->
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_channel_id"
-            android:value="nus_alerts" />
+            android:value="nus_normal" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_stat_notify" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_color"
+            android:resource="@color/ic_launcher_background" />
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -51,6 +59,11 @@
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
+        </intent>
+        <!-- opening an authenticator app while enrolling the second factor -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="otpauth"/>
         </intent>
     </queries>
 </manifest>

@@ -1,4 +1,4 @@
-import { html, useState, useEffect, useForm, useSubmit, ErrorBox } from "../ui.js";
+import { html, useState, useEffect, useForm, useSubmit, ErrorBox, toast, toastError } from "../ui.js";
 import { api, request } from "../api.js";
 
 const DEMO = [
@@ -16,10 +16,51 @@ function svgDataUri(svg) {
   return "data:image/svg+xml;base64," + btoa(unescape(encodeURIComponent(svg)));
 }
 
-export function MfaSetup({ token, onDone }) {
+// Second-factor enrolment: the user picks one of the methods the institution allows.
+export function MfaSetup({ token, methods, phoneHint, onDone }) {
+  const headers = token ? { Authorization: `Bearer ${token}` } : {};
+  const [opts, setOpts] = useState(methods ? { methods, phone_hint: phoneHint } : null);
+  const [method, setMethod] = useState(null);
+  useEffect(() => {
+    if (!opts) request("GET", "/api/auth/mfa/options", { headers }).then(setOpts).catch((e) => setOpts({ error: e }));
+  }, []);
+  if (!opts) return html`<p class="muted">جارٍ التحضير…</p>`;
+  if (opts.error) return html`<${ErrorBox} error=${opts.error} />`;
+  const available = opts.methods || [];
+  const chosen = method || (available.length === 1 ? available[0] : null);
+  if (chosen === "totp") return html`<${TotpSetup} headers=${headers} onDone=${onDone} />`;
+  if (chosen === "sms") return html`<${SmsSetup} headers=${headers} hint=${opts.phone_hint} onDone=${onDone} />`;
+  if (!available.length) return html`<div class="alert warning">لا توجد طريقة تحقق متاحة، تواصل مع الإدارة.</div>`;
+  return html`<div class="stack">
+    <p>اختر طريقة التحقق الثنائي:</p>
+    <button class="secondary big" onClick=${() => setMethod("sms")} disabled=${!opts.phone_hint}>
+      📱 رسالة نصية ${opts.phone_hint ? html`<span class="mono small ltr">${opts.phone_hint}</span>` : "— لا يوجد رقم هاتف في حسابك"}</button>
+    <button class="secondary big" onClick=${() => setMethod("totp")}>🔐 تطبيق المصادقة (يعمل دون شبكة)</button>
+  </div>`;
+}
+
+function SmsSetup({ headers, hint, onDone }) {
+  const [code, setCode] = useState("");
+  const [state, setState] = useState(null);
+  const send = () => request("POST", "/api/auth/mfa/sms/start", { json: {}, headers }).then(setState).catch((e) => setState({ error: e }));
+  useEffect(() => { send(); }, []);
+  const [submit, busy, error] = useSubmit(async () => {
+    const data = await request("POST", "/api/auth/mfa/sms/enable", { json: { code }, headers });
+    onDone(data);
+  });
+  return html`<form onSubmit=${submit}>
+    ${state?.error ? html`<${ErrorBox} error=${state.error} />` : html`<div class="alert info">أرسلنا رمزاً برسالة نصية إلى <span class="mono ltr">${state?.phone_hint || hint}</span>.</div>`}
+    <${ErrorBox} error=${error} />
+    <div class="field"><label>رمز التحقق</label>
+      <input inputmode="numeric" autocomplete="one-time-code" maxlength="6" value=${code} onInput=${(e) => setCode(e.target.value)} required /></div>
+    <button class="big" disabled=${busy}>تفعيل التحقق بالرسائل</button>
+    <p class="small" style="text-align:center"><button type="button" class="ghost small" onClick=${send}>إعادة إرسال الرمز</button></p>
+  </form>`;
+}
+
+function TotpSetup({ headers, onDone }) {
   const [setup, setSetup] = useState(null);
   const [code, setCode] = useState("");
-  const headers = token ? { Authorization: `Bearer ${token}` } : {};
   useEffect(() => {
     request("POST", "/api/auth/mfa/setup", { json: {}, headers }).then(setSetup).catch((e) => setSetup({ error: e }));
   }, []);
@@ -75,6 +116,13 @@ export function Login({ onLogin }) {
   const [v, bind, setV] = useForm({ identifier: "", password: "", mfa_code: "" });
   const [stage, setStage] = useState("login"); // login | mfa | setup | forgot
   const [setupToken, setSetupToken] = useState(null);
+  const [mfa, setMfa] = useState(null); // {method, phone_hint, sent}
+  const resend = async () => {
+    const data = await api.post("/api/auth/login", { identifier: v.identifier.trim(), password: v.password }).catch((e) => ({ error: e }));
+    if (data.error) return toastError(data.error);
+    setMfa(data);
+    toast(data.sent ? "أُرسل رمز جديد" : `انتظر ${data.retry_after} ثانية قبل طلب رمز جديد`);
+  };
   const [demo, setDemo] = useState(false);
   useEffect(() => { api.get("/api/health").then((h) => setDemo(!!h.demo)).catch(() => {}); }, []);
 
@@ -82,9 +130,12 @@ export function Login({ onLogin }) {
     const body = { identifier: v.identifier.trim(), password: v.password };
     if (stage === "mfa") body.mfa_code = v.mfa_code;
     const data = await api.post("/api/auth/login", body);
-    if (data.mfa_required) return setStage("mfa");
+    if (data.mfa_required) {
+      setMfa(data);
+      return setStage("mfa");
+    }
     if (data.mfa_setup_required) {
-      setSetupToken(data.setup_token);
+      setSetupToken(data);
       return setStage("setup");
     }
     onLogin(data);
@@ -96,8 +147,8 @@ export function Login({ onLogin }) {
       <h1>منصة الجامعة الذكية</h1>
       <p class="muted" style="text-align:center">بوابة موحدة للطلبة وأعضاء هيئة التدريس والإدارة</p>
       ${stage === "forgot" ? html`<${Forgot} onBack=${() => setStage("login")} />` : null}
-      ${stage === "setup" ? html`<div><div class="alert warning">حسابك الإداري يتطلب تفعيل المصادقة الثنائية قبل المتابعة.</div>
-        <${MfaSetup} token=${setupToken} onDone=${onLogin} /></div>` : null}
+      ${stage === "setup" ? html`<div><div class="alert warning">حسابك يتطلب تفعيل التحقق الثنائي قبل المتابعة.</div>
+        <${MfaSetup} token=${setupToken.setup_token} methods=${setupToken.methods} phoneHint=${setupToken.phone_hint} onDone=${onLogin} /></div>` : null}
       ${stage === "login" || stage === "mfa" ? html`<form onSubmit=${submit}>
         <${ErrorBox} error=${error} />
         ${stage === "login" ? html`
@@ -105,12 +156,16 @@ export function Login({ onLogin }) {
             <input autocomplete="username" ...${bind("identifier")} required /></div>
           <div class="field"><label>كلمة المرور</label>
             <input type="password" autocomplete="current-password" ...${bind("password")} required /></div>` : html`
-          <div class="alert info">أدخل رمز التحقق من تطبيق المصادقة.</div>
+          <div class="alert info">${mfa?.method === "sms"
+            ? html`أدخل الرمز المرسل برسالة نصية إلى <span class="mono ltr">${mfa.phone_hint}</span>.`
+            : "أدخل رمز التحقق من تطبيق المصادقة."}</div>
           <div class="field"><label>رمز التحقق</label>
             <input inputmode="numeric" autocomplete="one-time-code" maxlength="6" ...${bind("mfa_code")} required /></div>`}
         <button class="big" disabled=${busy}>${busy ? "جارٍ الدخول…" : "تسجيل الدخول"}</button>
         <p class="small" style="text-align:center;margin-top:.75rem">
-          <button type="button" class="ghost small" onClick=${() => setStage("forgot")}>نسيت كلمة المرور؟</button></p>
+          ${stage === "mfa" && mfa?.method === "sms"
+            ? html`<button type="button" class="ghost small" onClick=${resend}>إعادة إرسال الرمز</button>`
+            : html`<button type="button" class="ghost small" onClick=${() => setStage("forgot")}>نسيت كلمة المرور؟</button>`}</p>
       </form>` : null}
     </div>
     ${demo && stage === "login" ? html`<div class="card">

@@ -21,16 +21,41 @@ function ChangePassword() {
 function Mfa({ user }) {
   const [setup, setSetup] = useState(false);
   const [enabled, setEnabled] = useState(user.mfa_enabled);
+  const sms = user.mfa_method === "sms";
   const disable = async () => {
     const password = prompt("كلمة المرور الحالية:");
-    const code = password && prompt("رمز التحقق من التطبيق:");
+    if (!password) return;
+    if (sms && !(await api.post("/api/auth/mfa/sms/start").catch(toastError))) return;
+    const code = prompt(sms ? "الرمز المرسل برسالة نصية:" : "رمز التحقق من التطبيق:");
     if (!code) return;
     await api.post("/api/auth/mfa/disable", { password, code }).then(() => { setEnabled(false); toast("تم إيقاف المصادقة الثنائية"); }).catch(toastError);
   };
   return html`<div class="card"><h3>المصادقة الثنائية</h3>
-    ${enabled ? html`<p>✅ مفعلة على حسابك.</p>${!user.mfa_required ? html`<button class="secondary" onClick=${disable}>إيقاف</button>` : html`<p class="small muted">إلزامية لحسابك الإداري.</p>`}`
+    ${enabled ? html`<p>✅ مفعلة على حسابك ${sms ? "برسالة نصية" : "بتطبيق المصادقة"}.</p>${!user.mfa_required ? html`<button class="secondary" onClick=${disable}>إيقاف</button>` : html`<p class="small muted">إلزامية لحسابك. لتغيير الطريقة اطلب من الإدارة إعادة تعيينها.</p>`}`
       : setup ? html`<${MfaSetup} onDone=${() => { setEnabled(true); setSetup(false); toast("تم تفعيل المصادقة الثنائية"); }} />`
-        : html`<p class="muted">أضف طبقة حماية برمز من تطبيق المصادقة عند تسجيل الدخول.</p><button onClick=${() => setSetup(true)}>تفعيل</button>`}</div>`;
+        : html`<p class="muted">أضف طبقة حماية: رمز برسالة نصية أو من تطبيق المصادقة عند تسجيل الدخول.</p><button onClick=${() => setSetup(true)}>تفعيل</button>`}</div>`;
+}
+
+// Sends a test push to the user's own phones, one per tone, and says what happened.
+function PushTest() {
+  const [busy, setBusy] = useState(null);
+  const test = async (priority) => {
+    setBusy(priority);
+    const r = await api.post("/api/notifications/test-push", { priority }).catch(toastError);
+    setBusy(null);
+    if (!r) return;
+    if (r.provider === "logpush") toast("الإشعارات الفورية غير مفعلة على الخادم (ملف Firebase غير موجود)", "error");
+    else if (!r.devices) toast("لا يوجد هاتف مسجل لحسابك. سجّل الدخول من تطبيق الهاتف واسمح بالإشعارات", "error");
+    else if (!r.sent) toast("فشل الإرسال إلى هاتفك، أعد تسجيل الدخول من التطبيق", "error");
+    else toast(`أُرسل إلى ${r.sent} من ${r.devices} جهاز`, "success");
+  };
+  return html`<div class="card"><h3>تجربة الإشعارات على هاتفي</h3>
+    <p class="small muted">لكل نوع نغمة مختلفة في تطبيق الهاتف، ويمكن تغييرها من «الإشعارات والنغمات» في التطبيق.</p>
+    <div class="row">
+      <button class="secondary small" disabled=${!!busy} onClick=${() => test("normal")}>عادي</button>
+      <button class="secondary small" disabled=${!!busy} onClick=${() => test("important")}>مهم</button>
+      <button class="secondary small" disabled=${!!busy} onClick=${() => test("urgent")}>عاجل</button>
+    </div></div>`;
 }
 
 function Prefs({ user }) {
@@ -71,6 +96,6 @@ export function ProfileView({ user }) {
       <li>البريد: <span class="ltr">${user.email || "—"}</span> · الهاتف: <span class="ltr">${user.phone || "—"}</span></li>
       ${user.university ? html`<li>${user.university.name}${user.faculty ? ` — ${user.faculty.name}` : ""}</li>` : null}</ul>
       <p class="small muted">لتعديل البيانات الأساسية تواصل مع إدارة الكلية.</p></div>
-    <div class="grid cols-2"><${ChangePassword} /><${Mfa} user=${user} /><${Prefs} user=${user} /><${Sessions} /></div>
+    <div class="grid cols-2"><${ChangePassword} /><${Mfa} user=${user} /><${Prefs} user=${user} /><${PushTest} /><${Sessions} /></div>
   </div>`;
 }

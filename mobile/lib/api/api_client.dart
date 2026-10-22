@@ -144,6 +144,16 @@ class ApiClient {
     return data;
   }
 
+  /// Calls a second-factor enrolment endpoint with the short-lived setup token from login.
+  /// When enrolment completes the response is a full session, which is kept.
+  Future<Map<String, dynamic>> postWithSetupToken(String path, String setupToken, [Object? body]) async {
+    call() => _http.post(_uri(path),
+        headers: _headers(json: true, extra: {'Authorization': 'Bearer $setupToken'}), body: jsonEncode(body ?? {}));
+    final data = (await _handle(await _send(call), call, path) as Map<String, dynamic>?) ?? {};
+    await _accept(data);
+    return data;
+  }
+
   Future<void> _accept(Map<String, dynamic> data) async {
     if (data['access_token'] != null) {
       _accessToken = data['access_token'] as String;

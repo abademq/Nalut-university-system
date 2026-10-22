@@ -646,3 +646,36 @@ class StudentDocument(Base):
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime)
     deleted_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     delete_reason: Mapped[str | None] = mapped_column(String(300))
+
+
+# --------------------------------------------------------------------------- two-factor authentication
+
+
+class MfaPreference(Base):
+    """How a user proves the second factor, and whether an administrator made it mandatory.
+
+    A separate table so existing databases need no column changes (tables are created on start).
+    """
+
+    __tablename__ = "mfa_preferences"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), unique=True)
+    method: Mapped[str] = mapped_column(String(10), default="totp")  # totp | sms
+    forced: Mapped[bool] = mapped_column(Boolean, default=False)  # required for this account by an admin
+    forced_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class OtpChallenge(Base):
+    """A one-time code sent by SMS. Only a keyed hash of the code is stored."""
+
+    __tablename__ = "otp_challenges"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    purpose: Mapped[str] = mapped_column(String(20))  # login | verify
+    code_hash: Mapped[str] = mapped_column(String(64))
+    provider_ref: Mapped[str | None] = mapped_column(String(64))
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    expires_at: Mapped[datetime] = mapped_column(DateTime)
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)

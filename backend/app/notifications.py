@@ -81,6 +81,17 @@ class HttpPushProvider:
             return False
 
 
+# One Android channel and tone per level of urgency. The app creates these channels with
+# its bundled sounds (res/raw/tone_*); users can change each tone in the phone's settings.
+TONES = {"urgent": "nus_urgent", "important": "nus_important", "normal": "nus_normal"}
+
+
+def tone_for(priority: str | None, category: str | None) -> str:
+    if priority == "urgent" or category == "official_warning":
+        return "urgent"
+    return "important" if priority == "important" else "normal"
+
+
 class FcmProvider:
     """Firebase Cloud Messaging HTTP v1, authenticated with a service-account key.
 
@@ -118,14 +129,15 @@ class FcmProvider:
             return self._token
 
     def send(self, token: str, title: str, body: str, data: dict) -> str:
+        tone = tone_for(data.get("priority"), data.get("category"))
         message = {
             "message": {
                 "token": token,
                 "notification": {"title": title, "body": body},
                 "data": {k: "" if v is None else str(v) for k, v in data.items()},
-                # play the default sound on the high-importance channel the app creates
+                # the channel decides the tone (Android 8+); "sound" covers older phones
                 "android": {"priority": "high",
-                            "notification": {"channel_id": "nus_alerts", "sound": "default", "default_sound": True}},
+                            "notification": {"channel_id": TONES[tone], "sound": f"tone_{tone}"}},
                 "apns": {"payload": {"aps": {"sound": "default"}}},
             }
         }
@@ -175,6 +187,51 @@ class HttpSmsProvider:
             return False
 
 
+class ResalaSmsProvider:
+    """Resala (resala.ly): one template request for the whole batch ($1 = title, $2 = body).
+
+    Never retried: a failed request may already have delivered some messages.
+    """
+
+    def __init__(self, client=None) -> None:
+        from .resala import ResalaClient
+
+        self.client = client or ResalaClient.from_env()
+
+    def send_many(self, items: list[tuple[str, str, str]]) -> dict[str, bool]:
+        from .resala import ResalaError, TemplateRecord, libyan_mobile
+
+        result = {phone: False for phone, _, _ in items}
+        records, by_number = [], {}
+        for phone, title, body in items:
+            number = libyan_mobile(phone)
+            if number:  # the API only delivers notifications to Libyan mobiles
+                records.append(TemplateRecord(number, [title[:120], body[:300]]))
+                by_number[number[-9:]] = phone
+        if not records or not settings.resala_sms_template_id:
+            return result
+        try:
+            res = self.client.send_template(settings.resala_sms_template_id, records, test=settings.resala_test or None,
+                                            sender=settings.resala_sender)
+        except ResalaError as exc:
+            log.warning("Resala send-template failed: %s", exc.type)
+            return result
+        bad = {str(n)[-9:] for n in res.failed_numbers + res.invalid_numbers}
+        for tail, phone in by_number.items():
+            result[phone] = tail not in bad
+        return result
+
+    def send(self, phone: str, text: str) -> bool:
+        return self.send_many([(phone, text, "")]).get(phone, False)
+
+
+def send_sms_batch(provider, items: list[tuple[str, str, str]]) -> dict[str, bool]:
+    """(phone, title, body) -> delivered?  One request when the provider supports batches."""
+    if hasattr(provider, "send_many"):
+        return provider.send_many(items)
+    return {phone: provider.send(phone, f"{title}: {body}"[:300]) for phone, title, body in items}
+
+
 _fcm: FcmProvider | None = None
 
 
@@ -191,6 +248,8 @@ def push_provider():
 
 
 def sms_provider():
+    if settings.sms_provider == "resala":
+        return ResalaSmsProvider()
     return HttpSmsProvider() if settings.sms_provider == "http" else LogSmsProvider()
 
 
@@ -338,6 +397,7 @@ def dispatch(db: Session, n: Notification) -> int:
     )
     sms = sms_provider() if sms_allowed else None
     existing = set(db.scalars(select(NotificationDelivery.user_id).where(NotificationDelivery.notification_id == n.id)))
+    sms_queue: list[tuple[NotificationDelivery, str]] = []
     for uid in recipients:
         if uid in existing:
             continue
@@ -352,10 +412,18 @@ def dispatch(db: Session, n: Notification) -> int:
                 d.push_status = "no_device"
         if sms:
             if user.phone and _wants(user, n, "sms"):
-                d.sms_status = "sent" if sms.send(user.phone, f"{n.title}: {n.body}"[:300]) else "failed"
+                sms_queue.append((d, user.phone))
             else:
                 d.sms_status = "skipped"
         db.add(d)
+    if sms_queue:
+        try:
+            delivered = send_sms_batch(sms, [(phone, n.title, n.body) for _, phone in sms_queue])
+        except Exception:  # noqa: BLE001 - an SMS outage must not fail the notification
+            log.exception("SMS batch failed")
+            delivered = {}
+        for d, phone in sms_queue:
+            d.sms_status = "sent" if delivered.get(phone) else "failed"
     n.status = "sent"
     n.sent_at = utcnow()
     n.recipients_count = len(recipients)
@@ -385,7 +453,8 @@ def send_pending_pushes(db: Session, provider=None, limit: int = 500) -> int:
         results = []
         for dev in db.scalars(select(DeviceToken).where(DeviceToken.user_id == d.user_id)).all():
             result = provider.send(dev.token, n.title, n.body[:200],
-                                   {"notification_id": n.id, "category": n.category, "link": n.link})
+                                   {"notification_id": n.id, "category": n.category, "priority": n.priority,
+                                    "link": n.link})
             if result == "invalid":
                 db.delete(dev)
                 continue

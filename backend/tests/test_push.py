@@ -95,3 +95,44 @@ def test_provider_selection(tmp_path, monkeypatch):
     assert isinstance(notifications.push_provider(), notifications.LogPushProvider)
     monkeypatch.setattr(settings, "fcm_credentials_file", str(_service_account(tmp_path)))
     assert isinstance(notifications.push_provider(), notifications.FcmProvider)
+
+
+def test_tones_follow_priority_and_test_push(client, as_, db, monkeypatch):
+    assert notifications.tone_for("urgent", "announcement") == "urgent"
+    assert notifications.tone_for("normal", "official_warning") == "urgent"
+    assert notifications.tone_for("important", "announcement") == "important"
+    assert notifications.tone_for("normal", "announcement") == "normal"
+    sent = []
+
+    class Fake:
+        def send(self, token, title, body, data):
+            sent.append((token, data["priority"]))
+            return "invalid" if token.startswith("old") else "sent"
+
+    monkeypatch.setattr(notifications, "push_provider", lambda: Fake())
+    h = as_("s.ali@nalut.edu.ly")
+    client.post("/api/me/devices", headers=h, json={"platform": "android", "token": "new-token-123456"})
+    client.post("/api/me/devices", headers=h, json={"platform": "android", "token": "old-token-123456"})
+    r = client.post("/api/notifications/test-push", headers=h, json={"priority": "urgent"}).json()
+    assert r == {"provider": "fake", "devices": 2, "sent": 1, "invalid_removed": 1, "tone": "urgent"}
+    assert db.query(DeviceToken).filter_by(token="old-token-123456").count() == 0
+    assert client.get("/api/notifications/health", headers=h).status_code == 403
+    health = client.get("/api/notifications/health", headers=as_("president@nalut.edu.ly")).json()
+    assert health["users_with_devices"] >= 1 and "push" in health["last_24h"]
+
+
+def test_resala_sms_batch_marks_invalid_numbers(monkeypatch):
+    from app import resala
+    from app.config import settings
+
+    class FakeClient:
+        def send_template(self, tid, records, **kw):
+            self.records = records
+            return resala.TemplateSendResult(True, 2, 0, 0, 0.1, 1, 1, ["218921111111"], [], {}, None)
+
+    monkeypatch.setattr(settings, "resala_sms_template_id", "tpl")
+    fake = FakeClient()
+    out = notifications.ResalaSmsProvider(client=fake).send_many(
+        [("0912222222", "t", "b"), ("0921111111", "t", "b"), ("+20100", "t", "b")])
+    assert out == {"0912222222": True, "0921111111": False, "+20100": False}
+    assert [r.phone for r in fake.records] == ["218912222222", "218921111111"]

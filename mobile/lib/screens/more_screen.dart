@@ -6,6 +6,7 @@ import '../state/session.dart';
 import '../widgets/common.dart';
 import 'grades_screen.dart';
 import 'messages_screen.dart';
+import 'notification_settings_screen.dart';
 import 'results_screen.dart';
 import 'send_notification_screen.dart';
 
@@ -51,6 +52,13 @@ class MoreScreen extends StatelessWidget {
               trailing: const Icon(Icons.chevron_left),
               onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SendNotificationScreen())),
             ),
+          ListTile(
+            leading: const Icon(Icons.music_note_outlined),
+            title: const Text('الإشعارات والنغمات'),
+            subtitle: const Text('جرّب نغمة كل نوع وغيّرها'),
+            trailing: const Icon(Icons.chevron_left),
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationSettingsScreen())),
+          ),
           ListTile(
             leading: const Icon(Icons.chat_outlined),
             title: const Text('الرسائل'),

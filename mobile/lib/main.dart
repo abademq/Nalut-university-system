@@ -8,6 +8,7 @@ import 'config.dart';
 import 'push.dart';
 import 'screens/home_shell.dart';
 import 'screens/login_screen.dart';
+import 'widgets/splash.dart';
 import 'state/session.dart';
 
 void main() {
@@ -65,7 +66,7 @@ class UniversityApp extends StatelessWidget {
         ),
         home: Consumer<Session>(
           builder: (context, s, _) => switch (s.status) {
-            SessionStatus.loading => const Scaffold(body: Center(child: CircularProgressIndicator())),
+            SessionStatus.loading => const SplashView(),
             SessionStatus.signedOut => const LoginScreen(),
             SessionStatus.signedIn => const HomeShell(),
           },

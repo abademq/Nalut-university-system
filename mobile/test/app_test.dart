@@ -25,6 +25,13 @@ MockClient fakeServer() => MockClient((req) async {
         case '/api/auth/login':
           final body = jsonDecode(req.body);
           if (body['password'] != 'Demo@12345') return jsonRes({'detail': 'بيانات الدخول غير صحيحة'}, 401);
+          if (body['identifier'] == 'sms@x.ly' && body['mfa_code'] == null) {
+            return jsonRes({'mfa_required': true, 'method': 'sms', 'sent': true, 'retry_after': 60,
+                'phone_hint': '218•••678'});
+          }
+          if (body['identifier'] == 'sms@x.ly' && body['mfa_code'] != '123456') {
+            return jsonRes({'detail': 'رمز التحقق غير صحيح'}, 401);
+          }
           return jsonRes({'access_token': 'A', 'refresh_token': 'R', 'user': student});
         case '/api/notifications':
           return jsonRes({'unread': 3, 'items': []});
@@ -102,5 +109,20 @@ void main() {
     for (final label in ['الرئيسية', 'المهام', 'الحضور', 'الإشعارات', 'المزيد']) {
       expect(find.text(label), findsWidgets);
     }
+  });
+
+  testWidgets('SMS second factor: code screen, resend countdown, then sign-in', (tester) async {
+    final session = await pumpApp(tester);
+    await tester.enterText(find.byKey(const Key('identifier')), 'sms@x.ly');
+    await tester.enterText(find.byKey(const Key('password')), 'Demo@12345');
+    await tester.tap(find.byKey(const Key('login')));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.textContaining('218•••678'), findsOneWidget);
+    expect(find.textContaining('إعادة الإرسال بعد'), findsOneWidget);
+    await tester.enterText(find.byType(TextField).first, '123456');
+    await tester.tap(find.text('تأكيد'));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(session.status, SessionStatus.signedIn);
+    await tester.pumpWidget(const SizedBox()); // stop the countdown timer
   });
 }

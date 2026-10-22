@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
-from .. import audit, permissions
+from .. import audit, mfa, permissions
 from ..db import get_db
 from ..deps import (
     can_manage_user,
@@ -24,6 +24,7 @@ from ..deps import (
 )
 from ..models import (
     AuditLog,
+    MfaPreference,
     CourseStaff,
     Department,
     Enrollment,
@@ -53,6 +54,35 @@ def user_out(u: User) -> dict:
             "code": u.code, "cohort": u.cohort, "office": u.office, "faculty_id": u.faculty_id,
             "department_id": u.department_id, "is_active": u.is_active, "mfa_enabled": u.mfa_enabled,
             "last_login_at": u.last_login_at}
+
+
+class MfaAdminIn(BaseModel):
+    required: bool | None = None  # make a second factor mandatory for this one account
+    reset: bool = False  # forget the enrolled factor (lost phone): the user enrols again at next login
+
+
+@router.post("/users/{uid}/mfa")
+def admin_mfa(uid: int, body: MfaAdminIn, request: Request,
+              actor: User = Depends(require_roles(Role.PLATFORM_ADMIN, Role.UNIVERSITY_ADMIN, Role.FACULTY_ADMIN)),
+              db: Session = Depends(get_db)):
+    u = db.get(User, uid)
+    if not u or not can_manage_user(actor, u):
+        raise not_found("المستخدم غير موجود")
+    _require_user_admin(db, actor)
+    if body.required is not None:
+        pref = mfa.preference(db, u)
+        if not pref:
+            pref = MfaPreference(user_id=u.id)
+            db.add(pref)
+        pref.forced, pref.forced_by = body.required, actor.id
+    if body.reset:
+        u.mfa_enabled, u.mfa_secret_enc = False, None
+    audit.record(db, "user.mfa_changed", actor=actor, target_type="user", target_id=u.id,
+                 details={"required": body.required, "reset": body.reset}, ip=client_ip(request))
+    db.commit()
+    return {"mfa_enabled": u.mfa_enabled, "mfa_required": mfa.required_for(db, u),
+            "mfa_forced": bool((p := mfa.preference(db, u)) and p.forced),
+            "mfa_method": mfa.method_of(db, u) if u.mfa_enabled else None}
 
 
 # --------------------------------------------------------------------------- universities (platform)
@@ -443,6 +473,10 @@ def get_user(uid: int, actor: User = Depends(get_current_user), db: Session = De
     u = db.get(User, uid)
     if not u or not can_view_user(db, actor, u):
         raise not_found("المستخدم غير موجود")
+    if actor.role in Role.ADMINS and actor.id != uid:
+        pref = mfa.preference(db, u)
+        return {**user_out(u), "mfa_required": mfa.required_for(db, u), "mfa_forced": bool(pref and pref.forced),
+                "mfa_method": mfa.method_of(db, u) if u.mfa_enabled else None}
     return user_out(u) if actor.role in Role.ADMINS or actor.id == uid else \
         {"id": u.id, "full_name": u.full_name, "role": u.role, "code": u.code}
 
@@ -543,6 +577,15 @@ def put_settings(body: SettingsIn, request: Request, user: User = Depends(requir
             body.settings["permissions"] = permissions.validate(body.settings["permissions"])
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+    sec = body.settings.get("security", {})
+    if not isinstance(sec, dict):
+        raise HTTPException(status_code=400, detail="إعدادات الأمان غير صحيحة")
+    if "mfa_methods" in sec and (not sec["mfa_methods"] or not set(sec["mfa_methods"]) <= set(mfa.METHODS)):
+        raise HTTPException(status_code=400, detail="اختر طريقة تحقق واحدة على الأقل")
+    if not set(sec.get("mfa_required_roles") or []) <= set(Role.ALL) - {Role.PLATFORM_ADMIN}:
+        raise HTTPException(status_code=400, detail="دور غير معروف في إلزام التحقق")
+    if not set(sec.get("mfa_required_capabilities") or []) <= set(permissions.CAPABILITIES):
+        raise HTTPException(status_code=400, detail="صلاحية غير معروفة في إلزام التحقق")
     att = body.settings.get("attendance", {})
     for key in ("warning_absence_percent", "limit_absence_percent", "review_threshold"):
         if key in att and not (0 <= float(att[key]) <= 100):

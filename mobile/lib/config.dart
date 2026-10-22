@@ -7,6 +7,7 @@ const String defaultServerUrl =
 
 class AppColors {
   static const primary = Color(0xFF0F5C4D);
+  static const deep = Color(0xFF0B3B32); // splash and dark brand surfaces
   static const accent = Color(0xFFC8A24A);
   static const danger = Color(0xFFB42318);
   static const warning = Color(0xFF9A6700);
