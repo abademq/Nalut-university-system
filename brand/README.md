@@ -26,3 +26,13 @@ npm i playwright && npx playwright install chromium   # مرة واحدة
 node brand/render.js                                   # أو اسم تصميم واحد: node brand/render.js rollup
 ```
 الخطوط (Cairo وIBM Plex Sans Arabic) في `fonts/` برخصة SIL المفتوحة.
+
+## Applying the university's official logo and colors
+
+    python3 brand/apply_logo.py path/to/official-logo.png --primary "#RRGGBB" --deep "#RRGGBB" --accent "#RRGGBB"
+
+Regenerates the Android launcher icons (classic, round, adaptive, monochrome), the launch screen
+picture, the notification icon (logo with a transparent background only), the app's bundled logos
+and the web dashboard icon from the official logo file, and replaces the brand colors in the app,
+the dashboard and the server defaults. The colors are optional. A white background around the
+logo is removed automatically; white inside the logo is kept.
