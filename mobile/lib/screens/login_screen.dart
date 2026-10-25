@@ -354,7 +354,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Center(child: Image.asset('assets/logo.png', width: 72, height: 72)),
+                    Center(child: Image.asset('assets/logo.png', width: 128, height: 128)),
                     const SizedBox(height: 12),
                     Text(
                       'منصة الجامعة الذكية',

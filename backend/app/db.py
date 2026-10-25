@@ -87,3 +87,34 @@ def init_db() -> None:
     from . import models  # noqa: F401  (register tables)
 
     Base.metadata.create_all(bind=engine)
+    _adopt_university_colors()
+
+
+# Colors of the earlier green identity, replaced by Nalut University's (maroon and gold) wherever a
+# university still has them stored from the demo data; colors chosen by a university are kept.
+_OLD_BRANDING = {("branding", "primary_color"): "#0f5c4d", ("branding", "accent_color"): "#c8a24a",
+                 ("launch", "background"): "#0b3b32", ("launch", "accent"): "#c8a24a"}
+_NEW_BRANDING = {("branding", "primary_color"): "#6e1a10", ("branding", "accent_color"): "#c49a2c",
+                 ("launch", "background"): "#45110A", ("launch", "accent"): "#C49A2C"}
+
+
+def _adopt_university_colors() -> None:
+    from sqlalchemy import select
+
+    from .models import University
+
+    with SessionLocal() as db:
+        changed = False
+        for uni in db.scalars(select(University)):
+            settings_ = {k: (dict(v) if isinstance(v, dict) else v) for k, v in (uni.settings or {}).items()}
+            touched = False
+            for (section, key), old in _OLD_BRANDING.items():
+                part = settings_.get(section)
+                if isinstance(part, dict) and str(part.get(key, "")).lower() == old:
+                    part[key] = _NEW_BRANDING[(section, key)]
+                    touched = True
+            if touched:
+                uni.settings = settings_
+                changed = True
+        if changed:
+            db.commit()

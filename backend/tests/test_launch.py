@@ -30,7 +30,7 @@ def test_launch_screen_is_public_and_platform_admin_only(client, as_, db):
                                     "sound": "harp"}, "notifications": {"tones": {"urgent": "siren"}}}}
     r = client.put("/api/settings", headers=act, json=body)
     assert r.status_code == 200, r.text
-    assert r.json()["launch"]["accent"] == "#C8A24A"  # untouched keys keep their values
+    assert r.json()["launch"]["accent"] == "#C49A2C"  # untouched keys keep their values
     for bad in ({"duration_ms": 9000}, {"background": "red"}, {"sound": "nope"}, {"unknown": 1}):
         assert client.put("/api/settings", headers=act, json={"settings": {"launch": bad}}).status_code == 400
     r = client.post("/api/app/launch/image", headers=act, files=files)
@@ -48,3 +48,20 @@ def test_launch_screen_is_public_and_platform_admin_only(client, as_, db):
     assert client.get(f"/api/app/launch/image?u={nalut}").status_code == 404
     sounds = client.get("/api/app/sounds", headers=p).json()
     assert {s["name"] for s in sounds["launch"]} == {"welcome", "sparkle", "harp"}
+
+
+def test_old_green_colors_become_the_university_colors(client, db):
+    from app.db import init_db
+    from app.models import University
+
+    uni = db.query(University).first()
+    uni.settings = {**(uni.settings or {}), "branding": {"display_name": "x", "primary_color": "#0f5c4d",
+                                                         "accent_color": "#123456"},
+                    "launch": {"background": "#0B3B32"}}
+    db.commit()
+    init_db()
+    db.expire_all()
+    s = db.get(University, uni.id).settings
+    assert s["branding"]["primary_color"] == "#6e1a10"
+    assert s["branding"]["accent_color"] == "#123456"  # a color the university chose stays
+    assert s["launch"]["background"] == "#45110A" and s["branding"]["display_name"] == "x"

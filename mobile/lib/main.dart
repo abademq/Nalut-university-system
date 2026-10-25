@@ -69,12 +69,12 @@ class UniversityApp extends StatelessWidget {
         theme: ThemeData(
           colorScheme: scheme,
           useMaterial3: true,
-          scaffoldBackgroundColor: const Color(0xFFF4F6F5),
+          scaffoldBackgroundColor: const Color(0xFFF7F5F2),
           cardTheme: CardThemeData(
             elevation: 0,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(14),
-              side: const BorderSide(color: Color(0xFFDDE4E1)),
+              side: const BorderSide(color: Color(0xFFE8E0DB)),
             ),
           ),
           inputDecorationTheme: const InputDecorationTheme(border: OutlineInputBorder()),

@@ -82,8 +82,8 @@ def seed(db) -> None:
     # Demo convenience: MFA enforcement for admins is switched off so that every role can log in
     # during the presentation. Production universities keep the secure default (on).
     uni = University(code="nalut", name="جامعة نالوت", settings={
-        "branding": {"display_name": "جامعة نالوت — المنصة الذكية", "primary_color": "#0f5c4d",
-                     "accent_color": "#c8a24a"},
+        "branding": {"display_name": "جامعة نالوت — المنصة الذكية", "primary_color": "#6e1a10",
+                     "accent_color": "#c49a2c"},
         "security": {"require_mfa_for_admins": False},
         "notifications": {"sms_enabled": True},
     })

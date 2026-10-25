@@ -132,7 +132,7 @@ class _PosterCarouselState extends State<PosterCarousel> {
                           gradient: LinearGradient(
                             begin: Alignment.topCenter,
                             end: Alignment.bottomCenter,
-                            colors: [Colors.transparent, Color(0xCC0B3B32)],
+                            colors: [Colors.transparent, Color(0xCC45110A)],
                           ),
                         ),
                         child: Text(p['title'] as String,

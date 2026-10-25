@@ -112,7 +112,7 @@ class _NotificationTile extends StatelessWidget {
     return Card(
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(14),
-        side: BorderSide(color: edge == Colors.transparent ? const Color(0xFFDDE4E1) : edge, width: edge == Colors.transparent ? 1 : 1.5),
+        side: BorderSide(color: edge == Colors.transparent ? const Color(0xFFE8E0DB) : edge, width: edge == Colors.transparent ? 1 : 1.5),
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(14),

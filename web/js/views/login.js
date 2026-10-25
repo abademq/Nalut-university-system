@@ -147,7 +147,7 @@ export function Login({ onLogin }) {
 
   return html`<div class="auth-wrap"><div class="auth">
     <div class="card">
-      <img class="logo" src="/static/icon.svg" alt="" />
+      <img class="logo" src="/static/logo-full.png" alt="جامعة نالوت" />
       <h1>منصة الجامعة الذكية</h1>
       <p class="muted" style="text-align:center">بوابة موحدة للطلبة وأعضاء هيئة التدريس والإدارة</p>
       ${stage === "forgot" ? html`<${Forgot} onBack=${() => setStage("login")} />` : null}

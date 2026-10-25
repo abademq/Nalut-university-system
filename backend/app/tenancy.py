@@ -10,8 +10,8 @@ DEFAULT_SETTINGS: dict = {
     "branding": {
         "display_name": None,
         "logo_url": None,
-        "primary_color": "#0f5c4d",
-        "accent_color": "#c8a24a",
+        "primary_color": "#6e1a10",
+        "accent_color": "#c49a2c",
     },
     "languages": ["ar", "en"],
     "default_language": "ar",
@@ -70,9 +70,9 @@ DEFAULT_SETTINGS: dict = {
         "duration_ms": 1800,  # minimum time on screen, 0-6000
         "title": "منصة الجامعة الذكية",
         "subtitle": "",  # empty: the university's name
-        "background": "#0B3B32",
+        "background": "#45110A",
         "foreground": "#F7F4EC",
-        "accent": "#C8A24A",
+        "accent": "#C49A2C",
         "show_loader": True,
         "sound": "welcome",  # a name from notifications.LAUNCH_SOUNDS or TONES, or "none"
     },

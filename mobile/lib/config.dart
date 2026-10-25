@@ -6,9 +6,9 @@ const String defaultServerUrl =
     String.fromEnvironment('SERVER_URL', defaultValue: 'https://nalut.abade.ly');
 
 class AppColors {
-  static const primary = Color(0xFF0F5C4D);
-  static const deep = Color(0xFF0B3B32); // splash and dark brand surfaces
-  static const accent = Color(0xFFC8A24A);
+  static const primary = Color(0xFF6E1A10);
+  static const deep = Color(0xFF45110A); // splash and dark brand surfaces
+  static const accent = Color(0xFFC49A2C);
   static const danger = Color(0xFFB42318);
   static const warning = Color(0xFF9A6700);
   static const success = Color(0xFF17803D);

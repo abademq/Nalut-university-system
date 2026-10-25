@@ -240,7 +240,7 @@ class _ThreadScreenState extends State<ThreadScreen> {
                           decoration: BoxDecoration(
                             color: mine ? AppColors.primary.withValues(alpha: 0.12) : Theme.of(context).cardColor,
                             borderRadius: BorderRadius.circular(14),
-                            border: Border.all(color: const Color(0xFFDDE4E1)),
+                            border: Border.all(color: const Color(0xFFE8E0DB)),
                           ),
                           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                             Text('${m['sender']} · ${fmtDate(m['created_at'])}', style: const TextStyle(fontSize: 11, color: Colors.grey)),
