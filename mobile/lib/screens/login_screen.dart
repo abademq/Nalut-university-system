@@ -271,7 +271,7 @@ class _LoginScreenState extends State<LoginScreen> {
           if (_methods.contains('sms'))
             Card(
               child: ListTile(
-                leading: const Icon(Icons.sms_outlined, color: AppColors.primary),
+                leading: const Icon(Icons.sms_outlined, color: AppColors.primaryText),
                 title: const Text('رسالة نصية'),
                 subtitle: Text(
                   _phoneHint == null
@@ -285,7 +285,7 @@ class _LoginScreenState extends State<LoginScreen> {
           if (_methods.contains('totp'))
             Card(
               child: ListTile(
-                leading: const Icon(Icons.phonelink_lock, color: AppColors.primary),
+                leading: const Icon(Icons.phonelink_lock, color: AppColors.primaryText),
                 title: const Text('تطبيق المصادقة'),
                 subtitle: const Text('مثل Google Authenticator، يعمل دون شبكة'),
                 enabled: !_busy,
@@ -371,7 +371,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     if (_error != null)
                       _Note(text: _error!, color: AppColors.danger)
                     else if (_info != null && _step != _Step.credentials)
-                      _Note(text: _info!, color: AppColors.primary),
+                      _Note(text: _info!, color: AppColors.primaryText),
                     Offstage(offstage: _step != _Step.credentials, child: _credentialFields()),
                     ..._stepBody(),
                     const SizedBox(height: 24),

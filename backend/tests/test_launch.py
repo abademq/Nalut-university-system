@@ -30,7 +30,7 @@ def test_launch_screen_is_public_and_platform_admin_only(client, as_, db):
                                     "sound": "harp"}, "notifications": {"tones": {"urgent": "siren"}}}}
     r = client.put("/api/settings", headers=act, json=body)
     assert r.status_code == 200, r.text
-    assert r.json()["launch"]["accent"] == "#C49A2C"  # untouched keys keep their values
+    assert r.json()["launch"]["accent"] == "#D6AA21"  # untouched keys keep their values
     for bad in ({"duration_ms": 9000}, {"background": "red"}, {"sound": "nope"}, {"unknown": 1}):
         assert client.put("/api/settings", headers=act, json={"settings": {"launch": bad}}).status_code == 400
     r = client.post("/api/app/launch/image", headers=act, files=files)
@@ -62,6 +62,16 @@ def test_old_green_colors_become_the_university_colors(client, db):
     init_db()
     db.expire_all()
     s = db.get(University, uni.id).settings
-    assert s["branding"]["primary_color"] == "#6e1a10"
+    assert s["branding"]["primary_color"] == "#d6aa21"
     assert s["branding"]["accent_color"] == "#123456"  # a color the university chose stays
     assert s["launch"]["background"] == "#45110A" and s["branding"]["display_name"] == "x"
+    # the maroon-first colors of the previous version also move to gold first
+    uni = db.get(University, uni.id)
+    uni.settings = {**uni.settings, "branding": {"primary_color": "#6E1A10", "accent_color": "#c49a2c"},
+                    "launch": {"accent": "#C49A2C"}}
+    db.commit()
+    init_db()
+    db.expire_all()
+    s = db.get(University, uni.id).settings
+    assert s["branding"] == {"primary_color": "#d6aa21", "accent_color": "#6e1a10"}
+    assert s["launch"]["accent"] == "#D6AA21"

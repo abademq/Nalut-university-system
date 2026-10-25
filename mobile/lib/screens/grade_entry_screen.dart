@@ -23,7 +23,7 @@ class GradeEntryScreen extends StatelessWidget {
           for (final c in courses)
             Card(
               child: ListTile(
-                leading: const Icon(Icons.menu_book_outlined, color: AppColors.primary),
+                leading: const Icon(Icons.menu_book_outlined, color: AppColors.primaryText),
                 title: Text('${c['code']} — ${c['title']}'),
                 trailing: const Icon(Icons.chevron_left),
                 onTap: () => Navigator.push(

@@ -20,7 +20,7 @@ class LaunchConfig {
     this.subtitle = 'جامعة نالوت',
     this.background = const Color(0xFF45110A),
     this.foreground = const Color(0xFFF7F4EC),
-    this.accent = const Color(0xFFC49A2C),
+    this.accent = const Color(0xFFD6AA21),
     this.showLoader = true,
     this.sound = 'welcome',
     this.imageVersion,

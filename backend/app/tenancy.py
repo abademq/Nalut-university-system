@@ -10,8 +10,8 @@ DEFAULT_SETTINGS: dict = {
     "branding": {
         "display_name": None,
         "logo_url": None,
-        "primary_color": "#6e1a10",
-        "accent_color": "#c49a2c",
+        "primary_color": "#d6aa21",
+        "accent_color": "#6e1a10",
     },
     "languages": ["ar", "en"],
     "default_language": "ar",
@@ -72,7 +72,7 @@ DEFAULT_SETTINGS: dict = {
         "subtitle": "",  # empty: the university's name
         "background": "#45110A",
         "foreground": "#F7F4EC",
-        "accent": "#C49A2C",
+        "accent": "#D6AA21",
         "show_loader": True,
         "sound": "welcome",  # a name from notifications.LAUNCH_SOUNDS or TONES, or "none"
     },

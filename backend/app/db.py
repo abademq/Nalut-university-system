@@ -90,12 +90,14 @@ def init_db() -> None:
     _adopt_university_colors()
 
 
-# Colors of the earlier green identity, replaced by Nalut University's (maroon and gold) wherever a
-# university still has them stored from the demo data; colors chosen by a university are kept.
-_OLD_BRANDING = {("branding", "primary_color"): "#0f5c4d", ("branding", "accent_color"): "#c8a24a",
-                 ("launch", "background"): "#0b3b32", ("launch", "accent"): "#c8a24a"}
-_NEW_BRANDING = {("branding", "primary_color"): "#6e1a10", ("branding", "accent_color"): "#c49a2c",
-                 ("launch", "background"): "#45110A", ("launch", "accent"): "#C49A2C"}
+# Colors of earlier identities (the green one, then a maroon-first one), replaced by Nalut University's
+# (gold first, maroon second) wherever a university still has them stored from the demo data or from
+# those versions; colors chosen by a university are kept.
+_OLD_BRANDING = {("branding", "primary_color"): {"#0f5c4d", "#6e1a10"},
+                 ("branding", "accent_color"): {"#c8a24a", "#c49a2c"},
+                 ("launch", "background"): {"#0b3b32"}, ("launch", "accent"): {"#c8a24a", "#c49a2c"}}
+_NEW_BRANDING = {("branding", "primary_color"): "#d6aa21", ("branding", "accent_color"): "#6e1a10",
+                 ("launch", "background"): "#45110A", ("launch", "accent"): "#D6AA21"}
 
 
 def _adopt_university_colors() -> None:
@@ -110,7 +112,7 @@ def _adopt_university_colors() -> None:
             touched = False
             for (section, key), old in _OLD_BRANDING.items():
                 part = settings_.get(section)
-                if isinstance(part, dict) and str(part.get(key, "")).lower() == old:
+                if isinstance(part, dict) and str(part.get(key, "")).lower() in old:
                     part[key] = _NEW_BRANDING[(section, key)]
                     touched = True
             if touched:

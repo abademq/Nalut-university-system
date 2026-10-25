@@ -199,7 +199,7 @@ class PublicationsScreen extends StatelessWidget {
                             Container(
                               height: 90,
                               color: AppColors.primary.withValues(alpha: 0.06),
-                              child: const Icon(Icons.picture_as_pdf_outlined, size: 40, color: AppColors.primary),
+                              child: const Icon(Icons.picture_as_pdf_outlined, size: 40, color: AppColors.primaryText),
                             ),
                           Padding(
                             padding: const EdgeInsets.all(12),

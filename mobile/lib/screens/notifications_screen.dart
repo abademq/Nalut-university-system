@@ -146,7 +146,7 @@ class _NotificationTile extends StatelessWidget {
                 const SizedBox(height: 6),
                 Wrap(spacing: 6, children: [
                   StatusChip(StatusStyle(categoryLabels[n['category']] ?? '',
-                      n['category'] == 'official_warning' ? AppColors.danger : AppColors.primary)),
+                      n['category'] == 'official_warning' ? AppColors.danger : AppColors.primaryText)),
                   if (priority == 'urgent') const StatusChip(StatusStyle('عاجل', AppColors.danger)),
                   if (priority == 'important') const StatusChip(StatusStyle('مهم', AppColors.warning)),
                   if (n['sender'] != null) Text(n['sender'] as String, style: const TextStyle(fontSize: 12, color: Colors.grey)),

@@ -10,7 +10,7 @@ String _pct(Object? v) => v == null ? '—' : '${(v as num) % 1 == 0 ? v.toInt()
 
 /// A big number with a caption, coloured green / orange / red by how good it is.
 class _Stat extends StatelessWidget {
-  const _Stat(this.label, this.value, {this.color = AppColors.primary, this.icon});
+  const _Stat(this.label, this.value, {this.color = AppColors.primaryText, this.icon});
   final String label;
   final String value;
   final Color color;
@@ -172,7 +172,7 @@ class PersonReportScreen extends StatelessWidget {
         Row(children: [
           _Stat('طلبات عالجها (30 يوماً)', '${sum['requests_handled_30d']}', icon: Icons.task_alt),
           _Stat('طلبات مفتوحة في مكتبه', '${sum['open_requests']}',
-              color: (sum['open_requests'] as num? ?? 0) > 10 ? AppColors.warning : AppColors.primary,
+              color: (sum['open_requests'] as num? ?? 0) > 10 ? AppColors.warning : AppColors.primaryText,
               icon: Icons.inbox_outlined),
         ]),
       ];
@@ -258,7 +258,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
             Row(children: [
               _Stat('مراجعات حضور', '${o['pending_attendance_reviews']}', color: AppColors.warning),
               _Stat('نتائج بانتظار الاعتماد', '${o['results_awaiting_approval']}', color: AppColors.info),
-              if (o['open_requests'] != null) _Stat('طلبات مفتوحة', '${o['open_requests']}', color: AppColors.primary),
+              if (o['open_requests'] != null) _Stat('طلبات مفتوحة', '${o['open_requests']}', color: AppColors.primaryText),
             ]),
             if ((o['breakdown'] as List).isNotEmpty)
               SectionCard(

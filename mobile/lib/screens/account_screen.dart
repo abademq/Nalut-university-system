@@ -366,7 +366,7 @@ class _MfaScreenState extends State<MfaScreen> {
           if (methods.contains('sms'))
             Card(
               child: ListTile(
-                leading: const Icon(Icons.sms_outlined, color: AppColors.primary),
+                leading: const Icon(Icons.sms_outlined, color: AppColors.primaryText),
                 title: const Text('رسالة نصية'),
                 subtitle: Text(u['phone'] == null ? 'لا يوجد رقم هاتف في حسابك' : 'يصلك رمز عند كل دخول'),
                 enabled: u['phone'] != null && !_busy,
@@ -376,7 +376,7 @@ class _MfaScreenState extends State<MfaScreen> {
           if (methods.contains('totp'))
             Card(
               child: ListTile(
-                leading: const Icon(Icons.phonelink_lock, color: AppColors.primary),
+                leading: const Icon(Icons.phonelink_lock, color: AppColors.primaryText),
                 title: const Text('تطبيق المصادقة'),
                 subtitle: const Text('مثل Google Authenticator، يعمل دون شبكة'),
                 enabled: !_busy,

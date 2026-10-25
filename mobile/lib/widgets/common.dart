@@ -36,7 +36,7 @@ class StatusStyle {
 const assignmentStatus = {
   'not_started': StatusStyle('لم يبدأ', Colors.grey),
   'in_progress': StatusStyle('قيد العمل', AppColors.info),
-  'submitted': StatusStyle('تم التسليم', AppColors.primary),
+  'submitted': StatusStyle('تم التسليم', AppColors.primaryText),
   'late': StatusStyle('متأخر', AppColors.danger),
   'reviewed': StatusStyle('تمت المراجعة', AppColors.success),
 };

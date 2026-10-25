@@ -56,7 +56,10 @@ class UniversityApp extends StatelessWidget {
               ? null
               : SnackBarAction(label: 'فتح', onPressed: () => session.openLater(m)),
         ));
-    final scheme = ColorScheme.fromSeed(seedColor: AppColors.primary, primary: AppColors.primary);
+    // gold fills with dark text on them; text-only buttons and links use the darker gold to stay readable
+    final scheme = ColorScheme.fromSeed(
+        seedColor: AppColors.primary, primary: AppColors.primary, onPrimary: AppColors.onPrimary);
+    final goldText = ButtonStyle(foregroundColor: WidgetStateProperty.all(AppColors.primaryText));
     return ChangeNotifierProvider.value(
       value: session,
       child: MaterialApp(
@@ -78,6 +81,8 @@ class UniversityApp extends StatelessWidget {
             ),
           ),
           inputDecorationTheme: const InputDecorationTheme(border: OutlineInputBorder()),
+          textButtonTheme: TextButtonThemeData(style: goldText),
+          outlinedButtonTheme: OutlinedButtonThemeData(style: goldText),
         ),
         darkTheme: ThemeData(
           colorScheme: ColorScheme.fromSeed(seedColor: AppColors.primary, brightness: Brightness.dark),

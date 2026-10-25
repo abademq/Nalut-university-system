@@ -13,7 +13,7 @@ import 'selfie_screen.dart';
 
 const _audiences = {'all': 'الجميع', 'students': 'الطلاب', 'staff': 'الموظفون والأساتذة'};
 const _levels = {'info': 'عادي', 'important': 'مهم', 'urgent': 'عاجل'};
-const _levelColors = {'info': AppColors.primary, 'important': AppColors.warning, 'urgent': AppColors.danger};
+const _levelColors = {'info': AppColors.primaryText, 'important': AppColors.warning, 'urgent': AppColors.danger};
 
 /// Picks an optional end date (the item disappears at the end of that day).
 Future<DateTime?> _pickEnd(BuildContext context, DateTime? current) async {
@@ -359,7 +359,7 @@ class _ManagePublicationsScreenState extends State<ManagePublicationsScreen> {
                         ? PublicationImage(fileId: p['file']['id'] as int)
                         : Container(
                             color: AppColors.primary.withValues(alpha: 0.06),
-                            child: const Center(child: Icon(Icons.picture_as_pdf_outlined, size: 48, color: AppColors.primary)),
+                            child: const Center(child: Icon(Icons.picture_as_pdf_outlined, size: 48, color: AppColors.primaryText)),
                           ),
                   ),
                 ),
@@ -507,7 +507,7 @@ class _PublicationFormScreenState extends State<PublicationFormScreen> {
                     ? Image.memory(f.bytes, fit: BoxFit.contain)
                     : Center(
                         child: Column(mainAxisSize: MainAxisSize.min, children: [
-                          const Icon(Icons.picture_as_pdf_outlined, size: 56, color: AppColors.primary),
+                          const Icon(Icons.picture_as_pdf_outlined, size: 56, color: AppColors.primaryText),
                           Text(f.filename),
                         ]),
                       ),
