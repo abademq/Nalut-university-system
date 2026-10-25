@@ -99,6 +99,8 @@ function useHash() {
 function Shell({ user, onLogout }) {
   const hash = useHash();
   const [unread, setUnread] = useState(0);
+  const [menu, setMenu] = useState(false);  // the full menu on narrow screens
+  useEffect(() => setMenu(false), [hash]);
   useEffect(() => {
     if (user.role === "platform_admin") return undefined;
     const poll = () => api.get("/api/notifications?limit=1").then((d) => setUnread(d.unread)).catch(() => {});
@@ -135,10 +137,19 @@ function Shell({ user, onLogout }) {
       ${user.role !== "platform_admin" ? html`<${BannerStrip} key=${hash.split("/")[1] || "home"} />` : null}
       ${route(hash, user)}
     </main>
-    <nav class="bottom-nav">${items.filter((i) => i[4]).slice(0, 5).map(([h, label, icon]) => html`
+    <nav class="bottom-nav">${items.filter((i) => i[4]).slice(0, 4).map(([h, label, icon]) => html`
       <a href=${h} class=${active(h) ? "active" : ""}><span class="ico">${icon}</span>${label.split(" ")[0]}
         ${h === "#/notifications" && unread ? html`<span class="count">${unread}</span>` : null}</a>`)}
+      <a href="#" class=${menu ? "active" : ""} aria-expanded=${menu}
+        onClick=${(e) => { e.preventDefault(); setMenu(!menu); }}><span class="ico">☰</span>القائمة</a>
     </nav>
+    ${menu ? html`<div class="menu-sheet" onClick=${(e) => { if (e.target === e.currentTarget) setMenu(false); }}>
+      <div class="menu-panel"><div class="brand"><img src="/static/icon.svg" alt="" /><div>${brand}<small>${ROLE[user.role]}</small></div></div>
+        <nav class="nav">${items.map(([h, label, icon]) => html`
+          <a href=${h} class=${active(h) ? "active" : ""}><span>${icon} ${label}</span>
+            ${h === "#/notifications" && unread ? html`<span class="count">${unread}</span>` : null}</a>`)}
+          <a href="#/" onClick=${(e) => { e.preventDefault(); onLogout(); }}><span>⎋ تسجيل الخروج</span></a>
+        </nav></div></div>` : null}
   </div>`;
 }
 
