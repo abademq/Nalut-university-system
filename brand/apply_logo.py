@@ -1,6 +1,6 @@
 """Puts the university's official logo (and, optionally, its colors) everywhere in the platform.
 
-    python3 brand/apply_logo.py path/to/official-logo.png
+    python3 brand/apply_logo.py brand/logo/nalut/nalut-emblem.png --full brand/logo/nalut/nalut-university-logo.png
     python3 brand/apply_logo.py logo.png --primary "#123F6B" --deep "#0B2540" --accent "#C9A227"
 
 The logo should be the official file, ideally a PNG with a transparent background and at least
@@ -57,8 +57,16 @@ def load(path: Path) -> Image.Image:
         sys.exit("the logo is empty")
     img = img.crop(box)
     side = max(img.size)
+    # optical centring: a logo heavy at the bottom (a thin pen over a wide book) looks low when only
+    # its box is centred, so it is lifted halfway towards its centre of mass
+    alpha = img.getchannel("A")
+    rows = list(alpha.resize((1, img.height), Image.BOX).tobytes())  # mean opacity of each row
+    total = sum(rows) or 1
+    mass_y = sum(y * v for y, v in enumerate(rows)) / total
+    lift = round((mass_y - img.height / 2) * 0.5)
+    side = max(img.width, img.height) + 2 * abs(lift)
     square = Image.new("RGBA", (side, side), (0, 0, 0, 0))
-    square.paste(img, ((side - img.width) // 2, (side - img.height) // 2))
+    square.paste(img, ((side - img.width) // 2, (side - img.height) // 2 - lift))
     return square
 
 
@@ -103,20 +111,23 @@ def save(img: Image.Image, path: Path) -> None:
     print("  wrote", path.relative_to(ROOT))
 
 
-def apply_logo(src: Path, transparent_source: bool) -> None:
+def apply_logo(src: Path, transparent_source: bool, full_src: Path | None = None) -> None:
     logo = load(src)
     for name, k in DENSITIES.items():
         launcher = round(48 * k)
-        save(on_disc(logo, launcher, round_=False, scale=0.8), RES / f"mipmap-{name}/ic_launcher.png")
-        save(on_disc(logo, launcher, scale=0.76), RES / f"mipmap-{name}/ic_launcher_round.png")
+        save(on_disc(logo, launcher, round_=False, scale=0.86), RES / f"mipmap-{name}/ic_launcher.png")
+        save(on_disc(logo, launcher, scale=0.8), RES / f"mipmap-{name}/ic_launcher_round.png")
         adaptive = round(108 * k)  # 108 dp canvas, of which the inner 66 dp are always visible
-        save(fit(logo, adaptive, 0.58), RES / f"mipmap-{name}/ic_launcher_foreground.png")
-        save(silhouette(logo, adaptive, 0.58), RES / f"mipmap-{name}/ic_launcher_monochrome.png")
+        save(fit(logo, adaptive, 0.55), RES / f"mipmap-{name}/ic_launcher_foreground.png")
+        save(silhouette(logo, adaptive, 0.55), RES / f"mipmap-{name}/ic_launcher_monochrome.png")
         save(on_disc(logo, round(112 * k), scale=0.8), RES / f"drawable-{name}/splash_logo.png")
         if transparent_source:
             save(silhouette(logo, round(24 * k), 0.92), RES / f"drawable-{name}/ic_stat_notify.png")
-    save(fit(logo, 512, 0.96), ROOT / "mobile/assets/logo.png")
-    save(on_disc(logo, 512, scale=0.8), ROOT / "mobile/assets/logo_on_dark.png")
+    # the full logo (with the university's name) where it is shown large: sign-in and launch screens
+    full = load(full_src) if full_src else logo
+    save(fit(full, 512, 0.96), ROOT / "mobile/assets/logo.png")
+    save(on_disc(full, 512, round_=False, scale=0.86), ROOT / "mobile/assets/logo_on_dark.png")
+    save(fit(full, 480, 1.0), ROOT / "web/logo-full.png")
     # the adaptive icon's background is white so a colored seal keeps its own colors
     colors = RES / "values/colors.xml"
     colors.write_text(re.sub(r'(<color name="ic_launcher_background">)#[0-9A-Fa-f]{6}(</color>)',
@@ -158,7 +169,8 @@ def apply_colors(new: dict[str, str]) -> None:
 
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("logo", type=Path)
+    p.add_argument("logo", type=Path, help="the emblem, for icons")
+    p.add_argument("--full", type=Path, help="the full logo with the name, for sign-in and launch screens")
     p.add_argument("--primary", help="main color, e.g. #123F6B")
     p.add_argument("--deep", help="dark color of the launch screen and headers")
     p.add_argument("--accent", help="second color (highlights)")
@@ -166,7 +178,7 @@ def main() -> None:
     src = Image.open(args.logo)
     transparent = has_transparency(src.convert("RGBA"))
     print("logo:", args.logo, src.size, "transparent" if transparent else "solid background")
-    apply_logo(args.logo, transparent)
+    apply_logo(args.logo, transparent, args.full)
     if not transparent:
         print("  note: the logo has no transparent background; the notification icon was kept")
     apply_colors({"primary": args.primary, "deep": args.deep, "accent": args.accent})

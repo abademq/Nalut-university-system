@@ -341,7 +341,7 @@ function LaunchSettings({ data, universityId, onSaved }) {
         <div style=${{ background: v.background, color: v.foreground, width: "190px", height: "340px", borderRadius: "22px",
           display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "14px", textAlign: "center",
           boxShadow: "0 4px 18px rgba(0,0,0,.18)" }} aria-label="معاينة شاشة البداية">
-          <img src=${imgUrl || "/static/icon.svg"} alt="" style=${{ maxWidth: "120px", maxHeight: "120px", objectFit: "contain" }}
+          <img src=${imgUrl || "/static/logo-full.png"} alt="" style=${{ maxWidth: "120px", maxHeight: "120px", objectFit: "contain" }}
             onError=${(e) => { e.target.style.visibility = "hidden"; }} />
           <strong style=${{ marginTop: "12px", fontSize: "15px" }}>${v.title}</strong>
           <span style=${{ color: v.accent, fontSize: "12px", marginTop: "4px" }}>${v.subtitle || data.university.name}</span>

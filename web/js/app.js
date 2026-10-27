@@ -126,7 +126,7 @@ function Shell({ user, onLogout }) {
 
   return html`<div class="layout">
     <aside class="sidebar">
-      <div class="brand"><img src="/static/icon.svg" alt="" /><div>${brand}<small>${roleLabel}</small></div></div>
+      <div class="brand"><img class="brand-logo" src="/static/logo-full.png" alt="جامعة نالوت" /><div>${brand}<small>${roleLabel}</small></div></div>
       <nav class="nav">${items.map(([h, label, icon]) => html`
         <a href=${h} class=${active(h) ? "active" : ""}><span>${icon} ${label}</span>
           ${h === "#/notifications" && unread ? html`<span class="count">${unread}</span>` : null}</a>`)}
@@ -151,7 +151,7 @@ function Shell({ user, onLogout }) {
         onClick=${(e) => { e.preventDefault(); setMenu(!menu); }}><span class="ico">☰</span>القائمة</a>
     </nav>
     ${menu ? html`<div class="menu-sheet" onClick=${(e) => { if (e.target === e.currentTarget) setMenu(false); }}>
-      <div class="menu-panel"><div class="brand"><img src="/static/icon.svg" alt="" /><div>${brand}<small>${roleLabel}</small></div></div>
+      <div class="menu-panel"><div class="brand"><img class="brand-logo" src="/static/logo-full.png" alt="جامعة نالوت" /><div>${brand}<small>${roleLabel}</small></div></div>
         <nav class="nav">${items.map(([h, label, icon]) => html`
           <a href=${h} class=${active(h) ? "active" : ""}><span>${icon} ${label}</span>
             ${h === "#/notifications" && unread ? html`<span class="count">${unread}</span>` : null}</a>`)}
