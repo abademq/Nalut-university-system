@@ -14,6 +14,7 @@ from ..models import (
     Course,
     Message,
     Publication,
+    Role,
     ServiceRequest,
     ServiceRequestEvent,
     StoredFile,
@@ -40,6 +41,8 @@ def can_read(db: Session, user: User, f: StoredFile) -> bool:
         return can_teach_course(db, user, db.get(Course, a.course_id))
     if f.purpose == "message":
         m = db.scalar(select(Message).where(Message.file_id == f.id))
+        if m and user.role == Role.UNIVERSITY_ADMIN:  # message oversight; every download is audited below
+            return True
         return bool(m and not m.hidden and db.scalar(select(ConversationParticipant.id).where(
             ConversationParticipant.conversation_id == m.conversation_id, ConversationParticipant.user_id == user.id)))
     if f.purpose == "request":

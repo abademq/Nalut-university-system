@@ -237,3 +237,27 @@ def test_message_attachment_reaches_the_other_side(client, as_):
     got = client.get(f"/api/files/{f['id']}", headers=as_(TEACHER))
     assert got.status_code == 200 and got.content == pdf
     assert client.get(f"/api/files/{f['id']}", headers=as_("student2@nalut.edu.ly")).status_code == 404
+
+
+def test_university_admin_reads_every_conversation_and_each_read_is_audited(client, as_):
+    s = as_("s.ali@nalut.edu.ly")
+    teacher_id = client.get("/api/me", headers=as_(TEACHER)).json()["id"]
+    conv = client.post("/api/conversations", headers=s, json={"recipient_ids": [teacher_id], "subject": "سؤال خاص",
+                                                              "body": "نص لا يراه إلا الطرفان والإدارة"}).json()["id"]
+    client.post(f"/api/conversations/{conv}/messages", headers=s, data={"body": ""},
+                files={"upload": ("note.pdf", b"%PDF-1.4\n", "application/pdf")})
+    admin = as_("president@nalut.edu.ly")
+    found = client.get("/api/oversight/conversations?q=لا يراه", headers=admin).json()
+    assert [c["id"] for c in found["items"]] == [conv] and len(found["items"][0]["participants"]) == 2
+    r = client.get(f"/api/oversight/conversations/{conv}", headers=admin)
+    assert r.status_code == 200
+    msgs = r.json()["messages"]
+    assert msgs[0]["body"] == "نص لا يراه إلا الطرفان والإدارة"
+    assert client.get(f"/api/files/{msgs[-1]['file']['id']}", headers=admin).status_code == 200
+    log = client.get("/api/audit?action=message.oversight_viewed", headers=admin).json()
+    items = log["items"] if isinstance(log, dict) else log
+    assert any(e["target_id"] == str(conv) for e in items)
+    # faculty administrations, staff and teachers cannot
+    for who in (DEAN, TEACHER, "registrar@nalut.edu.ly"):
+        assert client.get("/api/oversight/conversations", headers=as_(who)).status_code == 403
+        assert client.get(f"/api/oversight/conversations/{conv}", headers=as_(who)).status_code == 403

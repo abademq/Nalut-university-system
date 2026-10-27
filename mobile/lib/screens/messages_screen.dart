@@ -44,6 +44,11 @@ class _MessagesScreenState extends State<MessagesScreen> {
         builder: (context, list, _) {
           if (list.isEmpty) return ListView(children: const [EmptyView('لا توجد محادثات', icon: Icons.chat_bubble_outline)]);
           return ListView(padding: const EdgeInsets.all(12), children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(4, 0, 4, 8),
+              child: Text('يمكن لإدارة الجامعة الاطلاع على المحادثات لأغراض الرقابة، ويُسجَّل كل اطلاع باسم من قام به.',
+                  style: TextStyle(fontSize: 12, color: Colors.grey)),
+            ),
             for (final c in list)
               Card(
                 child: ListTile(

@@ -268,3 +268,64 @@ def handle_report(rid: int, body: ReportAction, request: Request, user: User = D
     db.commit()
     return {"ok": True}
 
+
+
+# ---------------------------------------------------------------- oversight
+# The university administration (and the platform administrator, who acts as it) may read every
+# conversation of the university. Users are told so on the messages page, and each conversation
+# opened this way is written to the audit log with the reader's name.
+
+def _oversight(user: User) -> None:
+    if user.role != Role.UNIVERSITY_ADMIN:
+        raise forbidden("الاطلاع على كل الرسائل خاص بإدارة الجامعة ومشرف المنصة")
+
+
+@router.get("/oversight/conversations")
+def oversight_list(q: str = "", limit: int = 50, offset: int = 0, user: User = Depends(get_current_user),
+                   db: Session = Depends(get_db)):
+    _oversight(user)
+    limit = max(1, min(limit, 200))
+    stmt = select(Conversation).where(Conversation.university_id == user.university_id)
+    if q.strip():
+        like = f"%{q.strip()}%"
+        in_body = select(Message.conversation_id).where(Message.body.ilike(like))
+        by_name = select(ConversationParticipant.conversation_id).join(
+            User, User.id == ConversationParticipant.user_id).where(User.full_name.ilike(like))
+        stmt = stmt.where(Conversation.subject.ilike(like) | Conversation.id.in_(in_body) | Conversation.id.in_(by_name))
+    total = db.scalar(select(func.count()).select_from(stmt.subquery()))
+    convs = db.scalars(stmt.order_by(Conversation.last_message_at.desc()).limit(limit).offset(offset)).all()
+    out = []
+    for c in convs:
+        people = db.scalars(select(User).join(ConversationParticipant, ConversationParticipant.user_id == User.id)
+                            .where(ConversationParticipant.conversation_id == c.id)).all()
+        last = db.scalar(select(Message).where(Message.conversation_id == c.id).order_by(Message.id.desc()).limit(1))
+        count = db.scalar(select(func.count(Message.id)).where(Message.conversation_id == c.id))
+        out.append({"id": c.id, "subject": c.subject, "kind": c.kind, "last_message_at": c.last_message_at,
+                    "messages": count, "participants": [{"id": u.id, "full_name": u.full_name, "role": u.role} for u in people],
+                    "last": (last.body[:140] if last and last.body else ("[ملف مرفق]" if last and last.file_id else ""))})
+    return {"total": total, "items": out}
+
+
+@router.get("/oversight/conversations/{cid}")
+def oversight_read(cid: int, request: Request, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    _oversight(user)
+    conv = db.get(Conversation, cid)
+    if not conv or conv.university_id != user.university_id:
+        raise not_found()
+    msgs = db.scalars(select(Message).where(Message.conversation_id == conv.id).order_by(Message.id)).all()
+    people = db.scalars(select(User).join(ConversationParticipant, ConversationParticipant.user_id == User.id)
+                        .where(ConversationParticipant.conversation_id == conv.id)).all()
+    names = {u.id: u.full_name for u in people}
+    names.update({u.id: u.full_name for u in db.scalars(select(User).where(
+        User.id.in_({m.sender_id for m in msgs} - set(names) or {-1})))})
+    audit.record(db, "message.oversight_viewed", actor=user, target_type="conversation", target_id=conv.id,
+                 details={"subject": conv.subject}, ip=client_ip(request))
+    db.commit()
+    out = []
+    for m in msgs:
+        f = db.get(StoredFile, m.file_id) if m.file_id else None
+        out.append({"id": m.id, "sender_id": m.sender_id, "sender": names.get(m.sender_id), "mine": False,
+                    "body": m.body, "hidden": m.hidden, "file": files.file_info(f) if f else None,
+                    "created_at": m.created_at})
+    return {"id": conv.id, "subject": conv.subject, "kind": conv.kind,
+            "participants": [{"id": u.id, "full_name": u.full_name, "role": u.role} for u in people], "messages": out}

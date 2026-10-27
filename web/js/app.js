@@ -7,7 +7,7 @@ import { AssignmentsView, AssignmentDetail } from "./views/assignments.js";
 import { GradesView, ResultsApproval } from "./views/grades.js";
 import { AttendanceView, ScanView, SessionView, DisplayView } from "./views/attendance.js";
 import { NotificationsView, SendNotification } from "./views/notifications.js";
-import { MessagesView, ThreadView } from "./views/messages.js";
+import { MessagesView, ThreadView, OversightView, OversightThread } from "./views/messages.js";
 import { RequestsView, RequestDetail } from "./views/requests.js";
 import { UsersView, StructureView, SettingsView, LaunchView, AuditView, AbuseReportsView, UniversitiesView, PermissionsView } from "./views/admin.js";
 import { ReportsView } from "./views/reports.js";
@@ -45,6 +45,7 @@ const NAV = [
   ["#/faculty-members", "أعضاء هيئة التدريس", "faculty", (r, u) => r !== "platform_admin" && (can(u, "faculty.view") || can(u, "faculty.manage")), false],
   ["#/archive", "أرشيف الطلبة", "archive", (r, u) => (isAdmin(r) || (r === "staff" && u.office)) && can(u, "archive.access")
     && (r !== "staff" || (u.archive_offices || ["registrar"]).includes(u.office)), false],
+  ["#/oversight", "رقابة الرسائل", "shield", (r) => r === "university_admin", false],
   ["#/abuse", "بلاغات الرسائل", "abuse", (r, u) => isAdmin(r) && can(u, "messages.moderate"), false],
   ["#/audit", "سجل التدقيق", "audit", (r, u) => r === "platform_admin" || (isAdmin(r) && can(u, "audit.view")), false],
   ["#/settings", "إعدادات المؤسسة", "settings", (r) => r === "university_admin", false],
@@ -78,6 +79,7 @@ function route(hash, user) {
     case "structure": return html`<${StructureView} user=${user} />`;
     case "settings": return html`<${SettingsView} user=${user} />`;
     case "audit": return html`<${AuditView} user=${user} />`;
+    case "oversight": return b ? html`<${OversightThread} id=${b} />` : html`<${OversightView} />`;
     case "abuse": return html`<${AbuseReportsView} user=${user} />`;
     case "universities": return html`<${UniversitiesView} user=${user} />`;
     case "profile": return html`<${ProfileView} user=${user} />`;

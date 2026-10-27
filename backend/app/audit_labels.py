@@ -88,6 +88,7 @@ ACTIONS: dict[str, tuple[str, str]] = {
     "publication.deleted": ("حذف جدول أو إعلان مصور", "communication"),
     "message.reported": ("الإبلاغ عن رسالة", "communication"),
     "message.report_handled": ("معالجة بلاغ رسالة", "communication"),
+    "message.oversight_viewed": ("اطلاع الإدارة على محادثة", "communication"),
     # service requests
     "request.in_review": ("طلب: قيد المراجعة", "requests"),
     "request.needs_documents": ("طلب: مطلوب مستندات", "requests"),
@@ -108,7 +109,7 @@ TARGETS = {
     "user": "حساب", "users": "حسابات", "student": "طالب", "course": "مقرر", "faculty": "كلية", "department": "قسم",
     "term": "فصل دراسي", "university": "الجامعة", "assignment": "مهمة", "submission": "تسليم", "grade": "درجة",
     "attendance_session": "جلسة حضور", "attendance_record": "سجل حضور", "banner": "إعلان مثبت",
-    "publication": "منشور", "message": "رسالة", "notification": "إشعار", "service_request": "طلب",
+    "publication": "منشور", "message": "رسالة", "conversation": "محادثة", "notification": "إشعار", "service_request": "طلب",
     "permission_group": "مجموعة صلاحيات", "file": "ملف",
 }
 

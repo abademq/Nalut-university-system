@@ -29,6 +29,7 @@ export function MessagesView({ params }) {
   const [creating, setCreating] = useState(!!params?.get("to"));
   return html`<div>
     <div class="row between"><h1>الرسائل</h1><button onClick=${() => setCreating(!creating)}>+ محادثة جديدة</button></div>
+    <p class="small muted">يمكن لإدارة الجامعة الاطلاع على المحادثات لأغراض الرقابة، ويُسجَّل كل اطلاع باسم من قام به.</p>
     ${creating ? html`<${NewConversation} params=${params} onClose=${() => setCreating(false)} />` : null}
     <${Async} state=${state}>${(rows) => rows.length ? html`<div class="card"><ul class="list">${rows.map((c) => html`<li>
       <a class="item-link" href=${`#/messages/${c.id}`}><div class="row between"><strong>${c.subject}</strong>
@@ -68,7 +69,7 @@ export function ThreadView({ id }) {
       <div class="meta">${m.sender} · ${fmtDate(m.created_at)}</div>
       ${m.body ? html`<div style="white-space:pre-wrap">${m.body}</div>` : null}
       ${m.file ? html`<button class="secondary small" style="margin-top:.35rem" title="تنزيل الملف"
-        onClick=${() => downloadFile(m.file.id, m.file.name).catch(toastError)}>⬇ تنزيل ${m.file.name}</button>` : null}
+        onClick=${() => downloadFile(m.file.id, m.file.name).catch(toastError)}><${Icon} name="download" size=${16} /> تنزيل ${m.file.name}</button>` : null}
       ${!m.mine ? html`<button class="ghost small" onClick=${() => report(m)} title="إبلاغ"><${Icon} name="flag" size=${16} /> إبلاغ</button>` : null}
     </div>`)}<div ref=${end}></div></div></div>
     <form class="card" onSubmit=${send}><${ErrorBox} error=${error} />
@@ -76,5 +77,40 @@ export function ThreadView({ id }) {
       <div class="row"><input key=${pick} type="file" style="max-width:260px" accept=".pdf,.doc,.docx,.pptx,.xlsx,.txt,.png,.jpg,.jpeg,.zip"
         onChange=${(e) => setFile(e.target.files[0] || null)} />
         <span class="spacer"></span><button disabled=${busy}>إرسال</button></div></form>
+  </div>`}<//>`;
+}
+
+// ---------------------------------------------------------------- oversight (university administration)
+
+export function OversightView() {
+  const [q, setQ] = useState("");
+  const [query, setQuery] = useState("");
+  const state = useAsync(() => api.get(`/api/oversight/conversations?limit=100&q=${encodeURIComponent(query)}`), [query]);
+  return html`<div><h1>رقابة الرسائل</h1>
+    <p class="muted">كل محادثات المنصة. فتح أي محادثة يُسجَّل في سجل التدقيق باسمك، ويُبلَّغ المستخدمون في صفحة الرسائل بأن الإدارة قد تطّلع عليها.</p>
+    <form class="row" style="margin-bottom:.75rem" onSubmit=${(e) => { e.preventDefault(); setQuery(q); }}>
+      <input style="max-width:340px" placeholder="بحث في الموضوع أو نص الرسائل أو اسم مشارك" value=${q} onInput=${(e) => setQ(e.target.value)} />
+      <button class="secondary"><${Icon} name="search" size=${18} /> بحث</button></form>
+    <${Async} state=${state}>${(d) => d.items.length ? html`<div class="card"><p class="small muted">${d.total} محادثة</p><ul class="list">${d.items.map((c) => html`<li>
+      <a class="item-link" href=${`#/oversight/${c.id}`}><div class="row between"><strong>${c.subject}</strong>
+        <span class="small muted">${c.messages} رسالة · ${fmtRelative(c.last_message_at, true)}</span></div>
+        <div class="small muted">${c.participants.map((p) => `${p.full_name} (${ROLE[p.role]})`).join("، ")}</div>
+        ${c.last ? html`<div class="small">${c.last}</div>` : null}</a></li>`)}</ul></div>`
+      : html`<${Empty}>لا توجد محادثات<//>`}<//>
+  </div>`;
+}
+
+export function OversightThread({ id }) {
+  const state = useAsync(() => api.get(`/api/oversight/conversations/${id}`), [id]);
+  return html`<${Async} state=${state}>${(c) => html`<div>
+    <div class="row"><a href="#/oversight">← رقابة الرسائل</a></div>
+    <h1>${c.subject}</h1>
+    <p class="muted">${c.participants.map((p) => `${p.full_name} (${ROLE[p.role]})`).join("، ")}</p>
+    <div class="alert info">تم تسجيل اطلاعك على هذه المحادثة في سجل التدقيق.</div>
+    <div class="card"><div class="thread" style="max-height:none">${c.messages.map((m) => html`<div class="bubble">
+      <div class="meta"><strong>${m.sender}</strong> · ${fmtDate(m.created_at)}${m.hidden ? html` · <${Chip} kind="danger">مخفية بعد بلاغ<//>` : null}</div>
+      ${m.body ? html`<div style="white-space:pre-wrap">${m.body}</div>` : null}
+      ${m.file ? html`<button class="secondary small" style="margin-top:.35rem" onClick=${() => downloadFile(m.file.id, m.file.name).catch(toastError)}>
+        <${Icon} name="download" size=${16} /> تنزيل ${m.file.name}</button>` : null}</div>`)}</div></div>
   </div>`}<//>`;
 }
