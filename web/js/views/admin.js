@@ -464,23 +464,32 @@ function SettingsForm({ data, acting, onSaved }) {
 }
 
 export function AuditView() {
-  const [action, setAction] = useState("");
-  const state = useAsync(() => api.get(`/api/audit?limit=200${action ? `&action=${action}` : ""}`), [action]);
+  const [category, setCategory] = useState("");
+  const meta = useAsync(() => api.get("/api/audit/meta"), []);
+  const state = useAsync(() => api.get(`/api/audit?limit=300${category ? `&category=${category}` : ""}`), [category]);
   const [verify, setVerify] = useState(null);
+  const [open, setOpen] = useState(null);
   return html`<div>
     <div class="row between"><h1>سجل التدقيق</h1>
       <button class="secondary" onClick=${() => api.get("/api/audit/verify").then(setVerify).catch(toastError)}>التحقق من سلامة السجل</button></div>
-    ${verify ? html`<div class=${`alert ${verify.ok ? "success" : "error"}`}>${verify.ok ? `السجل سليم ومتسلسل (${verify.checked} عملية)` : `تم اكتشاف تعديل عند العملية #${verify.broken_at}`}</div>` : null}
-    <div class="row" style="margin-bottom:.75rem"><select style="max-width:260px" value=${action} onChange=${(e) => setAction(e.target.value)}>
-      <option value="">كل العمليات</option><option value="auth">الدخول والحسابات</option><option value="user">إدارة المستخدمين</option>
-      <option value="grade">الدرجات</option><option value="results">النتائج</option><option value="attendance">الحضور</option>
-      <option value="notification">الإشعارات</option><option value="warning">التحذيرات</option><option value="file">الملفات</option></select></div>
+    <p class="muted">كل عملية حساسة تُسجَّل هنا: من نفّذها، ومتى، وعلى ماذا، ومن أي جهاز. السجل متسلسل؛ «التحقق من سلامة السجل»
+      يكشف أي تعديل أو حذف فيه.</p>
+    ${verify ? html`<div class=${`alert ${verify.ok ? "success" : "error"}`}>${verify.ok ? `السجل سليم ومتسلسل (${verify.checked} عملية)` : `تم اكتشاف تعديل عند العملية رقم ${verify.broken_at}`}</div>` : null}
+    <div class="row" style="margin-bottom:.75rem"><select style="max-width:260px" value=${category} onChange=${(e) => setCategory(e.target.value)}>
+      <option value="">كل العمليات</option>
+      ${Object.entries(meta.data?.categories || {}).map(([k, l]) => html`<option value=${k}>${l}</option>`)}</select></div>
     <${Async} state=${state}>${(rows) => rows.length ? html`<div class="card"><div class="table-wrap"><table>
-      <thead><tr><th>الوقت</th><th>العملية</th><th>المنفذ</th><th>الهدف</th><th>تفاصيل</th><th>IP</th></tr></thead>
-      <tbody>${rows.map((r) => html`<tr><td class="small">${fmtDate(r.created_at)}</td><td class="mono small">${r.action}</td>
-        <td class="small">${r.actor || "النظام"}</td><td class="small mono">${r.target_type || ""} ${r.target_id || ""}</td>
-        <td class="small mono" style="max-width:320px;overflow-wrap:anywhere">${JSON.stringify(r.details)}</td><td class="small mono">${r.ip || ""}</td></tr>`)}
-      </tbody></table></div></div>` : html`<${Empty} />`}<//></div>`;
+      <thead><tr><th>الوقت</th><th>العملية</th><th>من نفّذها</th><th>على</th><th>التفاصيل</th></tr></thead>
+      <tbody>${rows.map((r) => html`<tr>
+        <td class="small" style="white-space:nowrap">${fmtDate(r.created_at)}</td>
+        <td><strong>${r.label}</strong>${r.category_label ? html`<div class="small muted">${r.category_label}</div>` : null}</td>
+        <td class="small">${r.actor || "النظام"}${r.by_platform_admin ? html` <${Chip} kind="info">مشرف المنصة<//>` : null}</td>
+        <td class="small">${r.target || "—"}</td>
+        <td class="small" style="max-width:340px">${r.summary || html`<span class="muted">—</span>`}
+          <div><button class="ghost small" onClick=${() => setOpen(open === r.id ? null : r.id)}>${open === r.id ? "إخفاء" : "المزيد"}</button></div>
+          ${open === r.id ? html`<div class="small muted">رمز العملية: <span class="mono ltr">${r.action}</span> · الجهاز: <span class="mono ltr">${r.ip || "—"}</span>
+            <div class="mono ltr" style="overflow-wrap:anywhere;margin-top:.3rem">${JSON.stringify(r.details)}</div></div>` : null}</td></tr>`)}
+      </tbody></table></div></div>` : html`<${Empty}>لا توجد عمليات<//>`}<//></div>`;
 }
 
 export function AbuseReportsView() {

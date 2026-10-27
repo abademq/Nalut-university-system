@@ -239,3 +239,25 @@ def test_permission_groups_grant_capabilities_to_chosen_people(client, as_, db):
     client.put(f"/api/permission-groups/{g['id']}/members", headers=act, json={"user_ids": []})
     assert client.get("/api/banners/manage", headers=staff).status_code == 403
     assert client.delete(f"/api/permission-groups/{g['id']}", headers=act).status_code == 200
+
+
+def test_audit_log_reads_in_arabic(client, as_, db):
+    p = as_(PRES)
+    from app import audit_labels
+
+    rows = client.get("/api/audit?limit=200", headers=p).json()
+    assert rows and all(r["label"] and not r["label"].startswith(("auth.", "user.")) for r in rows
+                        if r["action"] in audit_labels.ACTIONS)
+    login = next(r for r in rows if r["action"] == "auth.login")
+    assert login["label"] == "تسجيل دخول" and login["category_label"] == "الدخول والأمان"
+    auth = client.get("/api/audit?category=auth", headers=p).json()
+    assert auth and all(r["category"] == "auth" for r in auth)
+    assert "الدخول والأمان" in client.get("/api/audit/meta", headers=p).json()["categories"].values()
+    assert audit_labels.details_line({"fields": ["full_name", "phone"], "document_id": 3, "role": "teacher"}) == \
+        "الحقول: الاسم، الهاتف · الدور: عضو هيئة تدريس"
+    # every operation the code records has an Arabic name
+    import pathlib
+    import re
+    src = "".join(p.read_text() for p in pathlib.Path("app").rglob("*.py"))
+    used = set(re.findall(r'audit\.record\(\s*db,\s*"([a-z_]+\.[a-z_]+)"', src))
+    assert used - set(audit_labels.ACTIONS) == set()

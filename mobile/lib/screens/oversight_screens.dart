@@ -50,11 +50,14 @@ class _AuditScreenState extends State<AuditScreen> {
   static const _filters = {
     '': 'الكل',
     'auth': 'الدخول والأمان',
+    'user': 'الحسابات',
     'grade': 'الدرجات',
     'results': 'النتائج',
-    'user': 'الحسابات',
-    'settings': 'الإعدادات',
-    'archive': 'الأرشيف',
+    'attendance': 'الحضور',
+    'archive': 'ملفات الطلبة',
+    'personnel': 'الملفات الوظيفية',
+    'communication': 'الإشعارات والإعلانات',
+    'settings': 'الإعدادات والصلاحيات',
   };
 
   Future<void> _verify() async {
@@ -116,7 +119,7 @@ class _AuditScreenState extends State<AuditScreen> {
           child: AsyncView<List<dynamic>>(
             key: ValueKey('$_filter-$_version'),
             load: () async =>
-                await s.api.get('/api/audit?limit=200${_filter.isEmpty ? '' : '&action=$_filter'}') as List<dynamic>,
+                await s.api.get('/api/audit?limit=200${_filter.isEmpty ? '' : '&category=$_filter'}') as List<dynamic>,
             builder: (context, rows, reload) => ListView.separated(
               padding: const EdgeInsets.symmetric(horizontal: 12),
               itemCount: rows.isEmpty ? 1 : rows.length,
@@ -127,12 +130,14 @@ class _AuditScreenState extends State<AuditScreen> {
                 final details = (r['details'] as Map?) ?? {};
                 return ListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: Text(auditLabel(r['action'] as String)),
+                  // the server sends the Arabic name and a readable line of details
+                  title: Text(r['label'] as String? ?? auditLabel(r['action'] as String)),
                   subtitle: Text([
-                    r['actor'] ?? 'النظام',
-                    fmtDate(r['created_at']),
-                    if (details.isNotEmpty) details.entries.take(3).map((e) => '${e.key}: ${e.value}').join('، '),
-                  ].join(' · ')),
+                    '${r['actor'] ?? 'النظام'} · ${fmtDate(r['created_at'])}',
+                    if ((r['target'] as String?)?.isNotEmpty == true) r['target'],
+                    if ((r['summary'] as String?)?.isNotEmpty == true) r['summary'],
+                  ].join('\n')),
+                  isThreeLine: (r['summary'] as String?)?.isNotEmpty == true || r['target'] != null,
                   trailing: details['by_platform_admin'] == true
                       ? const Tooltip(message: 'بواسطة مشرف المنصة', child: Icon(Icons.shield_outlined, size: 18))
                       : null,

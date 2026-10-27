@@ -772,10 +772,41 @@ def put_settings(body: SettingsIn, request: Request, user: User = Depends(requir
 # --------------------------------------------------------------------------- audit
 
 
+@router.get("/audit/meta")
+def audit_meta(user: User = Depends(require_roles(Role.PLATFORM_ADMIN, Role.UNIVERSITY_ADMIN, Role.FACULTY_ADMIN))):
+    from .. import audit_labels as L
+
+    return {"categories": L.CATEGORIES}
+
+
+def _target_names(db: Session, rows: list) -> dict[tuple[str, int], str]:
+    """Readable names of the records the operations touched (people, courses, units)."""
+    from ..models import Course, Term
+
+    wanted: dict[str, set[int]] = {}
+    for r in rows:
+        if r.target_type and r.target_id:
+            wanted.setdefault(r.target_type, set()).add(r.target_id)
+    out: dict[tuple[str, int], str] = {}
+    people = wanted.get("user", set()) | wanted.get("student", set())
+    for u in db.scalars(select(User).where(User.id.in_(people or {-1}))):
+        for t in ("user", "student"):
+            out[(t, u.id)] = u.full_name
+    for c in db.scalars(select(Course).where(Course.id.in_(wanted.get("course", set()) or {-1}))):
+        out[("course", c.id)] = f"{c.code} — {c.title}"
+    for model, t in ((Faculty, "faculty"), (Department, "department"), (Term, "term"), (University, "university")):
+        for x in db.scalars(select(model).where(model.id.in_(wanted.get(t, set()) or {-1}))):
+            out[(t, x.id)] = x.name
+    return out
+
+
 @router.get("/audit")
-def audit_log(action: str | None = None, limit: int = Query(default=100, le=500), offset: int = 0,
+def audit_log(action: str | None = None, category: str | None = None, limit: int = Query(default=100, le=500),
+              offset: int = 0,
               user: User = Depends(require_roles(Role.PLATFORM_ADMIN, Role.UNIVERSITY_ADMIN, Role.FACULTY_ADMIN)),
               db: Session = Depends(get_db)):
+    from .. import audit_labels as L
+
     if user.role == Role.FACULTY_ADMIN:
         permissions.require(db, user, "audit.view")
     stmt = select(AuditLog)
@@ -786,11 +817,26 @@ def audit_log(action: str | None = None, limit: int = Query(default=100, le=500)
         stmt = stmt.where(AuditLog.actor_id.in_(faculty_users))
     if action:
         stmt = stmt.where(AuditLog.action.like(f"{action}%"))
+    if category:
+        names = [a for a, (_, c) in L.ACTIONS.items() if c == category]
+        stmt = stmt.where(or_(AuditLog.action.in_(names or ["-"]), AuditLog.action.like(f"{category}.%")))
     rows = db.scalars(stmt.order_by(AuditLog.id.desc()).limit(limit).offset(offset)).all()
     names = {u.id: u.full_name for u in db.scalars(select(User).where(User.id.in_({r.actor_id for r in rows if r.actor_id})))}
-    return [{"id": r.id, "action": r.action, "actor": names.get(r.actor_id), "actor_id": r.actor_id,
-             "target_type": r.target_type, "target_id": r.target_id, "details": r.details, "ip": r.ip,
-             "created_at": r.created_at} for r in rows]
+    targets = _target_names(db, rows)
+    out = []
+    for r in rows:
+        cat = L.category(r.action)
+        target_name = targets.get((r.target_type, r.target_id))
+        out.append({
+            "id": r.id, "action": r.action, "label": L.label(r.action), "category": cat,
+            "category_label": L.CATEGORIES.get(cat, ""), "actor": names.get(r.actor_id), "actor_id": r.actor_id,
+            "target_type": r.target_type, "target_id": r.target_id,
+            "target": (f"{L.TARGETS.get(r.target_type, r.target_type)}: {target_name}" if target_name
+                       else (L.TARGETS.get(r.target_type, "") + (f" رقم {r.target_id}" if r.target_id else "")
+                             if r.target_type else None)),
+            "summary": L.details_line(r.details), "by_platform_admin": bool((r.details or {}).get("by_platform_admin")),
+            "details": r.details, "ip": r.ip, "created_at": r.created_at})
+    return out
 
 
 @router.get("/audit/verify")
