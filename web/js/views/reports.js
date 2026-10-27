@@ -6,7 +6,7 @@ function Overview({ user }) {
   return html`<${Async} state=${state}>${(r) => html`<div>
     <div class="kpis">
       ${user.role !== "teacher" && user.role !== "assistant" ? html`<${Kpi} label="الطلبة" value=${r.people.students} />` : null}
-      <${Kpi} label="المقررات" value=${r.totals.courses} /><${Kpi} label="التسجيلات" value=${r.totals.enrolments} />
+      <${Kpi} label="المقررات" value=${r.totals.courses} /><${Kpi} label="تسجيلات الطلبة في المقررات" value=${r.totals.enrolments} />
       <${Kpi} label="نسبة الحضور" value=${pct(r.totals.attendance_rate)} hint="آخر 30 يوماً" />
       <${Kpi} label="نسبة تسليم المهام" value=${pct(r.totals.submission_rate)} />
       <${Kpi} label="متوسط درجات المهام" value=${pct(r.totals.avg_score_percent)} />
@@ -14,11 +14,13 @@ function Overview({ user }) {
     ${r.breakdown.length ? html`<div class="card"><h3>${user.role === "university_admin" ? "الحضور حسب الكلية" : "الحضور حسب القسم"}</h3>
       <div class="hbars">${r.breakdown.map((b) => html`<div class="hbar"><span>${b.name}</span><${Bar} value=${b.attendance_rate} warnBelow=${80} badBelow=${65} /><span>${pct(b.attendance_rate)}</span></div>`)}</div></div>` : null}
     <div class="card"><h3>المقررات</h3><div class="table-wrap"><table>
-      <thead><tr><th>المقرر</th><th class="num">الطلبة</th><th class="num">المحاضرات</th><th class="num">الحضور</th><th class="num">التأخير</th>
-        <th class="num">الغياب</th><th class="num">التسليم</th><th class="num">المتوسط</th><th>النتائج</th></tr></thead>
+      <thead><tr><th>المقرر</th><th class="num">الطلبة</th><th class="num">المحاضرات</th><th class="num">نسبة الحضور</th>
+        <th class="num">مرات التأخير</th><th class="num">مرات الغياب</th><th class="num">نسبة التسليم</th><th class="num">متوسط الدرجات</th><th>النتائج</th></tr></thead>
       <tbody>${r.courses.map((c) => html`<tr><td>${c.course.code} — ${c.course.title}</td><td class="num">${c.enrolled}</td><td class="num">${c.sessions}</td>
         <td class="num">${pct(c.attendance_rate)}</td><td class="num">${c.late}</td><td class="num">${c.absent}</td><td class="num">${pct(c.submission_rate)}</td>
-        <td class="num">${pct(c.avg_score_percent)}</td><td><${StatusChip} map=${RESULT_STATUS} value=${c.result_status} /></td></tr>`)}</tbody></table></div></div>
+        <td class="num">${pct(c.avg_score_percent)}</td><td><${StatusChip} map=${RESULT_STATUS} value=${c.result_status} /></td></tr>`)}</tbody></table></div>
+      <p class="small muted">مرات الغياب والتأخير مجموعة على كل المحاضرات وكل الطلبة (مثلاً 10 طلبة × 7 محاضرات = 70 حالة حضور).
+        التسجيلات = مجموع تسجيل الطلبة في المقررات: الطالب المسجل في 3 مقررات يُحسب 3 مرات.</p></div>
   </div>`}<//>`;
 }
 
