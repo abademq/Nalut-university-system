@@ -48,17 +48,43 @@ DEFAULT_PERMISSIONS = {key: list(default) for key, (_, _, _, default) in CAPABIL
 
 
 def allowed(db: Session, user: User, key: str) -> bool:
-    """True when the user's role holds the capability in their university."""
+    """True when the user's role holds the capability in their university, or one of their groups does."""
     if user.role == UA:
         return True
     from .deps import tenant_settings  # local import: deps imports models only
 
     roles = tenant_settings(db, user).get("permissions", {}).get(key, DEFAULT_PERMISSIONS.get(key, []))
-    return user.role in roles
+    return user.role in roles or key in group_capabilities(db, user)
+
+
+def group_capabilities(db: Session, user: User) -> set[str]:
+    """Capabilities given to the user through permission groups (cached on the user for the request)."""
+    cached = getattr(user, "_group_caps", None)
+    if cached is not None:
+        return cached
+    from sqlalchemy import select
+
+    from .models import PermissionGroup, PermissionGroupMember
+
+    caps: set[str] = set()
+    if user.id is not None and user.role in GROUP_ROLES:
+        for group_caps in db.scalars(select(PermissionGroup.capabilities).join(
+                PermissionGroupMember, PermissionGroupMember.group_id == PermissionGroup.id).where(
+                PermissionGroupMember.user_id == user.id, PermissionGroup.university_id == user.university_id)):
+            caps.update(group_caps or [])
+    try:
+        user._group_caps = caps
+    except AttributeError:
+        pass
+    return caps
+
+
+# who can be put in a permission group (students never: their rights are fixed)
+GROUP_ROLES = (FA, STAFF, TEACHER, ASSISTANT)
 
 
 def require(db: Session, user: User, key: str) -> None:
-    """Refuses the action when the user's role can be granted ``key`` but this university has not.
+    """Refuses the action when the user's role can be granted ``key`` but neither the role nor a group has it.
 
     Roles outside the capability's options keep their fixed rules (checked by the caller), so a
     faculty administrator managing a course is not affected by an instructor-only capability.

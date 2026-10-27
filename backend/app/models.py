@@ -729,3 +729,26 @@ class AppAsset(Base):
     version: Mapped[str] = mapped_column(String(16))  # first 16 hex chars of the SHA-256
     updated_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+# --------------------------------------------------------------------------- permission groups
+
+
+class PermissionGroup(Base):
+    """A named set of capabilities given to chosen people, on top of what their role holds."""
+
+    __tablename__ = "permission_groups"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    university_id: Mapped[int] = mapped_column(ForeignKey("universities.id"), index=True)
+    name: Mapped[str] = mapped_column(String(100))
+    description: Mapped[str] = mapped_column(String(300), default="")
+    capabilities: Mapped[list] = mapped_column(JSON, default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class PermissionGroupMember(Base):
+    __tablename__ = "permission_group_members"
+    __table_args__ = (UniqueConstraint("group_id", "user_id"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    group_id: Mapped[int] = mapped_column(ForeignKey("permission_groups.id"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)

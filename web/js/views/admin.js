@@ -583,5 +583,78 @@ export function PermissionsView() {
     ${editable ? html`<div class="row"><button disabled=${busy || !draft} onClick=${save}>حفظ الصلاحيات</button>
       ${draft ? html`<button class="secondary" onClick=${() => setDraft(null)}>تراجع</button>` : null}
       <button class="secondary" onClick=${() => setDraft(Object.fromEntries(capabilities.map((c) => [c.key, c.default])))}>استعادة الافتراضي</button></div>` : null}
+    <${PermissionGroups} capabilities=${capabilities} editable=${editable} />
   </div>`;
+}
+
+// Named sets of capabilities for chosen people (e.g. "شؤون الموظفين"), on top of what their role holds.
+function PermissionGroups({ capabilities, editable }) {
+  const state = useAsync(() => api.get("/api/permission-groups"), []);
+  const [edit, setEdit] = useState(null);
+  const label = Object.fromEntries(capabilities.map((c) => [c.key, c.label]));
+  const remove = async (g) => {
+    if (!confirm(`حذف مجموعة «${g.name}»؟ يفقد أعضاؤها صلاحياتها.`)) return;
+    await api.del(`/api/permission-groups/${g.id}`).catch(toastError);
+    state.reload();
+  };
+  return html`<div class="card"><div class="row between"><h3>مجموعات الصلاحيات</h3>
+      ${editable ? html`<button class="small" onClick=${() => setEdit({ name: "", description: "", capabilities: [], members: [] })}>+ مجموعة</button>` : null}</div>
+    <p class="small muted">مجموعة = اسم + صلاحيات تُعطى لأشخاص بعينهم فوق صلاحيات أدوارهم، مثل «شؤون الموظفين» أو «الإعلام الجامعي».
+      تعمل الصلاحية لعضو المجموعة إذا كان دوره من الأدوار التي تقبلها (الظاهرة بجانب كل صلاحية).</p>
+    <${Async} state=${state}>${(rows) => rows.length ? html`<div class="table-wrap"><table>
+      <thead><tr><th>المجموعة</th><th>الصلاحيات</th><th>الأعضاء</th><th></th></tr></thead>
+      <tbody>${rows.map((g) => html`<tr><td><strong>${g.name}</strong><div class="small muted">${g.description}</div></td>
+        <td class="small">${g.capabilities.map((k) => label[k] || k).join("، ") || "—"}</td>
+        <td class="small">${g.members.map((m) => m.full_name).join("، ") || "—"}</td>
+        <td>${editable ? html`<div class="row"><button class="small secondary" onClick=${() => setEdit(g)}>تعديل</button>
+          <button class="small danger" onClick=${() => remove(g)}>حذف</button></div>` : null}</td></tr>`)}</tbody></table></div>`
+      : html`<p class="muted">لا توجد مجموعات بعد.</p>`}<//>
+    ${edit ? html`<${GroupEditor} group=${edit} capabilities=${capabilities}
+      onClose=${() => setEdit(null)} onSaved=${() => { setEdit(null); state.reload(); }} />` : null}
+  </div>`;
+}
+
+function GroupEditor({ group, capabilities, onClose, onSaved }) {
+  const [v, bind] = useForm({ name: group.name, description: group.description || "" });
+  const [caps, setCaps] = useState(group.capabilities || []);
+  const [members, setMembers] = useState(group.members || []);
+  const [q, setQ] = useState("");
+  const [found, setFound] = useState([]);
+  const search = async () => {
+    if (q.trim().length < 2) return;
+    const r = await api.get(`/api/users?limit=20&q=${encodeURIComponent(q.trim())}`).catch(toastError);
+    if (r) setFound(r.items.filter((u) => PERM_ROLES.includes(u.role) && !members.some((m) => m.id === u.id)));
+  };
+  const [submit, busy, error] = useSubmit(async () => {
+    const body = { name: v.name, description: v.description, capabilities: caps };
+    const g = group.id ? await api.patch(`/api/permission-groups/${group.id}`, body)
+      : await api.post("/api/permission-groups", body);
+    await api.put(`/api/permission-groups/${g.id}/members`, { user_ids: members.map((m) => m.id) });
+    toast("حُفظت المجموعة", "success");
+    onSaved();
+  });
+  const groups = [...new Set(capabilities.map((c) => c.group))];
+  const flip = (k) => setCaps(caps.includes(k) ? caps.filter((x) => x !== k) : [...caps, k]);
+  return html`<${Modal} title=${group.id ? `تعديل «${group.name}»` : "مجموعة صلاحيات جديدة"} onClose=${onClose}>
+    <form onSubmit=${submit}><${ErrorBox} error=${error} />
+      <div class="form-grid"><div class="field"><label>الاسم</label><input ...${bind("name")} required minlength="2" /></div>
+        <div class="field"><label>الوصف</label><input ...${bind("description")} /></div></div>
+      <h4>الصلاحيات</h4>
+      ${groups.map((gname) => html`<div style="margin-bottom:.5rem"><strong class="small">${gname}</strong>
+        ${capabilities.filter((c) => c.group === gname).map((c) => html`<label class="check"><input type="checkbox"
+          checked=${caps.includes(c.key)} onChange=${() => flip(c.key)} /> ${c.label}
+          <span class="small muted">(${c.options.map((r) => ROLE[r]).join("، ")})</span></label>`)}</div>`)}
+      <h4>الأعضاء</h4>
+      ${members.length ? html`<ul class="list">${members.map((m) => html`<li class="row between"><span>${m.full_name}
+        <span class="small muted">${ROLE[m.role] || m.role}${m.code ? ` · ${m.code}` : ""}</span></span>
+        <button type="button" class="small ghost" onClick=${() => setMembers(members.filter((x) => x.id !== m.id))}>إزالة</button></li>`)}</ul>`
+        : html`<p class="small muted">لا يوجد أعضاء.</p>`}
+      <div class="row"><input style="max-width:260px" placeholder="ابحث عن موظف أو أستاذ" value=${q}
+        onInput=${(e) => setQ(e.target.value)} onKeyDown=${(e) => { if (e.key === "Enter") { e.preventDefault(); search(); } }} />
+        <button type="button" class="secondary small" onClick=${search}>بحث</button></div>
+      ${found.map((u) => html`<div class="row between small" style="margin-top:.3rem"><span>${u.full_name} — ${ROLE[u.role]}</span>
+        <button type="button" class="small secondary" onClick=${() => { setMembers([...members, u]); setFound(found.filter((x) => x.id !== u.id)); }}>إضافة</button></div>`)}
+      <div class="row" style="margin-top:1rem"><button disabled=${busy}>حفظ</button>
+        <button type="button" class="secondary" onClick=${onClose}>إلغاء</button></div>
+    </form><//>`;
 }

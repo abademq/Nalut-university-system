@@ -27,6 +27,8 @@ from ..deps import (
 from ..models import (
     AuditLog,
     MfaPreference,
+    PermissionGroup,
+    PermissionGroupMember,
     CourseStaff,
     Department,
     Enrollment,
@@ -607,6 +609,112 @@ def permission_catalog(user: User = Depends(require_roles(Role.UNIVERSITY_ADMIN)
     uni = db.get(University, user.university_id)
     return {"capabilities": permissions.catalog(), "current": effective_settings(uni)["permissions"],
             "editable": bool(getattr(user, "acting_platform_admin", False))}
+
+
+# --------------------------------------------------------------------------- permission groups
+
+
+def _platform_actor(user: User = Depends(require_roles(Role.UNIVERSITY_ADMIN))) -> User:
+    if not getattr(user, "acting_platform_admin", False):
+        raise forbidden("مجموعات الصلاحيات يعدّلها مشرف المنصة فقط")
+    return user
+
+
+class GroupIn(BaseModel):
+    name: str = Field(min_length=2, max_length=100)
+    description: str = Field(default="", max_length=300)
+    capabilities: list[str] = Field(default_factory=list, max_length=100)
+
+
+def _group_out(db: Session, g: PermissionGroup) -> dict:
+    members = db.execute(select(User.id, User.full_name, User.role, User.code).join(
+        PermissionGroupMember, PermissionGroupMember.user_id == User.id).where(
+        PermissionGroupMember.group_id == g.id).order_by(User.full_name)).all()
+    return {"id": g.id, "name": g.name, "description": g.description, "capabilities": g.capabilities or [],
+            "members": [{"id": m.id, "full_name": m.full_name, "role": m.role, "code": m.code} for m in members]}
+
+
+def _valid_caps(caps: list[str]) -> list[str]:
+    unknown = sorted(set(caps) - set(permissions.CAPABILITIES))
+    if unknown:
+        raise HTTPException(status_code=400, detail=f"صلاحيات غير معروفة: {', '.join(unknown)}")
+    return sorted(set(caps))
+
+
+def _own_group(db: Session, user: User, gid: int) -> PermissionGroup:
+    g = db.get(PermissionGroup, gid)
+    if not g or g.university_id != user.university_id:
+        raise not_found()
+    return g
+
+
+@router.get("/permission-groups")
+def list_groups(user: User = Depends(require_roles(Role.UNIVERSITY_ADMIN)), db: Session = Depends(get_db)):
+    rows = db.scalars(select(PermissionGroup).where(PermissionGroup.university_id == user.university_id)
+                      .order_by(PermissionGroup.name))
+    return [_group_out(db, g) for g in rows]
+
+
+@router.post("/permission-groups")
+def create_group(body: GroupIn, request: Request, user: User = Depends(_platform_actor), db: Session = Depends(get_db)):
+    g = PermissionGroup(university_id=user.university_id, name=body.name.strip(), description=body.description.strip(),
+                        capabilities=_valid_caps(body.capabilities))
+    db.add(g)
+    db.flush()
+    audit.record(db, "permissions.group_created", actor=user, target_type="permission_group", target_id=g.id,
+                 details={"name": g.name, "capabilities": g.capabilities}, ip=client_ip(request))
+    db.commit()
+    return _group_out(db, g)
+
+
+@router.patch("/permission-groups/{gid}")
+def patch_group(gid: int, body: GroupIn, request: Request, user: User = Depends(_platform_actor),
+                db: Session = Depends(get_db)):
+    g = _own_group(db, user, gid)
+    g.name, g.description, g.capabilities = body.name.strip(), body.description.strip(), _valid_caps(body.capabilities)
+    audit.record(db, "permissions.group_updated", actor=user, target_type="permission_group", target_id=g.id,
+                 details={"name": g.name, "capabilities": g.capabilities}, ip=client_ip(request))
+    db.commit()
+    return _group_out(db, g)
+
+
+@router.delete("/permission-groups/{gid}")
+def delete_group(gid: int, request: Request, user: User = Depends(_platform_actor), db: Session = Depends(get_db)):
+    g = _own_group(db, user, gid)
+    for m in db.scalars(select(PermissionGroupMember).where(PermissionGroupMember.group_id == g.id)):
+        db.delete(m)
+    audit.record(db, "permissions.group_deleted", actor=user, target_type="permission_group", target_id=g.id,
+                 details={"name": g.name}, ip=client_ip(request))
+    db.delete(g)
+    db.commit()
+    return {"ok": True}
+
+
+class MembersIn(BaseModel):
+    user_ids: list[int] = Field(default_factory=list, max_length=1000)
+
+
+@router.put("/permission-groups/{gid}/members")
+def set_members(gid: int, body: MembersIn, request: Request, user: User = Depends(_platform_actor),
+                db: Session = Depends(get_db)):
+    """Replaces the group's members (staff, teachers, assistants and faculty administrators only)."""
+    g = _own_group(db, user, gid)
+    wanted = set(body.user_ids)
+    people = db.scalars(select(User).where(User.id.in_(wanted or [-1]))).all()
+    bad = [u.full_name for u in people if u.university_id != user.university_id or u.role not in permissions.GROUP_ROLES]
+    if bad or len(people) != len(wanted):
+        raise HTTPException(status_code=400, detail="يمكن إضافة الموظفين وأعضاء هيئة التدريس وإدارات الكليات فقط"
+                            + (f": {', '.join(bad[:3])}" if bad else ""))
+    current = {m.user_id: m for m in db.scalars(select(PermissionGroupMember).where(PermissionGroupMember.group_id == g.id))}
+    for uid in wanted - set(current):
+        db.add(PermissionGroupMember(group_id=g.id, user_id=uid))
+    for uid in set(current) - wanted:
+        db.delete(current[uid])
+    audit.record(db, "permissions.group_members", actor=user, target_type="permission_group", target_id=g.id,
+                 details={"added": sorted(wanted - set(current)), "removed": sorted(set(current) - wanted)},
+                 ip=client_ip(request))
+    db.commit()
+    return _group_out(db, g)
 
 
 @router.put("/settings")

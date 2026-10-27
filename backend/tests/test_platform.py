@@ -212,3 +212,30 @@ def test_single_university_installation(client, as_, db, monkeypatch):
                                                           "admin_email": "a@x.ly"})
     assert r.status_code in (400, 403)
     assert client.get("/api/app/launch?u=999").json()["university_id"] == uni_id(db)
+
+
+def test_permission_groups_grant_capabilities_to_chosen_people(client, as_, db):
+    act = {**platform(client), "X-Act-As-University": str(uni_id(db))}
+    staff = as_("registrar@nalut.edu.ly")
+    reg = client.get("/api/me", headers=staff).json()
+    assert "banners.manage" not in reg["can"]
+    # only the platform administrator manages groups
+    body = {"name": "الإعلام الجامعي", "description": "نشر الإعلانات", "capabilities": ["banners.manage"]}
+    assert client.post("/api/permission-groups", headers=as_(PRES), json=body).status_code == 403
+    assert client.post("/api/permission-groups", headers=act, json={**body, "capabilities": ["nope"]}).status_code == 400
+    g = client.post("/api/permission-groups", headers=act, json=body).json()
+    student = db.query(User).filter_by(email="s.ali@nalut.edu.ly").one()
+    bad = client.put(f"/api/permission-groups/{g['id']}/members", headers=act, json={"user_ids": [student.id]})
+    assert bad.status_code == 400  # students are never put in groups
+    r = client.put(f"/api/permission-groups/{g['id']}/members", headers=act, json={"user_ids": [reg["id"]]})
+    assert r.status_code == 200 and [m["id"] for m in r.json()["members"]] == [reg["id"]]
+    # the group's capability now works for that person only
+    assert "banners.manage" in client.get("/api/me", headers=staff).json()["can"]
+    assert client.post("/api/banners", headers=staff, json={"title": "إعلان من الإعلام"}).status_code == 200
+    other = as_("affairs@nalut.edu.ly")
+    assert client.get("/api/banners/manage", headers=other).status_code == 403
+    assert len(client.get("/api/permission-groups", headers=as_(PRES)).json()) == 1  # visible to the university
+    # removing the member (or the group) takes it back
+    client.put(f"/api/permission-groups/{g['id']}/members", headers=act, json={"user_ids": []})
+    assert client.get("/api/banners/manage", headers=staff).status_code == 403
+    assert client.delete(f"/api/permission-groups/{g['id']}", headers=act).status_code == 200
