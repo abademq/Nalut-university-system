@@ -14,6 +14,7 @@ import { ReportsView } from "./views/reports.js";
 import { ProfileView } from "./views/profile.js";
 import { BannerStrip, BannersView, ArchiveView, ArchiveDetail } from "./views/manage.js";
 import { PersonnelList, PersonnelDetail } from "./views/personnel.js";
+import { StudentsList, StudentDetail } from "./views/students.js";
 import { GuideView } from "./views/guide.js";
 import { PublicationsView } from "./views/publications.js";
 
@@ -39,6 +40,7 @@ const NAV = [
   ["#/users", "المستخدمون", "👥", (r) => isAdmin(r), false],
   ["#/structure", "الهيكل التنظيمي", "🏢", isAdmin, false],
   ["#/banners", "الإعلانات المثبتة", "📌", (r, u) => (isAdmin(r) || r === "staff") && can(u, "banners.manage"), false],
+  ["#/students", "الطلبة", "🧑‍🎓", (r, u) => ["university_admin", "faculty_admin", "staff", "teacher", "assistant"].includes(r) && can(u, "students.view"), false],
   ["#/staff", "الموظفون", "👔", (r, u) => r !== "platform_admin" && (can(u, "staff.view") || can(u, "staff.manage")), false],
   ["#/faculty-members", "أعضاء هيئة التدريس", "🧑‍🏫", (r, u) => r !== "platform_admin" && (can(u, "faculty.view") || can(u, "faculty.manage")), false],
   ["#/archive", "أرشيف الطلبة", "🗂", (r, u) => (isAdmin(r) || (r === "staff" && u.office)) && can(u, "archive.access")
@@ -85,6 +87,7 @@ function route(hash, user) {
     case "publications": return html`<${PublicationsView} user=${user} id=${b} />`;
     case "permissions": return html`<${PermissionsView} user=${user} />`;
     case "launch": return html`<${LaunchView} user=${user} />`;
+    case "students": return b ? html`<${StudentDetail} id=${b} user=${user} />` : html`<${StudentsList} />`;
     case "staff": return html`<${PersonnelList} section="staff" />`;
     case "faculty-members": return html`<${PersonnelList} section="faculty" />`;
     case "personnel": return html`<${PersonnelDetail} id=${b} />`;

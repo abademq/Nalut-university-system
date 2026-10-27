@@ -64,3 +64,25 @@ def test_faculty_and_staff_files(client, as_, db):
     assert {"personnel.viewed", "personnel.record_updated", "personnel.document_added",
             "personnel.document_downloaded", "personnel.document_deleted"} <= actions
     assert "119900112233" not in str([a.details for a in db.query(AuditLog).all()])
+
+
+def test_students_section_and_staff_section_for_the_faculty(client, as_, db):
+    dean, reg, pres = as_("dean.it@nalut.edu.ly"), as_("registrar@nalut.edu.ly"), as_(PRES)
+    # the faculty administration now sees its staff files too
+    assert client.get("/api/personnel?section=staff", headers=dean).status_code == 200
+    # students section: administrations and staff by default, scoped to their faculty
+    r = client.get("/api/students", headers=dean).json()
+    assert r["total"] > 0 and all(s["faculty"] == "كلية تقنية المعلومات" for s in r["items"])
+    everyone = client.get("/api/students", headers=pres).json()["total"]
+    assert everyone >= r["total"]
+    assert client.get("/api/students?q=2023001", headers=pres).json()["items"]
+    st = uid(db, "s.ali@nalut.edu.ly")
+    rep = client.get(f"/api/reports/person/{st}", headers=reg)
+    assert rep.status_code == 200 and rep.json()["kind"] == "student"
+    assert client.get("/api/students", headers=as_("s.ali@nalut.edu.ly")).status_code == 403
+    assert client.get("/api/students", headers=as_("t.ahmed@nalut.edu.ly")).status_code == 403  # not granted
+    # revoked from staff: neither the list nor the student's report
+    act = {**platform(client), "X-Act-As-University": str(uni_id(db))}
+    client.put("/api/settings", headers=act, json={"settings": {"permissions": {"students.view": ["faculty_admin"]}}})
+    assert client.get("/api/students", headers=reg).status_code == 403
+    assert client.get(f"/api/reports/person/{st}", headers=reg).status_code == 403

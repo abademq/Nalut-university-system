@@ -271,6 +271,8 @@ def _can_see_person(db: Session, viewer: User, target: User) -> bool:
         return True
     if viewer.role == Role.FACULTY_ADMIN:
         return target.faculty_id == viewer.faculty_id
+    if target.role == Role.STUDENT and viewer.role == Role.STAFF and permissions.allowed(db, viewer, "students.view"):
+        return viewer.faculty_id is None or target.faculty_id == viewer.faculty_id
     if viewer.role in Role.INSTRUCTORS and target.role == Role.STUDENT:
         return bool(set(visible_course_ids(db, viewer)) & _enrolled_ids(db, target.id))
     return False
@@ -369,7 +371,7 @@ def person_report(uid: int, user: User = Depends(get_current_user), db: Session 
     target = db.get(User, uid)
     if not target or not _can_see_person(db, user, target):
         raise forbidden()
-    if target.id != user.id:
+    if target.id != user.id and not (target.role == Role.STUDENT and permissions.allowed(db, user, "students.view")):
         permissions.require(db, user, "reports.view")
     who = {"id": target.id, "full_name": target.full_name, "role": target.role, "code": target.code}
     if target.role == Role.STUDENT:
@@ -377,3 +379,51 @@ def person_report(uid: int, user: User = Depends(get_current_user), db: Session 
     if target.role in Role.INSTRUCTORS:
         return {"user": who, **_teacher_report(db, target)}
     return {"user": who, **_staff_report(db, target)}
+
+
+
+# --------------------------------------------------------------------------- students section
+
+
+@router.get("/students")
+def students(q: str | None = Query(default=None, max_length=100), faculty_id: int | None = None,
+             department_id: int | None = None, cohort: str | None = Query(default=None, max_length=20),
+             limit: int = Query(default=200, le=1000), offset: int = 0,
+             user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """The students the caller may follow, with their department, cohort and number of courses."""
+    from sqlalchemy import or_
+
+    from ..models import CourseStaff, Department, Faculty
+
+    if user.role not in (Role.UNIVERSITY_ADMIN, Role.FACULTY_ADMIN, Role.STAFF, *Role.INSTRUCTORS) \
+            or not permissions.allowed(db, user, "students.view"):
+        raise forbidden("قسم الطلبة غير متاح لحسابك")
+    stmt = select(User).where(User.university_id == user.university_id, User.role == Role.STUDENT)
+    if user.role in Role.INSTRUCTORS:  # the students of their own courses
+        mine = select(CourseStaff.course_id).where(CourseStaff.user_id == user.id)
+        stmt = stmt.where(User.id.in_(select(Enrollment.student_id).where(Enrollment.course_id.in_(mine))))
+    elif user.role != Role.UNIVERSITY_ADMIN and user.faculty_id is not None:
+        stmt = stmt.where(User.faculty_id == user.faculty_id)
+    if faculty_id:
+        stmt = stmt.where(User.faculty_id == faculty_id)
+    if department_id:
+        stmt = stmt.where(User.department_id == department_id)
+    if cohort:
+        stmt = stmt.where(User.cohort == cohort.strip())
+    if q:
+        like = f"%{q.strip()}%"
+        stmt = stmt.where(or_(User.full_name.ilike(like), User.code.ilike(like), User.email.ilike(like),
+                              User.phone.ilike(like)))
+    total = db.scalar(select(func.count()).select_from(stmt.subquery()))
+    rows = db.scalars(stmt.order_by(User.code, User.full_name).limit(limit).offset(offset)).all()
+    ids = [s.id for s in rows] or [-1]
+    counts = dict(db.execute(select(Enrollment.student_id, func.count()).where(
+        Enrollment.student_id.in_(ids), Enrollment.status == "active").group_by(Enrollment.student_id)).all())
+    deps = {d.id: d.name for d in db.scalars(select(Department).where(Department.university_id == user.university_id))}
+    facs = {f.id: f.name for f in db.scalars(select(Faculty).where(Faculty.university_id == user.university_id))}
+    cohorts = sorted({c for c in db.scalars(select(User.cohort).where(
+        User.university_id == user.university_id, User.role == Role.STUDENT, User.cohort.is_not(None)))})
+    return {"total": total, "cohorts": cohorts, "items": [{
+        "id": s.id, "full_name": s.full_name, "code": s.code, "cohort": s.cohort, "email": s.email, "phone": s.phone,
+        "faculty": facs.get(s.faculty_id), "department": deps.get(s.department_id), "courses": counts.get(s.id, 0),
+        "is_active": s.is_active} for s in rows]}
