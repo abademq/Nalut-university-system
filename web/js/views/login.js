@@ -160,7 +160,7 @@ export function Login({ onLogin }) {
           <div class="field"><label>كلمة المرور</label>
             <input type="password" autocomplete="current-password" ...${bind("password")} required /></div>` : html`
           <div class="alert info">${mfa?.method === "sms"
-            ? html`أدخل الرمز المرسل برسالة نصية إلى <span class="mono ltr">${mfa.phone_hint}</span>.`
+            ? html`${mfa.first_login ? "أول دخول لحسابك: للتأكد أن رقم الهاتف لك " : ""}أدخل الرمز المرسل برسالة نصية إلى <span class="mono ltr">${mfa.phone_hint}</span>.`
             : "أدخل رمز التحقق من تطبيق المصادقة."}</div>
           <div class="field"><label>رمز التحقق</label>
             <input inputmode="numeric" autocomplete="one-time-code" maxlength="6" ...${bind("mfa_code")} required /></div>`}

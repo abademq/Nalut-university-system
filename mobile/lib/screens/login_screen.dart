@@ -28,6 +28,7 @@ class _LoginScreenState extends State<LoginScreen> {
   _Step _step = _Step.credentials;
   String _method = 'totp'; // second factor used at sign-in
   String? _phoneHint;
+  bool _firstLogin = false; // the code confirms the phone at an account's first sign-in
   String? _setupToken;
   List<String> _methods = const [];
   String? _totpSecret;
@@ -104,6 +105,7 @@ class _LoginScreenState extends State<LoginScreen> {
         if (r['mfa_required'] == true) {
           _step = _Step.code;
           _method = r['method'] as String? ?? 'totp';
+          _firstLogin = r['first_login'] == true;
           if (_method == 'sms') _afterSms(r);
         } else if (r['mfa_setup_required'] == true) {
           _setupToken = r['setup_token'] as String?;
@@ -247,7 +249,8 @@ class _LoginScreenState extends State<LoginScreen> {
         return [
           Text(
             _method == 'sms'
-                ? 'أدخل الرمز المرسل برسالة نصية إلى ${_phoneHint ?? 'هاتفك'}'
+                ? '${_firstLogin ? 'أول دخول لحسابك: للتأكد أن رقم الهاتف لك ' : ''}'
+                    'أدخل الرمز المرسل برسالة نصية إلى ${_phoneHint ?? 'هاتفك'}'
                 : 'أدخل الرمز الظاهر في تطبيق المصادقة',
           ),
           const SizedBox(height: 8),

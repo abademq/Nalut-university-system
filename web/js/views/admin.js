@@ -391,7 +391,7 @@ function SettingsForm({ data, acting, onSaved }) {
   const e = data.effective;
   const [v, bind] = useForm({
     display_name: e.branding.display_name || data.university.name, primary_color: e.branding.primary_color, accent_color: e.branding.accent_color,
-    require_mfa: e.security.require_mfa_for_admins, sms_enabled: e.notifications.sms_enabled, due_reminder_hours: e.notifications.due_reminder_hours,
+    require_mfa: e.security.require_mfa_for_admins, first_login_otp: e.security.first_login_otp !== false, sms_enabled: e.notifications.sms_enabled, due_reminder_hours: e.notifications.due_reminder_hours,
     late_after_minutes: e.attendance.late_after_minutes, rotation_seconds: e.attendance.rotation_seconds,
     warning_absence_percent: e.attendance.warning_absence_percent, limit_absence_percent: e.attendance.limit_absence_percent,
     review_threshold: e.attendance.review_threshold, selfie_retention_days: e.attendance.selfie_retention_days,
@@ -408,7 +408,7 @@ function SettingsForm({ data, acting, onSaved }) {
   const [submit, busy, error] = useSubmit(async () => {
     await api.put("/api/settings", { settings: {
       branding: { display_name: v.display_name, primary_color: v.primary_color, accent_color: v.accent_color },
-      security: { ...e.security, require_mfa_for_admins: v.require_mfa, mfa_methods: mfaMethods,
+      security: { ...e.security, require_mfa_for_admins: v.require_mfa, first_login_otp: v.first_login_otp, mfa_methods: mfaMethods,
         mfa_required_roles: mfaRoles, mfa_required_capabilities: mfaCaps },
       notifications: { ...e.notifications, sms_enabled: v.sms_enabled, due_reminder_hours: n("due_reminder_hours"),
         tones: acting ? tones : e.notifications.tones },
@@ -429,6 +429,8 @@ function SettingsForm({ data, acting, onSaved }) {
       <div class="field"><label>اللون الثانوي</label><input type="color" ...${bind("accent_color")} /></div></div></div>
     <div class="card"><h3>التحقق الثنائي</h3>
       <p class="small muted">رمز إضافي بعد كلمة المرور. يكفي سبب واحد ليصبح إلزامياً للحساب، ويمكن أيضاً إلزام حساب بعينه من صفحة المستخدمين.</p>
+      <label class="check"><input type="checkbox" ...${bind("first_login_otp", "checkbox")} /> رمز برسالة نصية عند أول دخول لكل حساب جديد (يتأكد أن رقم الهاتف لصاحبه)</label>
+      <p class="small muted">يُطلب مرة واحدة فقط، للحسابات التي أنشأتها الإدارة بكلمة مرور مؤقتة ولها رقم هاتف. أوقفه إذا كانت خدمة الرسائل متوقفة.</p>
       <h4>الطرق المتاحة للمستخدمين</h4>
       <label class="check"><input type="checkbox" checked=${mfaMethods.includes("sms")} onChange=${() => flip(mfaMethods, setMfaMethods, "sms")} /> رسالة نصية إلى هاتف الحساب</label>
       <label class="check"><input type="checkbox" checked=${mfaMethods.includes("totp")} onChange=${() => flip(mfaMethods, setMfaMethods, "totp")} /> تطبيق المصادقة (Google Authenticator وما يشبهه)</label>

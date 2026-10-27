@@ -234,3 +234,30 @@ def test_template_variable_count_and_clear_errors(client, as_, monkeypatch):
     r = client.post("/api/notifications/test-sms", headers=p, json={"kind": "template"}).json()
     assert r["ok"] is False and "RESALA_TEMPLATE_VARS=1" in r["summary"]
     assert client.get("/api/notifications/health", headers=p).json()["last_sms_error"]["summary"]
+
+
+def test_first_login_asks_an_sms_code_once(client, as_, db):
+    p = as_(PRES)
+    r = client.post("/api/users", headers=p, json={"full_name": "موظف جديد", "role": "staff", "phone": "0919876543"})
+    assert r.status_code == 200, r.text
+    temp = r.json()["temporary_password"]
+    # first sign-in with the temporary password: a code is sent before any session
+    first = client.post("/api/auth/login", json={"identifier": "0919876543", "password": temp}).json()
+    assert first.get("mfa_required") and first["method"] == "sms" and first["first_login"] is True
+    assert "access_token" not in first
+    bad = client.post("/api/auth/login", json={"identifier": "0919876543", "password": temp, "mfa_code": "000000"})
+    assert bad.status_code == 401
+    ok = client.post("/api/auth/login", json={"identifier": "0919876543", "password": temp, "mfa_code": last_code()})
+    assert ok.status_code == 200 and ok.json()["access_token"], ok.text
+    # only once: the next sign-in goes straight in
+    again = client.post("/api/auth/login", json={"identifier": "0919876543", "password": temp}).json()
+    assert "access_token" in again
+    # accounts without a phone, and universities that switch it off, are not asked
+    r = client.post("/api/users", headers=p, json={"full_name": "بلا هاتف", "role": "staff", "email": "nophone@nalut.edu.ly"})
+    assert "access_token" in client.post("/api/auth/login", json={"identifier": "nophone@nalut.edu.ly",
+                                                                  "password": r.json()["temporary_password"]}).json()
+    s = client.get("/api/settings", headers=p).json()["effective"]["security"]
+    client.put("/api/settings", headers=p, json={"settings": {"security": {**s, "first_login_otp": False}}})
+    r = client.post("/api/users", headers=p, json={"full_name": "موظف ثانٍ", "role": "staff", "phone": "0919876544"})
+    assert "access_token" in client.post("/api/auth/login", json={"identifier": "0919876544",
+                                                                  "password": r.json()["temporary_password"]}).json()

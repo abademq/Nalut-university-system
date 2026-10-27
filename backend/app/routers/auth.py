@@ -178,7 +178,20 @@ def login(body: LoginIn, request: Request, response: Response, db: Session = Dep
             secret = decrypt_str(user.mfa_secret_enc or "")
             if not secret or not verify_totp(secret, body.mfa_code):
                 fail("mfa")
-    elif mfa_required_for(db, user):
+    elif first_login_otp(db, user):
+        # first sign-in with the temporary password: prove the phone is the owner's
+        if not body.mfa_code:
+            try:
+                sent = mfa.start(db, user, "login")
+            except mfa.OtpError as exc:
+                db.commit()
+                raise HTTPException(status_code=400, detail=str(exc)) from None
+            db.commit()
+            return {"mfa_required": True, "method": "sms", "first_login": True, **sent}
+        if not mfa.verify(db, user, "login", body.mfa_code):
+            fail("mfa")
+        audit.record(db, "auth.first_login_verified", actor=user, ip=ip)
+    if not user.mfa_enabled and mfa_required_for(db, user):
         user.failed_logins = 0
         db.commit()
         return {
@@ -193,6 +206,13 @@ def login(body: LoginIn, request: Request, response: Response, db: Session = Dep
     audit.record(db, "auth.login", actor=user, ip=ip)
     db.commit()
     return out
+
+
+def first_login_otp(db: Session, user: User) -> bool:
+    """A code is asked at the first sign-in of an account handed out with a temporary password."""
+    return bool(user.last_login_at is None and user.must_change_password and user.phone and mfa.sms_available()
+                and user.university_id is not None
+                and tenant_settings(db, user)["security"].get("first_login_otp", True))
 
 
 def _user_from_setup_or_access(request: Request, db: Session) -> tuple[User, bool]:

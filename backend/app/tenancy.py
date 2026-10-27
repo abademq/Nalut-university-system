@@ -18,6 +18,8 @@ DEFAULT_SETTINGS: dict = {
     "security": {
         # Administrative accounts must enrol a second factor (TOTP).
         "require_mfa_for_admins": True,
+        # a code by SMS at the first sign-in of an account created with a temporary password
+        "first_login_otp": True,
         # also required for these roles, and for whoever holds one of these capabilities
         "mfa_required_roles": [],
         "mfa_required_capabilities": [],
