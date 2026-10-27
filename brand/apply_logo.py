@@ -97,6 +97,18 @@ def on_disc(logo: Image.Image, size: int, color=(255, 255, 255, 255), scale=0.78
     return out
 
 
+def light_lettering(img: Image.Image) -> Image.Image:
+    """The same logo for a dark background: black lettering becomes white, colors stay."""
+    out = img.copy()
+    px = out.load()
+    for y in range(out.height):
+        for x in range(out.width):
+            r, g, b, a = px[x, y]
+            if a and max(r, g, b) < 70 and max(r, g, b) - min(r, g, b) < 40:  # black, not the dark maroon
+                px[x, y] = (255, 255, 255, a)
+    return out
+
+
 def silhouette(logo: Image.Image, size: int, scale: float) -> Image.Image:
     """White shape from the logo's transparency: Android draws monochrome and status-bar icons this way."""
     a = fit(logo, size, scale).getchannel("A")
@@ -128,6 +140,7 @@ def apply_logo(src: Path, transparent_source: bool, full_src: Path | None = None
     save(fit(full, 512, 0.96), ROOT / "mobile/assets/logo.png")
     save(on_disc(full, 512, round_=False, scale=0.86), ROOT / "mobile/assets/logo_on_dark.png")
     save(fit(full, 480, 1.0), ROOT / "web/logo-full.png")
+    save(light_lettering(fit(full, 480, 1.0)), ROOT / "web/logo-full-on-dark.png")
     # the adaptive icon's background is white so a colored seal keeps its own colors
     colors = RES / "values/colors.xml"
     colors.write_text(re.sub(r'(<color name="ic_launcher_background">)#[0-9A-Fa-f]{6}(</color>)',
