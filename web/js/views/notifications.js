@@ -1,7 +1,6 @@
 import {
   html, useState, useAsync, Async, Empty, Chip, StatusChip, ErrorBox, useForm, useSubmit, toast, Tabs,
-  CATEGORY, PRIORITY, fmtDate, fmtRelative, useCourses,
-} from "../ui.js";
+  CATEGORY, PRIORITY, fmtDate, fmtRelative, useCourses, Icon } from "../ui.js";
 import { api } from "../api.js";
 
 const SENDERS = {
@@ -76,7 +75,7 @@ function TargetPicker({ user, v, bind, setV }) {
       ${(people.data || []).filter((p) => !selected.some((s) => s.id === p.id)).slice(0, 8).map((p) => html`
         <button type="button" class="ghost small" onClick=${() => setV({ ...v, users: [...selected, p] })}>+ ${p.full_name} ${p.code ? `(${p.code})` : ""}</button>`)}
       <div class="row" style="margin-top:.4rem">${selected.map((p) => html`<${Chip} kind="primary">${p.full_name}
-        <button type="button" class="ghost small" onClick=${() => setV({ ...v, users: selected.filter((x) => x.id !== p.id) })}>✕</button><//>`)}</div></div>` : null}
+        <button type="button" class="ghost small" onClick=${() => setV({ ...v, users: selected.filter((x) => x.id !== p.id) })}aria-label="إزالة"><${Icon} name="close" size=${16} /></button><//>`)}</div></div>` : null}
     ${["department", "faculty", "cohort", "university", "course"].includes(v.target_type) ? html`<div class="field"><label>الفئة</label>
       <select ...${bind("audience")}><option value="students">الطلبة</option><option value="staff">الموظفون وهيئة التدريس</option><option value="all">الجميع</option></select></div>` : null}
   </div>`;

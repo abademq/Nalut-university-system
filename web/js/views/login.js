@@ -1,4 +1,4 @@
-import { html, useState, useEffect, useForm, useSubmit, ErrorBox, toast, toastError } from "../ui.js";
+import { html, useState, useEffect, useForm, useSubmit, ErrorBox, toast, toastError, Icon } from "../ui.js";
 import { api, request } from "../api.js";
 
 const DEMO = [
@@ -33,8 +33,8 @@ export function MfaSetup({ token, methods, phoneHint, onDone }) {
   return html`<div class="stack">
     <p>اختر طريقة التحقق الثنائي:</p>
     <button class="secondary big" onClick=${() => setMethod("sms")} disabled=${!opts.phone_hint}>
-      📱 رسالة نصية ${opts.phone_hint ? html`<span class="mono small ltr">${opts.phone_hint}</span>` : "— لا يوجد رقم هاتف في حسابك"}</button>
-    <button class="secondary big" onClick=${() => setMethod("totp")}>🔐 تطبيق المصادقة (يعمل دون شبكة)</button>
+      <${Icon} name="sms" size=${18} />رسالة نصية ${opts.phone_hint ? html`<span class="mono small ltr">${opts.phone_hint}</span>` : "— لا يوجد رقم هاتف في حسابك"}</button>
+    <button class="secondary big" onClick=${() => setMethod("totp")}><${Icon} name="lock" size=${18} />تطبيق المصادقة (يعمل دون شبكة)</button>
   </div>`;
 }
 

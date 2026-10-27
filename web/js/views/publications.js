@@ -1,7 +1,6 @@
 import {
   html, useState, useEffect, useAsync, Async, Empty, Chip, Tabs, ErrorBox, useForm, useSubmit, toast, toastError,
-  Modal, fmtDate, toLocalInput,
-} from "../ui.js";
+  Modal, fmtDate, toLocalInput, Icon } from "../ui.js";
 import { api, blobUrl } from "../api.js";
 
 // Lecture timetables (image or PDF) and image announcements, for everyone; publishing for
@@ -24,7 +23,7 @@ function Item({ p, onOpen }) {
   const url = useFileUrl(p.file.id);
   return html`<div class="card pub" onClick=${() => onOpen(p)} role="button" tabindex="0">
     ${p.is_image ? (url ? html`<img src=${url} alt=${p.title} />` : html`<div class="pub-ph">…</div>`)
-      : html`<div class="pub-ph">📄 PDF</div>`}
+      : html`<div class="pub-ph"><${Icon} name="file" size=${28} /> PDF</div>`}
     <h3>${p.title}</h3>
     ${p.body ? html`<p class="small">${p.body}</p>` : null}
     <div class="small muted">${[p.faculty_name, p.department_name, p.cohort && `دفعة ${p.cohort}`].filter(Boolean).join(" · ") || "الجامعة كاملة"} · ${fmtDate(p.starts_at, false)}</div>

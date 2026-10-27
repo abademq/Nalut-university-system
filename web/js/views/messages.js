@@ -1,4 +1,4 @@
-import { html, useState, useEffect, useRef, useAsync, Async, Empty, Chip, ErrorBox, useForm, useSubmit, toast, toastError, ROLE, fmtRelative, fmtDate, navigate } from "../ui.js";
+import { html, useState, useEffect, useRef, useAsync, Async, Empty, Chip, ErrorBox, useForm, useSubmit, toast, toastError, ROLE, fmtRelative, fmtDate, navigate, Icon } from "../ui.js";
 import { api, downloadFile } from "../api.js";
 
 function NewConversation({ params, onClose }) {
@@ -11,7 +11,7 @@ function NewConversation({ params, onClose }) {
   });
   const person = (contacts.data || []).find((c) => String(c.id) === String(v.to));
   return html`<form class="card" onSubmit=${submit}><div class="card-head"><h3>محادثة جديدة</h3>
-    <button type="button" class="ghost" onClick=${onClose}>✕</button></div><${ErrorBox} error=${error} />
+    <button type="button" class="ghost" onClick=${onClose}aria-label="إغلاق"><${Icon} name="close" size=${18} /></button></div><${ErrorBox} error=${error} />
     <div class="field"><label>إلى</label><select ...${bind("to")} required onChange=${(e) => {
       const c = (contacts.data || []).find((x) => String(x.id) === e.target.value);
       setV({ ...v, to: e.target.value, course: c?.course_ids?.[0] || "" });
@@ -69,7 +69,7 @@ export function ThreadView({ id }) {
       ${m.body ? html`<div style="white-space:pre-wrap">${m.body}</div>` : null}
       ${m.file ? html`<button class="secondary small" style="margin-top:.35rem" title="تنزيل الملف"
         onClick=${() => downloadFile(m.file.id, m.file.name).catch(toastError)}>⬇ تنزيل ${m.file.name}</button>` : null}
-      ${!m.mine ? html`<button class="ghost small" onClick=${() => report(m)} title="إبلاغ">⚑ إبلاغ</button>` : null}
+      ${!m.mine ? html`<button class="ghost small" onClick=${() => report(m)} title="إبلاغ"><${Icon} name="flag" size=${16} /> إبلاغ</button>` : null}
     </div>`)}<div ref=${end}></div></div></div>
     <form class="card" onSubmit=${send}><${ErrorBox} error=${error} />
       <div class="field"><textarea placeholder="اكتب رسالتك… (أو أرفق ملفاً فقط)" value=${body} onInput=${(e) => setBody(e.target.value)}></textarea></div>

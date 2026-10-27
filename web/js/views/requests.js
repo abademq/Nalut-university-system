@@ -1,4 +1,4 @@
-import { html, useState, useAsync, Async, Empty, Chip, ErrorBox, useForm, useSubmit, toast, toastError, Tabs, fmtDate, fmtRelative } from "../ui.js";
+import { html, useState, useAsync, Async, Empty, Chip, ErrorBox, useForm, useSubmit, toast, toastError, Tabs, fmtDate, fmtRelative, Icon } from "../ui.js";
 import { api, downloadFile } from "../api.js";
 
 const handler = (u) => ["staff", "faculty_admin", "university_admin"].includes(u.role);
@@ -69,7 +69,7 @@ export function RequestDetail({ id, user }) {
     <div class="card"><h3>مسار المعاملة</h3><ul class="list">${r.events.map((e) => html`<li>
       <div class="row between"><strong>${e.actor}</strong><span class="small muted">${fmtDate(e.created_at)}</span></div>
       <div class="small">${types.data?.statuses?.[e.status] || e.status}${e.comment ? ` — ${e.comment}` : ""}</div>
-      ${e.file ? html`<button class="ghost small" onClick=${() => downloadFile(e.file.id, e.file.name).catch(toastError)}>📎 ${e.file.name}</button>` : null}</li>`)}</ul></div>
+      ${e.file ? html`<button class="ghost small" onClick=${() => downloadFile(e.file.id, e.file.name).catch(toastError)}><${Icon} name="attach" size=${16} /> ${e.file.name}</button>` : null}</li>`)}</ul></div>
     ${r.requester.id === user.id && !["approved", "rejected"].includes(r.status) ? html`<form class="card" onSubmit=${upload}>
       <h3>إرفاق مستند</h3><${ErrorBox} error=${error2} /><input type="file" accept=".pdf,.jpg,.jpeg,.png,.docx" onChange=${(e) => setFile(e.target.files[0])} required />
       <button style="margin-top:.5rem" disabled=${busy2 || !file}>إرفاق</button></form>` : null}

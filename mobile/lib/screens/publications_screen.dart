@@ -132,7 +132,7 @@ class _PosterCarouselState extends State<PosterCarousel> {
                           gradient: LinearGradient(
                             begin: Alignment.topCenter,
                             end: Alignment.bottomCenter,
-                            colors: [Colors.transparent, Color(0xCC45110A)],
+                            colors: [Colors.transparent, Color(0xCC2B2622)],
                           ),
                         ),
                         child: Text(p['title'] as String,
@@ -238,6 +238,7 @@ class TimetableScreen extends StatelessWidget {
         title: const Text('جدولي الأسبوعي'),
         actions: [
           TextButton.icon(
+            style: TextButton.styleFrom(foregroundColor: AppColors.primaryTextDark), // on the charcoal bar
             onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PublicationsScreen())),
             icon: const Icon(Icons.description_outlined),
             label: const Text('الجداول المنشورة'),

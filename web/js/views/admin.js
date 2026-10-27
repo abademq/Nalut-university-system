@@ -231,8 +231,8 @@ function NotificationStatus() {
     <p class="small muted">إعدادات الإشعارات تديرها الإدارة من هنا فقط، ولا يغيّرها المستخدمون من التطبيق.</p>
     <${Async} state=${state}>${(h) => html`
       <ul class="list">
-        <li>${h.push_ready ? "✅" : "❌"} الإشعارات الفورية (Firebase) — ${h.push_ready ? "مفعلة" : "غير مفعلة: ملف /etc/nus/firebase.json غير موجود"} · هواتف مسجلة: ${h.users_with_devices}</li>
-        <li>${h.sms_ready ? "✅" : "❌"} الرسائل النصية — ${h.sms_ready ? `المزود: ${h.sms_provider}` : "غير مفعلة: أضف SMS_PROVIDER=resala في /etc/nus/nus.env"}</li>
+        <li>${h.push_ready ? html`<span class="ok-mark">${"✓"}</span>` : html`<span class="no-mark">${"✕"}</span>`} الإشعارات الفورية (Firebase) — ${h.push_ready ? "مفعلة" : "غير مفعلة: ملف /etc/nus/firebase.json غير موجود"} · هواتف مسجلة: ${h.users_with_devices}</li>
+        <li>${h.sms_ready ? html`<span class="ok-mark">${"✓"}</span>` : html`<span class="no-mark">${"✕"}</span>`} الرسائل النصية — ${h.sms_ready ? `المزود: ${h.sms_provider}` : "غير مفعلة: أضف SMS_PROVIDER=resala في /etc/nus/nus.env"}</li>
         <li class="small">آخر 24 ساعة — إشعارات: ${counts(h.last_24h.push, PUSH)}<br />رسائل: ${counts(h.last_24h.sms, SMS)}</li>
         ${h.last_push_error ? html`<li class="small">آخر خطأ Firebase (${fmtDate(h.last_push_error_at)}): <span class="ltr">${h.last_push_error}</span></li>` : null}
         ${h.last_sms_error ? html`<li class="small">آخر خطأ رسائل: <strong>${h.last_sms_error.summary || h.last_sms_error.message}</strong></li>` : null}
@@ -259,7 +259,7 @@ function SmsCheck() {
     <div class="row"><button type="button" class="secondary small" disabled=${busy} onClick=${() => run("otp")}>رمز تحقق تجريبي</button>
       <button type="button" class="secondary small" disabled=${busy} onClick=${() => run("template")}>رسالة إشعار تجريبية</button></div>
     ${res ? html`<div class=${`alert ${res.ok ? "success" : "error"}`} style="margin-top:.75rem">
-      <strong>${res.ok ? "✅ " : "❌ "}${res.summary || (res.ok ? "تم القبول" : res.error_message || "فشل الإرسال")}</strong>
+      <strong>${res.ok ? html`<span class="ok-mark">${"✓"}</span> ` : html`<span class="no-mark">${"✕"}</span> `}${res.summary || (res.ok ? "تم القبول" : res.error_message || "فشل الإرسال")}</strong>
       <details style="margin-top:.4rem"><summary class="small">التفاصيل التقنية</summary>
         <div class="small ltr" style="white-space:pre-wrap;margin-top:.4rem">${JSON.stringify(res, null, 1)}</div></details></div>` : null}
   </div>`;

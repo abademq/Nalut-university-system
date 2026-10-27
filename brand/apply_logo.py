@@ -28,7 +28,7 @@ RES = ROOT / "mobile/android/app/src/main/res"
 DENSITIES = {"mdpi": 1, "hdpi": 1.5, "xhdpi": 2, "xxhdpi": 3, "xxxhdpi": 4}
 
 # Current brand colors and where they live (replaced only with --primary / --deep / --accent).
-CURRENT = {"primary": "D6AA21", "deep": "45110A", "accent": "6E1A10"}
+CURRENT = {"primary": "C9A646", "deep": "2B2622", "accent": "C9A646"}
 COLOR_FILES = [
     "mobile/lib/config.dart", "mobile/lib/launch.dart", "mobile/lib/screens/publications_screen.dart",
     "mobile/android/app/src/main/res/values/colors.xml", "web/css/app.css", "web/index.html",

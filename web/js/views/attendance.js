@@ -1,7 +1,6 @@
 import {
   html, useState, useEffect, useRef, useAsync, Async, Empty, Chip, StatusChip, ErrorBox, useForm, useSubmit,
-  toast, toastError, Tabs, Modal, Kpi, Bar, ATT_STATUS, RISK_FLAG, fmtDate, pct, useCourses, navigate,
-} from "../ui.js";
+  toast, toastError, Tabs, Modal, Kpi, Bar, ATT_STATUS, RISK_FLAG, fmtDate, pct, useCourses, navigate, Icon } from "../ui.js";
 import { api, deviceId, blobUrl } from "../api.js";
 
 const isAdmin = (u) => u.role === "university_admin" || u.role === "faculty_admin";
@@ -107,7 +106,7 @@ function SelfieCapture({ onCapture, onCancel }) {
   return html`<div class="stack">
     <div class="alert info">هذه الجلسة تتطلب صورة حية من الكاميرا الأمامية. تُحفظ مشفرة لمدة محدودة ولا يطّلع عليها إلا المسؤول عند المراجعة.</div>
     ${error ? html`<div class="alert warning">${error}</div>` : html`<div class="scanner selfie"><video ref=${videoRef} playsinline muted></video></div>`}
-    <div class="row"><button class="big" onClick=${take} disabled=${!!error}>📸 التقاط الصورة وإرسال الحضور</button></div>
+    <div class="row"><button class="big" onClick=${take} disabled=${!!error}><${Icon} name="camera" size=${18} />التقاط الصورة وإرسال الحضور</button></div>
     <button class="secondary" onClick=${onCancel}>إلغاء</button>
     <p class="small muted">إذا تعذر استخدام الكاميرا، تواصل مع أستاذ المقرر لتسجيل حضورك يدوياً مع ذكر السبب.</p>
   </div>`;
@@ -175,7 +174,7 @@ export function ScanView() {
     ${stage === "selfie" ? html`<div class="card"><${SelfieCapture} onCapture=${(b) => send(pending, b)} onCancel=${() => setStage("scan")} /></div>` : null}
     ${stage === "sending" ? html`<div class="card empty">جارٍ التحقق على الخادم…</div>` : null}
     ${stage === "done" ? html`<div class="card" style="text-align:center">
-      <div style="font-size:3rem">${result.status === "pending_review" ? "⏳" : "✅"}</div>
+      <div class="big-icon">${result.status === "pending_review" ? html`<${Icon} name="wait" size=${56} />` : html`<${Icon} name="ok" size=${56} />`}</div>
       <h2>${result.message}</h2><p class="muted">${result.session}</p>
       <p class="small">${fmtDate(result.check_out_at || result.check_in_at)}</p>
       ${result.status === "pending_review" ? html`<p class="small muted">بعض مؤشرات التحقق تحتاج مراجعة بشرية. لن يُتخذ أي إجراء بحقك دون مراجعة.</p>` : null}
@@ -188,7 +187,7 @@ export function ScanView() {
 function MyAttendance({ user }) {
   const state = useAsync(() => api.get("/api/me/attendance"), []);
   return html`<div>
-    <a class="btn big" href="#/attendance/scan" style="margin-bottom:1rem;width:100%">📷 ${user.role === "student" ? "مسح رمز الحضور" : "تسجيل الدخول / الانصراف"}</a>
+    <a class="btn big" href="#/attendance/scan" style="margin-bottom:1rem;width:100%"><${Icon} name="camera" size=${18} />${user.role === "student" ? "مسح رمز الحضور" : "تسجيل الدخول / الانصراف"}</a>
     <${Async} state=${state}>${(d) => html`
       ${d.courses.length ? html`<div class="card"><h2>نسب الحضور</h2><div class="table-wrap"><table>
         <thead><tr><th>المقرر</th><th class="num">المحاضرات</th><th class="num">حضور</th><th class="num">تأخير</th><th class="num">غياب</th><th>نسبة الغياب</th></tr></thead>
@@ -236,7 +235,7 @@ function CreateSession({ user, kind, onCreated }) {
       <div class="field"><label>خط العرض</label><input class="ltr" ...${bind("latitude")} /></div>
       <div class="field"><label>خط الطول</label><input class="ltr" ...${bind("longitude")} /></div>
       <div class="field"><label>نصف القطر (م)</label><input type="number" min="20" ...${bind("radius_m")} /></div>
-      <div class="field"><label> </label><button type="button" class="secondary" onClick=${useHere}>📍 استخدام موقعي الحالي</button></div></div>` : null}
+      <div class="field"><label> </label><button type="button" class="secondary" onClick=${useHere}><${Icon} name="pin_map" size=${18} />استخدام موقعي الحالي</button></div></div>` : null}
     <button disabled=${busy}>بدء الجلسة وعرض الرمز</button></form>`;
 }
 

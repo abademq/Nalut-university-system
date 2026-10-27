@@ -1,7 +1,6 @@
 import {
   html, useState, useEffect, useAsync, Async, Empty, Chip, ErrorBox, useForm, useSubmit, toast, toastError, Modal,
-  fmtDate, toLocalInput, navigate,
-} from "../ui.js";
+  fmtDate, toLocalInput, navigate, Icon } from "../ui.js";
 import { api, blobUrl } from "../api.js";
 
 // ------------------------------------------------------------------ pinned announcements
@@ -28,8 +27,8 @@ export function BannerStrip() {
   const items = (state.data || []).filter((b) => !hidden.includes(b.id));
   if (!items.length) return null;
   return html`<div>${items.map((b) => html`<div class=${`alert ${LEVEL[b.level]?.[1] === "danger" ? "error" : LEVEL[b.level]?.[1] || "info"} banner`}>
-    <div class="row between"><strong>📌 ${b.title}</strong>
-      <button class="ghost small" title="إخفاء حتى إعادة فتح الصفحة" onClick=${() => hide(b.id)}>✕</button></div>
+    <div class="row between"><strong class="row" style="gap:.4rem"><${Icon} name="pin" size=${18} />${b.title}</strong>
+      <button class="ghost small" title="إخفاء حتى إعادة فتح الصفحة" onClick=${() => hide(b.id)}aria-label="إخفاء"><${Icon} name="close" size=${18} /></button></div>
     ${b.body ? html`<div style="white-space:pre-wrap">${b.body}</div>` : null}
     ${b.link ? html`<a href=${b.link} target=${b.link.startsWith("http") ? "_blank" : null} rel="noopener">التفاصيل ←</a>` : null}
   </div>`)}</div>`;

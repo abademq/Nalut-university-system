@@ -6,12 +6,12 @@ const String defaultServerUrl =
     String.fromEnvironment('SERVER_URL', defaultValue: 'https://nalut.abade.ly');
 
 class AppColors {
-  static const primary = Color(0xFFD6AA21); // the logo's gold: fills and highlights
-  static const onPrimary = Color(0xFF2B1E04); // text on gold
-  static const primaryText = Color(0xFF7A5C08); // gold dark enough for text and icons on white
-  static const primaryTextDark = Color(0xFFE8C372); // the same gold on the dark theme
-  static const deep = Color(0xFF45110A); // splash and dark brand surfaces
-  static const accent = Color(0xFFD6AA21); // gold on the dark launch screen
+  static const primary = Color(0xFFC9A646); // soft gold of the logo: fills and highlights
+  static const onPrimary = Color(0xFF231B05); // text on gold
+  static const primaryText = Color(0xFF7A5D0E); // gold dark enough for text and icons on white
+  static const primaryTextDark = Color(0xFFDDBE6E); // the same gold on dark surfaces
+  static const deep = Color(0xFF2B2622); // charcoal: headers, splash and the dashboard's sidebar
+  static const accent = Color(0xFFC9A646); // gold on the dark launch screen
   static const maroon = Color(0xFF6E1A10); // the logo's second color
   static const danger = Color(0xFFB42318);
   static const warning = Color(0xFF9A6700);

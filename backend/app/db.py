@@ -90,14 +90,14 @@ def init_db() -> None:
     _adopt_university_colors()
 
 
-# Colors of earlier identities (the green one, then a maroon-first one), replaced by Nalut University's
-# (gold first, maroon second) wherever a university still has them stored from the demo data or from
+# Colors of earlier identities (the green one, a maroon-first one, then bright gold with maroon), replaced
+# by the current one (soft gold on charcoal) wherever a university still has them stored from the demo data or from
 # those versions; colors chosen by a university are kept.
-_OLD_BRANDING = {("branding", "primary_color"): {"#0f5c4d", "#6e1a10"},
-                 ("branding", "accent_color"): {"#c8a24a", "#c49a2c"},
-                 ("launch", "background"): {"#0b3b32"}, ("launch", "accent"): {"#c8a24a", "#c49a2c"}}
-_NEW_BRANDING = {("branding", "primary_color"): "#d6aa21", ("branding", "accent_color"): "#6e1a10",
-                 ("launch", "background"): "#45110A", ("launch", "accent"): "#D6AA21"}
+_OLD_BRANDING = {("branding", "primary_color"): {"#0f5c4d", "#6e1a10", "#d6aa21"},
+                 ("branding", "accent_color"): {"#c8a24a", "#c49a2c", "#6e1a10"},
+                 ("launch", "background"): {"#0b3b32", "#45110a"}, ("launch", "accent"): {"#c8a24a", "#c49a2c", "#d6aa21"}}
+_NEW_BRANDING = {("branding", "primary_color"): "#c9a646", ("branding", "accent_color"): "#c9a646",
+                 ("launch", "background"): "#2B2622", ("launch", "accent"): "#C9A646"}
 
 
 def _adopt_university_colors() -> None:

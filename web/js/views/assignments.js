@@ -1,7 +1,6 @@
 import {
   html, useState, useAsync, Async, Empty, Chip, StatusChip, ErrorBox, useForm, useSubmit, toast, toastError, Modal,
-  ASSIGNMENT_STATUS, KIND, fmtDate, fmtRelative, fmtSize, toLocalInput, useCourses,
-} from "../ui.js";
+  ASSIGNMENT_STATUS, KIND, fmtDate, fmtRelative, fmtSize, toLocalInput, useCourses, Icon } from "../ui.js";
 import { api, downloadFile } from "../api.js";
 
 const isStudent = (u) => u.role === "student";
@@ -65,7 +64,7 @@ export function AssignmentsView({ user }) {
 function FilesList({ files }) {
   if (!files?.length) return null;
   return html`<ul class="list">${files.map((f) => html`<li class="row between">
-    <span>📎 ${f.name} <span class="small muted">${fmtSize(f.size)} · نسخة ${f.version}</span>
+    <span class="row" style="gap:.35rem;display:inline-flex"><${Icon} name="attach" size=${16} />${f.name} <span class="small muted">${fmtSize(f.size)} · نسخة ${f.version}</span>
       ${f.scan_status !== "clean" ? html` <${Chip} kind="warning">قيد الفحص<//>` : null}</span>
     <button class="small secondary" onClick=${() => downloadFile(f.id, f.name).catch(toastError)}>تنزيل</button></li>`)}</ul>`;
 }

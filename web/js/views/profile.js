@@ -31,7 +31,7 @@ function Mfa({ user }) {
     await api.post("/api/auth/mfa/disable", { password, code }).then(() => { setEnabled(false); toast("تم إيقاف المصادقة الثنائية"); }).catch(toastError);
   };
   return html`<div class="card"><h3>المصادقة الثنائية</h3>
-    ${enabled ? html`<p>✅ مفعلة على حسابك ${sms ? "برسالة نصية" : "بتطبيق المصادقة"}.</p>${!user.mfa_required ? html`<button class="secondary" onClick=${disable}>إيقاف</button>` : html`<p class="small muted">إلزامية لحسابك. لتغيير الطريقة اطلب من الإدارة إعادة تعيينها.</p>`}`
+    ${enabled ? html`<p><span class="ok-mark">✓</span> مفعلة على حسابك ${sms ? "برسالة نصية" : "بتطبيق المصادقة"}.</p>${!user.mfa_required ? html`<button class="secondary" onClick=${disable}>إيقاف</button>` : html`<p class="small muted">إلزامية لحسابك. لتغيير الطريقة اطلب من الإدارة إعادة تعيينها.</p>`}`
       : setup ? html`<${MfaSetup} onDone=${() => { setEnabled(true); setSetup(false); toast("تم تفعيل المصادقة الثنائية"); }} />`
         : html`<p class="muted">أضف طبقة حماية: رمز برسالة نصية أو من تطبيق المصادقة عند تسجيل الدخول.</p><button onClick=${() => setSetup(true)}>تفعيل</button>`}</div>`;
 }

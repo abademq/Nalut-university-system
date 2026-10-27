@@ -1,4 +1,4 @@
-import { html, useAsync, Async, Kpi, Bar, Empty, Chip, StatusChip, RESULT_STATUS, DAYS, fmtDate, fmtRelative, pct } from "../ui.js";
+import { html, useAsync, Async, Kpi, Bar, Empty, Chip, StatusChip, RESULT_STATUS, DAYS, fmtDate, fmtRelative, pct, Icon } from "../ui.js";
 import { api } from "../api.js";
 
 function Schedule({ slots }) {
@@ -23,7 +23,7 @@ function StudentHome() {
     const open = assignments.filter((a) => ["not_started", "in_progress"].includes(a.my_status));
     const worst = att.courses.reduce((m, c) => Math.max(m, c.absence_percent), 0);
     return html`
-      <a class="btn big" href="#/attendance/scan" style="margin-bottom:1rem;width:100%">📷 تسجيل الحضور بمسح الرمز</a>
+      <a class="btn big" href="#/attendance/scan" style="margin-bottom:1rem;width:100%"><${Icon} name="camera" size=${18} />تسجيل الحضور بمسح الرمز</a>
       <div class="kpis">
         <${Kpi} label="إشعارات غير مقروءة" value=${notes.unread} />
         <${Kpi} label="مهام مفتوحة" value=${open.length} />
@@ -66,9 +66,9 @@ function InstructorHome() {
         <${Kpi} label="تسجيلات حضور للمراجعة" value=${queue.length} />
       </div>
       <div class="row" style="margin-bottom:1rem">
-        <a class="btn" href="#/attendance">📷 بدء جلسة حضور</a>
-        <a class="btn secondary" href="#/assignments">📝 إنشاء مهمة</a>
-        <a class="btn secondary" href="#/notifications/send">📣 إرسال إعلان</a>
+        <a class="btn" href="#/attendance"><${Icon} name="camera" size=${18} />بدء جلسة حضور</a>
+        <a class="btn secondary" href="#/assignments"><${Icon} name="assignments" size=${18} />إنشاء مهمة</a>
+        <a class="btn secondary" href="#/notifications/send"><${Icon} name="megaphone" size=${18} />إرسال إعلان</a>
       </div>
       <div class="grid cols-2">
         <div class="card"><h2>مقرراتي</h2><ul class="list">${courses.map((c) => html`<li>
@@ -97,10 +97,10 @@ function AdminHome({ user }) {
       <${Kpi} label="نسبة تسليم المهام" value=${pct(r.totals.submission_rate)} />
     </div>
     <div class="row" style="margin-bottom:1rem">
-      <a class="btn" href="#/notifications/send">📣 إرسال إعلان أو تحذير</a>
-      <a class="btn secondary" href="#/results">✅ نتائج بانتظار الاعتماد (${r.results_awaiting_approval})</a>
-      <a class="btn secondary" href="#/attendance">🔍 مراجعات الحضور (${r.pending_attendance_reviews})</a>
-      <a class="btn secondary" href="#/requests">📄 طلبات مفتوحة (${r.open_requests ?? 0})</a>
+      <a class="btn" href="#/notifications/send"><${Icon} name="megaphone" size=${18} />إرسال إعلان أو تحذير</a>
+      <a class="btn secondary" href="#/results"><${Icon} name="results" size=${18} />نتائج بانتظار الاعتماد (${r.results_awaiting_approval})</a>
+      <a class="btn secondary" href="#/attendance"><${Icon} name="search" size=${18} />مراجعات الحضور (${r.pending_attendance_reviews})</a>
+      <a class="btn secondary" href="#/requests"><${Icon} name="requests" size=${18} />طلبات مفتوحة (${r.open_requests ?? 0})</a>
     </div>
     ${r.breakdown.length ? html`<div class="card"><h2>${user.role === "university_admin" ? "مقارنة الكليات" : "مقارنة الأقسام"}</h2>
       <div class="table-wrap"><table><thead><tr><th>${user.role === "university_admin" ? "الكلية" : "القسم"}</th>
@@ -123,7 +123,7 @@ function StaffHome() {
   return html`<${Async} state=${state}>${([reqs, notes]) => {
     const open = reqs.filter((r) => !["approved", "rejected"].includes(r.status));
     return html`
-      <a class="btn big" href="#/attendance/scan" style="margin-bottom:1rem;width:100%">📷 تسجيل الدوام (دخول / انصراف)</a>
+      <a class="btn big" href="#/attendance/scan" style="margin-bottom:1rem;width:100%"><${Icon} name="camera" size=${18} />تسجيل الدوام (دخول / انصراف)</a>
       <div class="kpis"><${Kpi} label="طلبات مفتوحة في مكتبي" value=${open.length} /><${Kpi} label="إشعارات غير مقروءة" value=${notes.unread} /></div>
       <div class="card"><div class="card-head"><h2>أحدث الطلبات</h2><a href="#/requests">الكل</a></div>
         ${open.length ? html`<ul class="list">${open.slice(0, 8).map((r) => html`<li><a class="item-link" href=${`#/requests/${r.id}`}>

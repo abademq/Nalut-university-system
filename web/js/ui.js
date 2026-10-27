@@ -103,6 +103,12 @@ export const toastError = (e) => toast(e?.message || "حدث خطأ", "error");
 
 // ---------------------------------------------------------------- components
 
+import { ICONS } from "./icons.js";
+// one icon family everywhere; decorative, so hidden from screen readers
+export const Icon = ({ name, size = 20 }) => html`<svg class="icon" width=${size} height=${size} viewBox="0 0 24 24" fill="none"
+  stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"
+  dangerouslySetInnerHTML=${{ __html: ICONS[name] || "" }} />`;
+
 export const Chip = ({ kind = "", children }) => html`<span class="chip ${kind}">${children}</span>`;
 export const StatusChip = ({ map, value }) => {
   const [label, kind] = map[value] || [value, ""];

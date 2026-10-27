@@ -92,32 +92,63 @@ class UniversityApp extends StatelessWidget {
   }
 }
 
-/// Light and dark themes in the university's gold: gold fills with dark text on them, and a
-/// gold dark enough (light theme) or light enough (dark theme) for text-only buttons and links.
+/// Light and dark themes, formal and calm like the dashboard: a charcoal header, soft gold fills
+/// with dark text on them, and a gold dark enough (light theme) or light enough (dark theme) for
+/// text-only buttons and links.
 ThemeData _theme(Brightness brightness) {
   final dark = brightness == Brightness.dark;
+  final border = dark ? const Color(0xFF35302C) : const Color(0xFFE5E1DA);
+  final surface = dark ? const Color(0xFF1E1B19) : Colors.white;
   final scheme = ColorScheme.fromSeed(
     seedColor: AppColors.primary,
     brightness: brightness,
-    primary: dark ? const Color(0xFFD9AD4F) : AppColors.primary,
+    primary: dark ? const Color(0xFFD1B05A) : AppColors.primary,
     onPrimary: AppColors.onPrimary,
-    surface: dark ? const Color(0xFF1D1716) : null,
+    surface: dark ? const Color(0xFF1E1B19) : null,
+    outlineVariant: border,
   );
   final linkGold = ButtonStyle(
       foregroundColor: WidgetStateProperty.all(dark ? AppColors.primaryTextDark : AppColors.primaryText));
+  const header = Colors.white;
   return ThemeData(
     colorScheme: scheme,
     useMaterial3: true,
-    scaffoldBackgroundColor: dark ? const Color(0xFF141010) : const Color(0xFFF7F5F2),
+    fontFamily: 'IBM Plex Sans Arabic',
+    scaffoldBackgroundColor: dark ? const Color(0xFF151311) : const Color(0xFFF5F4F1),
+    appBarTheme: AppBarTheme(
+      backgroundColor: dark ? const Color(0xFF0F0D0C) : AppColors.deep,
+      foregroundColor: header,
+      surfaceTintColor: Colors.transparent,
+      centerTitle: false,
+      titleTextStyle: const TextStyle(
+          fontFamily: 'IBM Plex Sans Arabic', fontSize: 18, fontWeight: FontWeight.w600, color: header),
+    ),
+    tabBarTheme: const TabBarThemeData(
+      labelColor: Color(0xFFEAD59C),
+      unselectedLabelColor: Color(0xD9FFFFFF),
+      indicatorColor: AppColors.primary,
+      dividerColor: Colors.transparent,
+    ),
+    navigationBarTheme: NavigationBarThemeData(
+      backgroundColor: surface,
+      indicatorColor: dark ? const Color(0xFF2E281C) : const Color(0xFFF5EEDC),
+      surfaceTintColor: Colors.transparent,
+    ),
     cardTheme: CardThemeData(
       elevation: 0,
-      color: dark ? const Color(0xFF1D1716) : Colors.white,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
-        side: BorderSide(color: dark ? const Color(0xFF3B2F2B) : const Color(0xFFE8E0DB)),
-      ),
+      color: surface,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: border)),
     ),
-    inputDecorationTheme: const InputDecorationTheme(border: OutlineInputBorder()),
+    dividerTheme: DividerThemeData(color: border),
+    inputDecorationTheme: InputDecorationTheme(
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: border)),
+    ),
+    filledButtonTheme: FilledButtonThemeData(
+      style: FilledButton.styleFrom(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          textStyle: const TextStyle(fontFamily: 'IBM Plex Sans Arabic', fontWeight: FontWeight.w600)),
+    ),
     textButtonTheme: TextButtonThemeData(style: linkGold),
     outlinedButtonTheme: OutlinedButtonThemeData(style: linkGold),
   );

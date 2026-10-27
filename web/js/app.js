@@ -1,6 +1,4 @@
-import { html, render, useState, useEffect, ROLE, toastError, THEMES, getTheme, setTheme } from "./ui.js";
-
-const THEME_ICON = { auto: "🌓", light: "☀️", dark: "🌙" };
+import { html, render, useState, useEffect, ROLE, toastError, THEMES, getTheme, setTheme, Icon } from "./ui.js";
 import { api, setToken, setLogoutHandler, tryRefresh, getActing, setActing } from "./api.js";
 import { Login } from "./views/login.js";
 import { Home } from "./views/home.js";
@@ -27,33 +25,33 @@ const can = (u, key) => u.role === "university_admin" || (u.can || []).includes(
 
 // [hash, label, icon, roles predicate, mobile tab?]
 const NAV = [
-  ["#/", "الرئيسية", "⌂", () => true, true],
-  ["#/universities", "الجامعات", "🏛", (r, u) => r === "platform_admin" && !u.single_university, true],
-  ["#/courses", "المقررات", "📚", (r) => r !== "staff" && r !== "platform_admin", false],
-  ["#/assignments", "المهام والواجبات", "📝", (r) => r === "student" || isInstructor(r), true],
-  ["#/grades", "الدرجات", "🎓", (r) => r === "student" || isInstructor(r), false],
-  ["#/results", "اعتماد النتائج", "✅", (r, u) => isAdmin(r) && can(u, "results.approve"), false],
-  ["#/attendance", "الحضور", "📷", (r) => r !== "platform_admin", true],
-  ["#/notifications", "الإشعارات", "🔔", (r) => r !== "platform_admin", true],
-  ["#/publications", "الجداول والإعلانات المصورة", "🗓", (r) => r !== "platform_admin", false],
-  ["#/messages", "الرسائل", "💬", (r) => r !== "platform_admin", false],
-  ["#/requests", "الطلبات والمعاملات", "📄", (r) => r !== "platform_admin", false],
-  ["#/reports", "التقارير", "📊", (r, u) => (isAdmin(r) || isInstructor(r)) && can(u, "reports.view"), false],
-  ["#/users", "المستخدمون", "👥", (r) => isAdmin(r), false],
-  ["#/structure", "الهيكل التنظيمي", "🏢", isAdmin, false],
-  ["#/banners", "الإعلانات المثبتة", "📌", (r, u) => (isAdmin(r) || r === "staff") && can(u, "banners.manage"), false],
-  ["#/students", "الطلبة", "🧑‍🎓", (r, u) => ["university_admin", "faculty_admin", "staff", "teacher", "assistant"].includes(r) && can(u, "students.view"), false],
-  ["#/staff", "الموظفون", "👔", (r, u) => r !== "platform_admin" && (can(u, "staff.view") || can(u, "staff.manage")), false],
-  ["#/faculty-members", "أعضاء هيئة التدريس", "🧑‍🏫", (r, u) => r !== "platform_admin" && (can(u, "faculty.view") || can(u, "faculty.manage")), false],
-  ["#/archive", "أرشيف الطلبة", "🗂", (r, u) => (isAdmin(r) || (r === "staff" && u.office)) && can(u, "archive.access")
+  ["#/", "الرئيسية", "home", () => true, true],
+  ["#/universities", "الجامعات", "universities", (r, u) => r === "platform_admin" && !u.single_university, true],
+  ["#/courses", "المقررات", "courses", (r) => r !== "staff" && r !== "platform_admin", false],
+  ["#/assignments", "المهام والواجبات", "assignments", (r) => r === "student" || isInstructor(r), true],
+  ["#/grades", "الدرجات", "grades", (r) => r === "student" || isInstructor(r), false],
+  ["#/results", "اعتماد النتائج", "results", (r, u) => isAdmin(r) && can(u, "results.approve"), false],
+  ["#/attendance", "الحضور", "attendance", (r) => r !== "platform_admin", true],
+  ["#/notifications", "الإشعارات", "notifications", (r) => r !== "platform_admin", true],
+  ["#/publications", "الجداول والإعلانات المصورة", "publications", (r) => r !== "platform_admin", false],
+  ["#/messages", "الرسائل", "messages", (r) => r !== "platform_admin", false],
+  ["#/requests", "الطلبات والمعاملات", "requests", (r) => r !== "platform_admin", false],
+  ["#/reports", "التقارير", "reports", (r, u) => (isAdmin(r) || isInstructor(r)) && can(u, "reports.view"), false],
+  ["#/users", "المستخدمون", "users", (r) => isAdmin(r), false],
+  ["#/structure", "الهيكل التنظيمي", "structure", isAdmin, false],
+  ["#/banners", "الإعلانات المثبتة", "banners", (r, u) => (isAdmin(r) || r === "staff") && can(u, "banners.manage"), false],
+  ["#/students", "الطلبة", "students", (r, u) => ["university_admin", "faculty_admin", "staff", "teacher", "assistant"].includes(r) && can(u, "students.view"), false],
+  ["#/staff", "الموظفون", "staff", (r, u) => r !== "platform_admin" && (can(u, "staff.view") || can(u, "staff.manage")), false],
+  ["#/faculty-members", "أعضاء هيئة التدريس", "faculty", (r, u) => r !== "platform_admin" && (can(u, "faculty.view") || can(u, "faculty.manage")), false],
+  ["#/archive", "أرشيف الطلبة", "archive", (r, u) => (isAdmin(r) || (r === "staff" && u.office)) && can(u, "archive.access")
     && (r !== "staff" || (u.archive_offices || ["registrar"]).includes(u.office)), false],
-  ["#/abuse", "بلاغات الرسائل", "⚑", (r, u) => isAdmin(r) && can(u, "messages.moderate"), false],
-  ["#/audit", "سجل التدقيق", "🛡", (r, u) => r === "platform_admin" || (isAdmin(r) && can(u, "audit.view")), false],
-  ["#/settings", "إعدادات المؤسسة", "⚙", (r) => r === "university_admin", false],
-  ["#/permissions", "الصلاحيات", "🔑", (r) => r === "university_admin", false],
-  ["#/launch", "شاشة البداية والنغمات", "📱", (r, u) => !!u.acting, false],
-  ["#/profile", "حسابي", "👤", () => true, true],
-  ["#/guide", "دليل الاستخدام", "❓", () => true, false],
+  ["#/abuse", "بلاغات الرسائل", "abuse", (r, u) => isAdmin(r) && can(u, "messages.moderate"), false],
+  ["#/audit", "سجل التدقيق", "audit", (r, u) => r === "platform_admin" || (isAdmin(r) && can(u, "audit.view")), false],
+  ["#/settings", "إعدادات المؤسسة", "settings", (r) => r === "university_admin", false],
+  ["#/permissions", "الصلاحيات", "permissions", (r) => r === "university_admin", false],
+  ["#/launch", "شاشة البداية والنغمات", "launch", (r, u) => !!u.acting, false],
+  ["#/profile", "حسابي", "profile", () => true, true],
+  ["#/guide", "دليل الاستخدام", "guide", () => true, false],
 ];
 
 function route(hash, user) {
@@ -139,36 +137,36 @@ function Shell({ user, onLogout }) {
     <aside class="sidebar">
       <div class="brand"><img class="brand-logo" src="/static/logo-full-on-dark.png" alt="جامعة نالوت" /><div>${brand}<small>${roleLabel}</small></div></div>
       <nav class="nav">${items.map(([h, label, icon]) => html`
-        <a href=${h} class=${active(h) ? "active" : ""}><span>${icon} ${label}</span>
+        <a href=${h} class=${active(h) ? "active" : ""}><span class="nav-label"><${Icon} name=${icon} />${label}</span>
           ${h === "#/notifications" && unread ? html`<span class="count">${unread}</span>` : null}</a>`)}
-        <a href="#/" onClick=${(e) => { e.preventDefault(); cycleTheme(); }}><span>${THEME_ICON[theme]} المظهر: ${THEMES[theme]}</span></a>
-        <a href="#/" onClick=${(e) => { e.preventDefault(); onLogout(); }}><span>⎋ تسجيل الخروج</span></a>
+        <a href="#/" onClick=${(e) => { e.preventDefault(); cycleTheme(); }}><span class="nav-label"><${Icon} name=${theme} />المظهر: ${THEMES[theme]}</span></a>
+        <a href="#/" onClick=${(e) => { e.preventDefault(); onLogout(); }}><span class="nav-label"><${Icon} name="logout" />تسجيل الخروج</span></a>
       </nav>
     </aside>
     <main class="main">
       <div class="topbar">
         <div><strong>${user.full_name}</strong><div class="who">${roleLabel}${user.faculty ? ` — ${user.faculty.name}` : ""}</div></div>
-        <div class="row only-mobile"><a class="btn secondary small" href="#/messages">💬</a></div>
+        <div class="row only-mobile"><a class="btn secondary small" href="#/messages" aria-label="الرسائل"><${Icon} name="messages" size=${18} /></a></div>
       </div>
-      ${user.acting && !user.single_university ? html`<div class="alert info row between"><span>🛡 أنت مشرف المنصة وتدير «${user.university?.name}» بصلاحيات إدارتها الكاملة. كل إجراء يُسجَّل باسمك.</span>
+      ${user.acting && !user.single_university ? html`<div class="alert info row between"><span>أنت مشرف المنصة وتدير «${user.university?.name}» بصلاحيات إدارتها الكاملة. كل إجراء يُسجَّل باسمك.</span>
         <button class="small secondary" onClick=${() => { setActing(null); location.hash = "#/universities"; }}>العودة لإدارة المنصة</button></div>` : null}
       ${user.must_change_password ? html`<div class="alert warning">تستخدم كلمة مرور مؤقتة. <a href="#/profile">غيّرها الآن</a>.</div>` : null}
       ${user.role !== "platform_admin" ? html`<${BannerStrip} key=${hash.split("/")[1] || "home"} />` : null}
       ${route(hash, user)}
     </main>
     <nav class="bottom-nav">${items.filter((i) => i[4]).slice(0, 4).map(([h, label, icon]) => html`
-      <a href=${h} class=${active(h) ? "active" : ""}><span class="ico">${icon}</span>${label.split(" ")[0]}
+      <a href=${h} class=${active(h) ? "active" : ""}><span class="ico"><${Icon} name=${icon} size=${22} /></span>${label.split(" ")[0]}
         ${h === "#/notifications" && unread ? html`<span class="count">${unread}</span>` : null}</a>`)}
       <a href="#" class=${menu ? "active" : ""} aria-expanded=${menu}
-        onClick=${(e) => { e.preventDefault(); setMenu(!menu); }}><span class="ico">☰</span>القائمة</a>
+        onClick=${(e) => { e.preventDefault(); setMenu(!menu); }}><span class="ico"><${Icon} name="menu" size=${22} /></span>القائمة</a>
     </nav>
     ${menu ? html`<div class="menu-sheet" onClick=${(e) => { if (e.target === e.currentTarget) setMenu(false); }}>
       <div class="menu-panel"><div class="brand"><img class="brand-logo" src="/static/logo-full-on-dark.png" alt="جامعة نالوت" /><div>${brand}<small>${roleLabel}</small></div></div>
         <nav class="nav">${items.map(([h, label, icon]) => html`
-          <a href=${h} class=${active(h) ? "active" : ""}><span>${icon} ${label}</span>
+          <a href=${h} class=${active(h) ? "active" : ""}><span class="nav-label"><${Icon} name=${icon} />${label}</span>
             ${h === "#/notifications" && unread ? html`<span class="count">${unread}</span>` : null}</a>`)}
-          <a href="#/" onClick=${(e) => { e.preventDefault(); cycleTheme(); }}><span>${THEME_ICON[theme]} المظهر: ${THEMES[theme]}</span></a>
-        <a href="#/" onClick=${(e) => { e.preventDefault(); onLogout(); }}><span>⎋ تسجيل الخروج</span></a>
+          <a href="#/" onClick=${(e) => { e.preventDefault(); cycleTheme(); }}><span class="nav-label"><${Icon} name=${theme} />المظهر: ${THEMES[theme]}</span></a>
+        <a href="#/" onClick=${(e) => { e.preventDefault(); onLogout(); }}><span class="nav-label"><${Icon} name="logout" />تسجيل الخروج</span></a>
         </nav></div></div>` : null}
   </div>`;
 }
