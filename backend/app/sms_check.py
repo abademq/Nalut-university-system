@@ -45,6 +45,14 @@ def check(phone: str | None = None) -> int:
     _line(not settings.resala_test, f"RESALA_TEST = {settings.resala_test}"
           + ("  -> test mode: Resala accepts but does NOT deliver; set RESALA_TEST=false" if settings.resala_test else ""))
     _line(None, f"RESALA_TEMPLATE_VARS = {settings.resala_template_vars} (variables in the template: 0, 1 or 2)")
+    if settings.resala_template_fields.strip():
+        from .notifications import TEMPLATE_FIELDS, template_fields
+
+        names = template_fields()
+        bad = [n for n in names if n not in TEMPLATE_FIELDS]
+        _line(not bad, f"RESALA_TEMPLATE_FIELDS = {', '.join(names)} -> $1..${len(names)}"
+              + (f"  -> unknown: {', '.join(bad)} (use {', '.join(TEMPLATE_FIELDS)})" if bad else ""))
+        problems += bool(bad)
     _line(bool(settings.resala_sms_template_id) or None, f"RESALA_SMS_TEMPLATE_ID = {settings.resala_sms_template_id!r}"
           + ("" if settings.resala_sms_template_id else "  (only needed for notification SMS; codes work without it)"))
 

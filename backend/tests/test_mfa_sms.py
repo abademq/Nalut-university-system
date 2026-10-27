@@ -261,3 +261,43 @@ def test_first_login_asks_an_sms_code_once(client, as_, db):
     r = client.post("/api/users", headers=p, json={"full_name": "موظف ثانٍ", "role": "staff", "phone": "0919876544"})
     assert "access_token" in client.post("/api/auth/login", json={"identifier": "0919876544",
                                                                   "password": r.json()["temporary_password"]}).json()
+
+
+def test_sms_signed_by_the_sending_faculty(client, as_, db, monkeypatch):
+    from app import notifications
+    from app.config import settings
+    from app.models import User
+
+    monkeypatch.setattr(settings, "resala_template_fields", "message,signature")
+    assert notifications.template_var_count() == 2
+    dean = db.query(User).filter_by(email="dean.it@nalut.edu.ly").one()
+    pres = db.query(User).filter_by(email=PRES).one()
+    sig = notifications.sms_signature(db, dean, dean.university_id)
+    assert sig == "كلية تقنية المعلومات بجامعة نالوت"
+    assert notifications.sms_signature(db, pres, pres.university_id) == "جامعة نالوت"
+    assert notifications.template_params("تنبيه", "لا محاضرة غداً", sig) == ["تنبيه: لا محاضرة غداً", sig]
+    monkeypatch.setattr(settings, "resala_template_fields", "title,text,signature")
+    assert notifications.template_params("تنبيه", "نص", "جامعة نالوت") == ["تنبيه", "نص", "جامعة نالوت"]
+    # a real send: the dean's urgent notice carries the faculty as the signature
+    seen = []
+
+    class Fake:
+        def send_template(self, tid, records, **kw):
+            seen.extend(records)
+            from app import resala
+            return resala.TemplateSendResult(True, len(records), 0, 0, 0, len(records), 0, [], [], {}, None)
+
+    monkeypatch.setattr(settings, "sms_provider", "resala")
+    monkeypatch.setattr(settings, "resala_sms_template_id", "tpl")
+    monkeypatch.setattr(notifications, "sms_provider", lambda: notifications.ResalaSmsProvider(client=Fake()))
+    uni = dean.university_id
+    from app.models import University
+    u = db.get(University, uni)
+    u.settings = {**u.settings, "notifications": {**u.settings.get("notifications", {}), "sms_enabled": True}}
+    db.commit()
+    student = db.query(User).filter_by(email="s.ali@nalut.edu.ly").one()
+    r = client.post("/api/notifications", headers=as_("dean.it@nalut.edu.ly"), json={
+        "category": "official_warning", "priority": "urgent", "title": "إنذار", "body": "تجاوز الغياب",
+        "target_type": "user", "target_ids": [student.id], "channels": ["inapp", "sms"]})
+    assert r.status_code == 200, r.text
+    assert seen and seen[-1].params == ["إنذار", "تجاوز الغياب", "كلية تقنية المعلومات بجامعة نالوت"]

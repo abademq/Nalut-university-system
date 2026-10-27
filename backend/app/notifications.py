@@ -231,15 +231,31 @@ def record_sms_error(kind: str, exc) -> None:
     global LAST_SMS_ERROR
     from .resala import ResalaError, explain
 
-    summary = explain(exc, sent_vars=settings.resala_template_vars if kind == "template" else None) \
+    summary = explain(exc, sent_vars=template_var_count() if kind == "template" else None) \
         if isinstance(exc, ResalaError) else str(exc)
     LAST_SMS_ERROR = {"kind": kind, "summary": summary, "type": getattr(exc, "type", type(exc).__name__),
                       "status": getattr(exc, "status", None), "message": getattr(exc, "message", str(exc))[:300],
                       "errors": getattr(exc, "errors", {}), "at": time.time()}
 
 
-def template_params(title: str, body: str) -> list[str]:
-    """The template's $1, $2… for a notification, as many as RESALA_TEMPLATE_VARS says."""
+TEMPLATE_FIELDS = ("message", "title", "text", "signature")
+
+
+def template_fields() -> list[str]:
+    return [f.strip() for f in settings.resala_template_fields.split(",") if f.strip()]
+
+
+def template_var_count() -> int:
+    return len(template_fields()) if settings.resala_template_fields.strip() else settings.resala_template_vars
+
+
+def template_params(title: str, body: str, signature: str = "") -> list[str]:
+    """The template's $1, $2… for a notification: RESALA_TEMPLATE_FIELDS, else RESALA_TEMPLATE_VARS."""
+    names = template_fields()
+    if names:
+        values = {"message": (f"{title}: {body}" if body else title)[:300], "title": title[:120],
+                  "text": body[:300], "signature": signature[:120]}
+        return [values.get(name, "") for name in names]
     n = settings.resala_template_vars
     if n <= 0:
         return []
@@ -259,7 +275,7 @@ class ResalaSmsProvider:
 
         self.client = client or ResalaClient.from_env()
 
-    def send_many(self, items: list[tuple[str, str, str]]) -> dict[str, bool]:
+    def send_many(self, items: list[tuple[str, str, str]], signature: str = "") -> dict[str, bool]:
         from .resala import ResalaError, TemplateRecord, libyan_mobile
 
         result = {phone: False for phone, _, _ in items}
@@ -267,7 +283,7 @@ class ResalaSmsProvider:
         for phone, title, body in items:
             number = libyan_mobile(phone)
             if number:  # the API only delivers notifications to Libyan mobiles
-                records.append(TemplateRecord(number, template_params(title, body)))
+                records.append(TemplateRecord(number, template_params(title, body, signature)))
                 by_number[number[-9:]] = phone
         if not records:
             return result
@@ -290,10 +306,21 @@ class ResalaSmsProvider:
         return self.send_many([(phone, text, "")]).get(phone, False)
 
 
-def send_sms_batch(provider, items: list[tuple[str, str, str]]) -> dict[str, bool]:
+def sms_signature(db: Session, sender: User | None, university_id: int | None, faculty_id: int | None = None) -> str:
+    """Who the message is from: "كلية تقنية المعلومات بجامعة نالوت", or the university alone."""
+    uni = db.get(University, university_id) if university_id else None
+    uni_name = (uni.name if uni else "").strip()
+    fid = faculty_id or (sender.faculty_id if sender else None)
+    fac = db.get(Faculty, fid) if fid else None
+    if not fac:
+        return uni_name
+    return f"{fac.name} ب{uni_name}" if uni_name.startswith("جامعة") else f"{fac.name} - {uni_name}".strip(" -")
+
+
+def send_sms_batch(provider, items: list[tuple[str, str, str]], signature: str = "") -> dict[str, bool]:
     """(phone, title, body) -> delivered?  One request when the provider supports batches."""
     if hasattr(provider, "send_many"):
-        return provider.send_many(items)
+        return provider.send_many(items, signature=signature)
     return {phone: provider.send(phone, f"{title}: {body}"[:300]) for phone, title, body in items}
 
 
@@ -473,7 +500,11 @@ def dispatch(db: Session, n: Notification) -> int:
         db.add(d)
     if sms_queue:
         try:
-            delivered = send_sms_batch(sms, [(phone, n.title, n.body) for _, phone in sms_queue])
+            sender = db.get(User, n.sender_id) if n.sender_id else None
+            # a faculty-wide notice from the university administration is signed by that faculty
+            target_faculty = n.target_ids[0] if n.target_type == "faculty" and len(n.target_ids) == 1 else None
+            signature = sms_signature(db, sender, n.university_id, target_faculty)
+            delivered = send_sms_batch(sms, [(phone, n.title, n.body) for _, phone in sms_queue], signature=signature)
         except Exception:  # noqa: BLE001 - an SMS outage must not fail the notification
             log.exception("SMS batch failed")
             delivered = {}

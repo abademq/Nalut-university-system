@@ -280,7 +280,8 @@ def test_sms(body: TestSmsIn, user: User = Depends(get_current_user), db: Sessio
         if not settings.resala_sms_template_id:
             return {**out, "ok": False, "summary": "قالب رسائل الإشعارات غير مضبوط: أضف RESALA_SMS_TEMPLATE_ID "
                                                    "في /etc/nus/nus.env (رموز التحقق لا تحتاجه)."}
-        params = notifications.template_params("تجربة", "رسالة من منصة الجامعة")
+        signature = notifications.sms_signature(db, user, user.university_id)
+        params = notifications.template_params("تجربة", "رسالة من منصة الجامعة", signature)
         res = client.send_template(settings.resala_sms_template_id, [TemplateRecord(number, params)],
                                    test=settings.resala_test or None, sender=settings.resala_sender)
         ok = res.succeeded > 0 or (settings.resala_test and not res.invalid_numbers)
@@ -292,6 +293,6 @@ def test_sms(body: TestSmsIn, user: User = Depends(get_current_user), db: Sessio
                 "error_message": str(exc)}
     except ResalaError as exc:
         notifications.record_sms_error(body.kind, exc)
-        sent_vars = settings.resala_template_vars if body.kind == "template" else None
+        sent_vars = notifications.template_var_count() if body.kind == "template" else None
         return {**out, "ok": False, "summary": explain(exc, sent_vars=sent_vars), "error_type": exc.type,
                 "error_status": exc.status, "error_message": exc.message, "errors": exc.errors}

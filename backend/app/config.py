@@ -74,6 +74,9 @@ class Settings:
     # 2: $1 = title, $2 = text; 1: $1 = "title: text"; 0: the template's fixed text only.
     resala_sms_template_id: str | None = field(default_factory=lambda: _env("RESALA_SMS_TEMPLATE_ID"))
     resala_template_vars: int = field(default_factory=lambda: int(_env("RESALA_TEMPLATE_VARS", "0") or 0))
+    # Or name each variable in order (overrides RESALA_TEMPLATE_VARS): message ("title: text"), title,
+    # text, signature (the sending faculty, e.g. "كلية تقنية المعلومات بجامعة نالوت"). E.g. "message,signature".
+    resala_template_fields: str = field(default_factory=lambda: _env("RESALA_TEMPLATE_FIELDS", "") or "")
     resala_sender: str | None = field(default_factory=lambda: _env("RESALA_SENDER"))
     resala_service_name: str = field(default_factory=lambda: _env("RESALA_SERVICE_NAME", "منصة الجامعة"))
     # test mode: Resala accepts the request without sending or charging
