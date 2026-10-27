@@ -79,6 +79,11 @@ class Settings:
     # test mode: Resala accepts the request without sending or charging
     resala_test: bool = field(default_factory=lambda: _env("RESALA_TEST", "false").lower() == "true")
 
+    # One university per installation: the platform administrator works directly in it and accounts
+    # of any other university cannot sign in. MAIN_UNIVERSITY is its code (default: the first one).
+    single_university: bool = field(default_factory=lambda: _bool("SINGLE_UNIVERSITY", True))
+    main_university: str | None = field(default_factory=lambda: _env("MAIN_UNIVERSITY"))
+
     @property
     def is_production(self) -> bool:
         return self.env == "production"

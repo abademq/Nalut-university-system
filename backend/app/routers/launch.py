@@ -14,6 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .. import audit, files, notifications
+from ..config import settings
 from ..db import get_db, utcnow
 from ..deps import client_ip, forbidden, get_current_user, not_found
 from ..models import AppAsset, University, User
@@ -24,7 +25,9 @@ router = APIRouter(prefix="/api/app", tags=["app"])
 
 def _university(db: Session, u: int | None) -> University:
     """The requested university, or the first one when the app has never signed in."""
-    uni = db.get(University, u) if u else db.scalars(select(University).order_by(University.id).limit(1)).first()
+    from ..deps import main_university
+
+    uni = main_university(db) if settings.single_university or not u else db.get(University, u)
     if not uni:
         raise not_found()
     return uni

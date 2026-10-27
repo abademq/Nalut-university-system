@@ -8,6 +8,8 @@ _TMP = Path(tempfile.mkdtemp(prefix="nus-tests-"))
 os.environ["DATABASE_URL"] = f"sqlite:///{_TMP / 'template.db'}"
 os.environ["STORAGE_DIR"] = str(_TMP / "template-files")
 os.environ["RUN_WORKER"] = "false"
+# the suite keeps a second university to prove isolation; single-university mode has its own test
+os.environ["SINGLE_UNIVERSITY"] = "false"
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
@@ -28,7 +30,7 @@ def template():
 
     dbmod.init_db()
     s = dbmod.SessionLocal()
-    seed.seed(s)
+    seed.seed(s, second_university=True)
     s.commit()
     s.close()
     dbmod.engine.dispose()
@@ -43,7 +45,7 @@ def _fresh_postgres(tmp_path):
     dbmod.Base.metadata.drop_all(bind=dbmod.engine)
     dbmod.init_db()
     s = dbmod.SessionLocal()
-    seed.seed(s)
+    seed.seed(s, second_university=True)
     s.commit()
     s.close()
 

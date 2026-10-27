@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from .. import audit, mfa, permissions
 from ..config import settings
 from ..db import get_db, utcnow
-from ..deps import client_ip, forbidden, get_current_user, tenant_settings
+from ..deps import OTHER_UNIVERSITY, belongs_here, client_ip, forbidden, get_current_user, tenant_settings
 from ..models import AuthSession, DeviceToken, Faculty, PasswordResetToken, Role, University, User
 from ..notifications import sms_provider
 from ..security import (
@@ -67,6 +67,12 @@ def _mfa_options(db: Session, user: User) -> dict:
 
 
 def user_profile(db: Session, user: User) -> dict:
+    if user.role == Role.PLATFORM_ADMIN and settings.single_university:
+        from ..deps import _acting_user, main_university
+
+        main = main_university(db)
+        if main:  # the platform administrator always works inside the one university
+            user = _acting_user(db, user, str(main.id))
     uni = db.get(University, user.university_id) if user.university_id else None
     fac = db.get(Faculty, user.faculty_id) if user.faculty_id else None
     cfg = tenant_settings(db, user) if uni else None
@@ -84,6 +90,7 @@ def user_profile(db: Session, user: User) -> dict:
         "branding": cfg["branding"] if cfg else None,
         # the platform administrator managing this university (see deps.ACT_HEADER)
         "acting": bool(getattr(user, "acting_platform_admin", False)),
+        "single_university": settings.single_university,
         # configurable capabilities this account holds, so clients show only what will work
         "archive_offices": cfg["archive"]["offices"] if cfg else [],
         "can": [k for k in permissions.CAPABILITIES if permissions.allowed(db, user, k)] if uni else [],
@@ -148,6 +155,8 @@ def login(body: LoginIn, request: Request, response: Response, db: Session = Dep
         fail("password")
     if not user.is_active:
         raise HTTPException(status_code=403, detail="الحساب موقوف")
+    if not belongs_here(db, user):
+        raise HTTPException(status_code=403, detail=OTHER_UNIVERSITY)
 
     if user.mfa_enabled:
         method = mfa.method_of(db, user)

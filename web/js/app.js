@@ -24,7 +24,7 @@ const can = (u, key) => u.role === "university_admin" || (u.can || []).includes(
 // [hash, label, icon, roles predicate, mobile tab?]
 const NAV = [
   ["#/", "الرئيسية", "⌂", () => true, true],
-  ["#/universities", "الجامعات", "🏛", (r) => r === "platform_admin", true],
+  ["#/universities", "الجامعات", "🏛", (r, u) => r === "platform_admin" && !u.single_university, true],
   ["#/courses", "المقررات", "📚", (r) => r !== "staff" && r !== "platform_admin", false],
   ["#/assignments", "المهام والواجبات", "📝", (r) => r === "student" || isInstructor(r), true],
   ["#/grades", "الدرجات", "🎓", (r) => r === "student" || isInstructor(r), false],
@@ -114,12 +114,13 @@ function Shell({ user, onLogout }) {
   const active = (h) => (h === "#/" ? hash === "#/" || hash === "" : hash.startsWith(h));
   const brand = user.branding?.display_name || user.university?.name || "منصة الجامعة";
   const fullscreen = hash.startsWith("#/attendance/display/");
+  const roleLabel = user.acting ? "مشرف المنصة" : ROLE[user.role];
 
   if (fullscreen) return html`<div class="fullscreen">${route(hash, user)}</div>`;
 
   return html`<div class="layout">
     <aside class="sidebar">
-      <div class="brand"><img src="/static/icon.svg" alt="" /><div>${brand}<small>${ROLE[user.role]}</small></div></div>
+      <div class="brand"><img src="/static/icon.svg" alt="" /><div>${brand}<small>${roleLabel}</small></div></div>
       <nav class="nav">${items.map(([h, label, icon]) => html`
         <a href=${h} class=${active(h) ? "active" : ""}><span>${icon} ${label}</span>
           ${h === "#/notifications" && unread ? html`<span class="count">${unread}</span>` : null}</a>`)}
@@ -128,10 +129,10 @@ function Shell({ user, onLogout }) {
     </aside>
     <main class="main">
       <div class="topbar">
-        <div><strong>${user.full_name}</strong><div class="who">${ROLE[user.role]}${user.faculty ? ` — ${user.faculty.name}` : ""}</div></div>
+        <div><strong>${user.full_name}</strong><div class="who">${roleLabel}${user.faculty ? ` — ${user.faculty.name}` : ""}</div></div>
         <div class="row only-mobile"><a class="btn secondary small" href="#/messages">💬</a></div>
       </div>
-      ${user.acting ? html`<div class="alert info row between"><span>🛡 أنت مشرف المنصة وتدير «${user.university?.name}» بصلاحيات إدارتها الكاملة. كل إجراء يُسجَّل باسمك.</span>
+      ${user.acting && !user.single_university ? html`<div class="alert info row between"><span>🛡 أنت مشرف المنصة وتدير «${user.university?.name}» بصلاحيات إدارتها الكاملة. كل إجراء يُسجَّل باسمك.</span>
         <button class="small secondary" onClick=${() => { setActing(null); location.hash = "#/universities"; }}>العودة لإدارة المنصة</button></div>` : null}
       ${user.must_change_password ? html`<div class="alert warning">تستخدم كلمة مرور مؤقتة. <a href="#/profile">غيّرها الآن</a>.</div>` : null}
       ${user.role !== "platform_admin" ? html`<${BannerStrip} key=${hash.split("/")[1] || "home"} />` : null}
@@ -144,7 +145,7 @@ function Shell({ user, onLogout }) {
         onClick=${(e) => { e.preventDefault(); setMenu(!menu); }}><span class="ico">☰</span>القائمة</a>
     </nav>
     ${menu ? html`<div class="menu-sheet" onClick=${(e) => { if (e.target === e.currentTarget) setMenu(false); }}>
-      <div class="menu-panel"><div class="brand"><img src="/static/icon.svg" alt="" /><div>${brand}<small>${ROLE[user.role]}</small></div></div>
+      <div class="menu-panel"><div class="brand"><img src="/static/icon.svg" alt="" /><div>${brand}<small>${roleLabel}</small></div></div>
         <nav class="nav">${items.map(([h, label, icon]) => html`
           <a href=${h} class=${active(h) ? "active" : ""}><span>${icon} ${label}</span>
             ${h === "#/notifications" && unread ? html`<span class="count">${unread}</span>` : null}</a>`)}

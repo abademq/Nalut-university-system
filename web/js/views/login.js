@@ -9,7 +9,6 @@ const DEMO = [
   ["dean.it@nalut.edu.ly", "إدارة الكلية"],
   ["president@nalut.edu.ly", "إدارة الجامعة"],
   ["platform@demo.ly", "مشرف المنصة"],
-  ["student@demo2.edu.ly", "طالب بجامعة أخرى"],
 ];
 
 function svgDataUri(svg) {

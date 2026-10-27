@@ -13,6 +13,7 @@ from fastapi import Depends, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from .config import settings
 from .db import get_db
 from .models import Course, CourseStaff, Enrollment, Faculty, Role, University, User
 from .security import decode_token
@@ -45,7 +46,12 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
         uni = db.get(University, user.university_id)
         if not uni or not uni.is_active:
             raise HTTPException(status_code=401, detail="المؤسسة غير مفعلة")
+        if not belongs_here(db, user):
+            raise HTTPException(status_code=401, detail=OTHER_UNIVERSITY)
     acting = request.headers.get(ACT_HEADER)
+    if user.role == Role.PLATFORM_ADMIN and settings.single_university:
+        main = main_university(db)
+        acting = str(main.id) if main else None  # always the one university of this installation
     if acting and user.role == Role.PLATFORM_ADMIN and _may_act(request):
         user = _acting_user(db, user, acting)
     request.state.user = user
@@ -56,6 +62,24 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
 # university administrator by sending this header. Account endpoints (password, MFA, devices,
 # logout) always act on the real platform account and ignore it.
 ACT_HEADER = "X-Act-As-University"
+
+
+OTHER_UNIVERSITY = "هذا الحساب لا يتبع جامعة هذه المنصة"
+
+
+def main_university(db: Session) -> University | None:
+    """The university of a single-university installation: MAIN_UNIVERSITY, else the first one."""
+    stmt = select(University)
+    if settings.main_university:
+        stmt = stmt.where(University.code == settings.main_university)
+    return db.scalars(stmt.order_by(University.id).limit(1)).first()
+
+
+def belongs_here(db: Session, user: User) -> bool:
+    if not settings.single_university or user.university_id is None:
+        return True
+    main = main_university(db)
+    return main is not None and user.university_id == main.id
 
 
 def _may_act(request: Request) -> bool:

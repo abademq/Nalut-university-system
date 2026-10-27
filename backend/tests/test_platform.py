@@ -190,3 +190,25 @@ def test_find_who_holds_a_phone(client, as_, db):
     h = platform(client)
     items = client.get("/api/users", headers=h, params={"q": "0916166288"}).json()["items"]
     assert items[0]["id"] == st.id and items[0]["university"]
+
+
+def test_single_university_installation(client, as_, db, monkeypatch):
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "single_university", True)
+    monkeypatch.setattr(settings, "main_university", "nalut")
+    h = platform(client)
+    # the platform administrator works directly in the university, no header needed
+    me = client.get("/api/me", headers=h).json()
+    assert me["acting"] is True and me["university"]["id"] == uni_id(db) and me["single_university"] is True
+    assert client.get("/api/users?limit=5", headers=h).status_code == 200
+    # a header naming another university is ignored
+    other = {**h, "X-Act-As-University": str(uni_id(db, "demo2"))}
+    assert client.get("/api/me", headers=other).json()["university"]["id"] == uni_id(db)
+    # accounts of any other university cannot sign in, and no university can be added
+    r = client.post("/api/auth/login", json={"identifier": "student@demo2.edu.ly", "password": PASSWORD})
+    assert r.status_code == 403 and "لا يتبع" in r.json()["detail"]
+    r = client.post("/api/universities", headers=h, json={"code": "x", "name": "جامعة", "admin_name": "مدير",
+                                                          "admin_email": "a@x.ly"})
+    assert r.status_code in (400, 403)
+    assert client.get("/api/app/launch?u=999").json()["university_id"] == uni_id(db)

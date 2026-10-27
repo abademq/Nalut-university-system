@@ -12,6 +12,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from .. import audit, mfa, permissions
+from ..config import settings
 from ..db import get_db
 from ..deps import (
     can_manage_user,
@@ -109,6 +110,8 @@ def list_universities(user: User = Depends(require_roles(Role.PLATFORM_ADMIN)), 
 @router.post("/universities")
 def create_university(body: UniversityIn, request: Request,
                       user: User = Depends(require_roles(Role.PLATFORM_ADMIN)), db: Session = Depends(get_db)):
+    if settings.single_university:
+        raise HTTPException(status_code=400, detail="المنصة مخصصة لجامعة واحدة (SINGLE_UNIVERSITY)")
     if db.scalar(select(University.id).where(University.code == body.code)):
         raise HTTPException(status_code=400, detail="رمز الجامعة مستخدم")
     email = body.admin_email.strip().lower()

@@ -73,7 +73,7 @@ def _user(db, uni, role, name, email, phone=None, code=None, faculty=None, dept=
     return u
 
 
-def seed(db) -> None:
+def seed(db, second_university: bool = False) -> None:
     rnd = random.Random(42)
     now = utcnow()
 
@@ -323,7 +323,10 @@ def seed(db) -> None:
     db.add(StudentDocument(university_id=uni.id, student_id=students[0].id, doc_type="high_school",
                            title="شهادة الثانوية العامة", file_id=hs.id, uploaded_by=registrar.id))
 
-    # ----- second university (tenant isolation demo)
+    audit.record(db, "system.seeded", university_id=uni.id, details={"note": "demo data"})
+    if not second_university:  # one university per installation (settings.single_university)
+        return
+    # ----- second university: only for the tests that prove universities stay isolated
     other = University(code="demo2", name="جامعة تجريبية ثانية", settings={"security": {"require_mfa_for_admins": False}})
     db.add(other)
     db.flush()
@@ -343,8 +346,6 @@ def seed(db) -> None:
     db.flush()
     db.add(CourseStaff(course_id=oc.id, user_id=ot.id))
     db.add(Enrollment(course_id=oc.id, student_id=ost.id))
-
-    audit.record(db, "system.seeded", university_id=uni.id, details={"note": "demo data"})
 
 
 def main(argv: list[str]) -> None:

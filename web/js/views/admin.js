@@ -278,7 +278,7 @@ export function SettingsView({ user }) {
 export function LaunchView({ user }) {
   const state = useAsync(() => api.get("/api/settings"), []);
   if (!user?.acting) {
-    return html`<div><h1>شاشة البداية والنغمات</h1><div class="alert info">يحددها مشرف المنصة: من «الجامعات» اضغط «إدارة» على الجامعة ثم افتح هذه الصفحة.</div></div>`;
+    return html`<div><h1>شاشة البداية والنغمات</h1><div class="alert info">يحددها مشرف المنصة فقط: سجّل الدخول بحساب مشرف المنصة.</div></div>`;
   }
   return html`<div><h1>شاشة البداية والنغمات</h1><${Async} state=${state}>${(d) => html`
     <${LaunchSettings} data=${d} universityId=${user.university?.id} onSaved=${state.reload} />
