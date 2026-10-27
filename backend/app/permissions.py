@@ -40,6 +40,10 @@ CAPABILITIES: dict[str, tuple[str, str, list[str], list[str]]] = {
                            [TEACHER, ASSISTANT]),
     "attendance.manage": ("التدريس", "فتح جلسات الحضور والتسجيل اليدوي ومراجعة الحالات", [TEACHER, ASSISTANT],
                           [TEACHER, ASSISTANT]),
+    "staff.view": ("شؤون الموظفين", "الاطلاع على ملفات الموظفين", [FA, STAFF], []),
+    "staff.manage": ("شؤون الموظفين", "تعديل ملفات الموظفين ومستنداتهم", [FA, STAFF], []),
+    "faculty.view": ("شؤون أعضاء هيئة التدريس", "الاطلاع على ملفات أعضاء هيئة التدريس", [FA, STAFF], [FA]),
+    "faculty.manage": ("شؤون أعضاء هيئة التدريس", "تعديل ملفات أعضاء هيئة التدريس ومستنداتهم", [FA, STAFF], []),
     "reports.view": ("التقارير", "التقارير والإحصاءات وتقارير الأفراد", [FA, TEACHER, ASSISTANT],
                      [FA, TEACHER, ASSISTANT]),
 }

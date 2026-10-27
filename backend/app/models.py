@@ -752,3 +752,39 @@ class PermissionGroupMember(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     group_id: Mapped[int] = mapped_column(ForeignKey("permission_groups.id"), index=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+
+
+# --------------------------------------------------------------------------- staff and faculty files
+
+
+class PersonnelRecord(Base):
+    """Employment file of a staff member or a faculty member (teacher / assistant).
+
+    The fields live in ``data`` (whitelisted in routers/personnel.py); the national number is
+    encrypted at rest in its own column.
+    """
+
+    __tablename__ = "personnel_records"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    university_id: Mapped[int] = mapped_column(ForeignKey("universities.id"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), unique=True)
+    national_id_enc: Mapped[str | None] = mapped_column(String(300))
+    data: Mapped[dict] = mapped_column(JSON, default=dict)
+    updated_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class PersonnelDocument(Base):
+    __tablename__ = "personnel_documents"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    university_id: Mapped[int] = mapped_column(ForeignKey("universities.id"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    doc_type: Mapped[str] = mapped_column(String(40))
+    title: Mapped[str] = mapped_column(String(200))
+    notes: Mapped[str | None] = mapped_column(String(500))
+    file_id: Mapped[int] = mapped_column(ForeignKey("stored_files.id"))
+    uploaded_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime)
+    deleted_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    delete_reason: Mapped[str | None] = mapped_column(String(300))

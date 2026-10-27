@@ -75,7 +75,8 @@ export function ProfileView({ user }) {
       ${user.code ? html`<li>الرقم: <span class="mono">${user.code}</span></li>` : null}
       <li>البريد: <span class="ltr">${user.email || "—"}</span> · الهاتف: <span class="ltr">${user.phone || "—"}</span></li>
       ${user.university ? html`<li>${user.university.name}${user.faculty ? ` — ${user.faculty.name}` : ""}</li>` : null}</ul>
-      ${selfEdit(user) ? null : html`<p class="small muted">لتعديل البيانات الأساسية تواصل مع إدارة الكلية.</p>`}</div>
+      ${selfEdit(user) ? null : html`<p class="small muted">لتعديل البيانات الأساسية تواصل مع إدارة الكلية.</p>`}
+      ${["staff", "faculty_admin", "teacher", "assistant"].includes(user.role) ? html`<a class="btn secondary small" href="#/personnel/me">ملفي الوظيفي</a>` : null}</div>
     <div class="grid cols-2">${selfEdit(user) ? html`<${EditDetails} user=${user} />` : null}<${ChangePassword} /><${Mfa} user=${user} /><${Sessions} /></div>
   </div>`;
 }
