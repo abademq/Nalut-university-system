@@ -64,7 +64,7 @@ class _RequestList extends StatelessWidget {
               subtitle: Text([
                 r['type_label'],
                 if (scope != 'mine') r['requester']['full_name'],
-                fmtRelative(r['updated_at']),
+                fmtRelative(r['updated_at'], past: true),
               ].join(' · ')),
               trailing: StatusChip(StatusStyle(r['status_label'] as String, _statusColors[r['status']] ?? Colors.grey)),
               onTap: () async {

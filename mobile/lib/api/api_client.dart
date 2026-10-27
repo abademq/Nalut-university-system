@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io' show HttpDate;
 import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
@@ -69,7 +70,20 @@ class ApiClient {
     }
   }
 
+  /// How far the server's clock is ahead of the phone's. Phones with a wrong time or time zone
+  /// would otherwise show a notice that just arrived as "in 1 hour".
+  static Duration clockSkew = Duration.zero;
+
+  static void _noteServerTime(http.Response res) {
+    final header = res.headers['date'];
+    if (header == null) return;
+    try {
+      clockSkew = HttpDate.parse(header).difference(DateTime.now().toUtc());
+    } catch (_) {}
+  }
+
   Future<dynamic> _handle(http.Response res, Future<http.Response> Function() retry, String path) async {
+    _noteServerTime(res);
     if (res.statusCode == 401 && !path.startsWith('/api/auth/')) {
       if (await refresh()) {
         res = await _send(retry);

@@ -32,7 +32,7 @@ export function MessagesView({ params }) {
     ${creating ? html`<${NewConversation} params=${params} onClose=${() => setCreating(false)} />` : null}
     <${Async} state=${state}>${(rows) => rows.length ? html`<div class="card"><ul class="list">${rows.map((c) => html`<li>
       <a class="item-link" href=${`#/messages/${c.id}`}><div class="row between"><strong>${c.subject}</strong>
-        <span class="row">${c.unread ? html`<${Chip} kind="danger">${c.unread} جديدة<//>` : null}<span class="small muted">${fmtRelative(c.last_message_at)}</span></span></div>
+        <span class="row">${c.unread ? html`<${Chip} kind="danger">${c.unread} جديدة<//>` : null}<span class="small muted">${fmtRelative(c.last_message_at, true)}</span></span></div>
         <div class="small muted">${c.participants.map((p) => `${p.full_name} (${ROLE[p.role]})`).join("، ")}</div></a></li>`)}</ul></div>`
       : html`<${Empty}>لا توجد محادثات<//>`}<//>
   </div>`;

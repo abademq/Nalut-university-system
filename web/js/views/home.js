@@ -43,7 +43,7 @@ function StudentHome() {
       </div>
       <div class="card"><div class="card-head"><h2>آخر الإشعارات</h2><a href="#/notifications">الكل</a></div>
         ${notes.items.length ? html`<ul class="list">${notes.items.map((n) => html`<li>
-          <strong>${n.title}</strong> <span class="small muted">${fmtRelative(n.created_at)}</span>
+          <strong>${n.title}</strong> <span class="small muted">${fmtRelative(n.created_at, true)}</span>
           <div class="small">${n.body}</div></li>`)}</ul>` : html`<${Empty} />`}</div>
       <div class="card"><h2>الحضور حسب المقرر</h2>
         <div class="hbars">${att.courses.map((c) => html`<div class="hbar"><span>${c.course.title}</span>
@@ -128,7 +128,7 @@ function StaffHome() {
       <div class="card"><div class="card-head"><h2>أحدث الطلبات</h2><a href="#/requests">الكل</a></div>
         ${open.length ? html`<ul class="list">${open.slice(0, 8).map((r) => html`<li><a class="item-link" href=${`#/requests/${r.id}`}>
           <div class="row between"><strong>${r.type_label}: ${r.subject}</strong><${Chip} kind="warning">${r.status_label}<//></div>
-          <div class="small muted">${r.requester.full_name} · ${fmtRelative(r.created_at)}</div></a></li>`)}</ul>` : html`<${Empty} />`}</div>`;
+          <div class="small muted">${r.requester.full_name} · ${fmtRelative(r.created_at, true)}</div></a></li>`)}</ul>` : html`<${Empty} />`}</div>`;
   }}<//>`;
 }
 

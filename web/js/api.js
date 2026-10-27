@@ -61,6 +61,9 @@ export async function request(method, path, { json, form, raw = false, retry = t
   } catch {
     throw new ApiError(0, "تعذر الاتصال بالخادم، تحقق من الشبكة");
   }
+  // the server's clock, so relative times are right even when this device's clock is not
+  const date = Date.parse(res.headers.get("date") || "");
+  if (!Number.isNaN(date)) window.__nusClockSkew = date - Date.now();
   if (res.status === 401 && retry && !path.startsWith("/api/auth/")) {
     if (await tryRefresh()) return request(method, path, { json, form, raw, retry: false, headers });
     onLogout();

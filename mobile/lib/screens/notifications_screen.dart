@@ -139,7 +139,7 @@ class _NotificationTile extends StatelessWidget {
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Row(children: [
                   Expanded(child: Text(n['title'] as String, style: const TextStyle(fontWeight: FontWeight.bold))),
-                  Text(fmtRelative(n['created_at']), style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                  Text(fmtRelative(n['created_at'], past: true), style: const TextStyle(fontSize: 11, color: Colors.grey)),
                 ]),
                 const SizedBox(height: 4),
                 Text(n['body'] as String),

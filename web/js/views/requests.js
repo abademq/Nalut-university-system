@@ -28,7 +28,7 @@ function NewRequest({ onDone }) {
 function RequestList({ rows }) {
   return rows.length ? html`<div class="card"><ul class="list">${rows.map((r) => html`<li><a class="item-link" href=${`#/requests/${r.id}`}>
     <div class="row between"><strong>${r.type_label}: ${r.subject}</strong><${Chip} kind=${STATUS_KIND[r.status]}>${r.status_label}<//></div>
-    <div class="small muted">${r.requester.full_name} · ${r.office_label} · ${fmtRelative(r.updated_at)}</div></a></li>`)}</ul></div>`
+    <div class="small muted">${r.requester.full_name} · ${r.office_label} · ${fmtRelative(r.updated_at, true)}</div></a></li>`)}</ul></div>`
     : html`<${Empty}>لا توجد طلبات<//>`;
 }
 

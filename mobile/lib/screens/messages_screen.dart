@@ -51,7 +51,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
                   subtitle: Text((c['participants'] as List).map((p) => p['full_name']).join('، ')),
                   trailing: (c['unread'] as int) > 0
                       ? Badge(label: Text('${c['unread']}'))
-                      : Text(fmtRelative(c['last_message_at']), style: const TextStyle(fontSize: 11)),
+                      : Text(fmtRelative(c['last_message_at'], past: true), style: const TextStyle(fontSize: 11)),
                   onTap: () async {
                     await Navigator.push(context, MaterialPageRoute(builder: (_) => ThreadScreen(id: c['id'] as int)));
                     if (mounted) setState(() => _version++);

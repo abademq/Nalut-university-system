@@ -64,23 +64,35 @@ String fmtDate(Object? v, {bool time = true}) {
   return '$date، ${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
 }
 
-String fmtRelative(Object? v) {
+/// Arabic counting: ساعة، ساعتين، 3 ساعات، 11 ساعة.
+String _count(int n, String one, String two, String few) => switch (n) {
+      1 => one,
+      2 => two,
+      >= 3 && <= 10 => '$n $few',
+      _ => '$n $one',
+    };
+
+/// Now by the server's clock (see ApiClient.clockSkew), not the phone's.
+DateTime serverNow() => DateTime.now().add(ApiClient.clockSkew);
+
+/// "منذ 5 دقائق" / "خلال يومين". [past]: the moment has already happened (a notification
+/// received, a message sent), so a small difference in clocks never reads as the future.
+String fmtRelative(Object? v, {bool past = false}) {
   final d = parseDate(v);
   if (d == null) return '';
-  final diff = d.difference(DateTime.now());
-  final future = !diff.isNegative;
-  final a = diff.abs();
-  String amount;
-  if (a.inMinutes < 1) {
-    return 'الآن';
-  } else if (a.inHours < 1) {
-    amount = '${a.inMinutes} دقيقة';
+  final diff = d.difference(serverNow());
+  final future = !diff.isNegative && !past;
+  final a = past && !diff.isNegative ? Duration.zero : diff.abs();
+  if (a.inMinutes < 1) return 'الآن';
+  final String amount;
+  if (a.inHours < 1) {
+    amount = _count(a.inMinutes, 'دقيقة', 'دقيقتين', 'دقائق');
   } else if (a.inDays < 1) {
-    amount = '${a.inHours} ساعة';
+    amount = _count(a.inHours, 'ساعة', 'ساعتين', 'ساعات');
   } else {
-    amount = '${a.inDays} يوم';
+    amount = _count(a.inDays, 'يوم', 'يومين', 'أيام');
   }
-  return future ? 'خلال $amount' : 'قبل $amount';
+  return future ? 'خلال $amount' : 'منذ $amount';
 }
 
 String pct(Object? v) => v == null ? '—' : '$v%';

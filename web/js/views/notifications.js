@@ -41,7 +41,7 @@ export function NotificationsView({ user }) {
       <li class=${`notif ${n.read_at ? "read" : ""} ${n.priority}`} onClick=${() => open(n)} style="cursor:pointer">
         <span class="dot"></span>
         <div style="flex:1">
-          <div class="row between"><strong>${n.title}</strong><span class="small muted">${fmtRelative(n.created_at)}</span></div>
+          <div class="row between"><strong>${n.title}</strong><span class="small muted">${fmtRelative(n.created_at, true)}</span></div>
           <div class="small" style="white-space:pre-wrap">${n.body}</div>
           <div class="row small" style="margin-top:.25rem"><${Chip} kind=${n.category === "official_warning" ? "danger" : "primary"}>${CATEGORY[n.category]}<//>
             ${n.priority !== "normal" ? html`<${StatusChip} map=${PRIORITY} value=${n.priority} />` : null}
