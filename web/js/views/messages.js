@@ -42,16 +42,19 @@ export function ThreadView({ id }) {
   const state = useAsync(() => api.get(`/api/conversations/${id}/messages`), [id]);
   const [body, setBody] = useState("");
   const [file, setFile] = useState(null);
+  const [pick, setPick] = useState(0);  // remounts the file input to clear it after sending
   const end = useRef(null);
   useEffect(() => { end.current?.scrollIntoView({ block: "end" }); window.dispatchEvent(new Event("nus:notifications")); }, [state.data]);
   useEffect(() => { const t = setInterval(state.reload, 15000); return () => clearInterval(t); }, [id]);
   const [send, busy, error] = useSubmit(async () => {
+    if (!body.trim() && !file) throw new Error("اكتب رسالة أو أرفق ملفاً");
     const fd = new FormData();
     fd.append("body", body);
     if (file) fd.append("upload", file);
     await api.form(`/api/conversations/${id}/messages`, fd);
     setBody("");
     setFile(null);
+    setPick(pick + 1);
     state.reload();
   });
   const report = async (m) => {
@@ -63,13 +66,15 @@ export function ThreadView({ id }) {
     <div class="row"><a href="#/messages">← الرسائل</a></div><h1>${c.subject}</h1>
     <div class="card"><div class="thread">${c.messages.map((m) => html`<div class=${`bubble ${m.mine ? "mine" : ""}`}>
       <div class="meta">${m.sender} · ${fmtDate(m.created_at)}</div>
-      <div style="white-space:pre-wrap">${m.body}</div>
-      ${m.file ? html`<button class="ghost small" onClick=${() => downloadFile(m.file.id, m.file.name).catch(toastError)}>📎 ${m.file.name}</button>` : null}
+      ${m.body ? html`<div style="white-space:pre-wrap">${m.body}</div>` : null}
+      ${m.file ? html`<button class="secondary small" style="margin-top:.35rem" title="تنزيل الملف"
+        onClick=${() => downloadFile(m.file.id, m.file.name).catch(toastError)}>⬇ تنزيل ${m.file.name}</button>` : null}
       ${!m.mine ? html`<button class="ghost small" onClick=${() => report(m)} title="إبلاغ">⚑ إبلاغ</button>` : null}
     </div>`)}<div ref=${end}></div></div></div>
     <form class="card" onSubmit=${send}><${ErrorBox} error=${error} />
-      <div class="field"><textarea placeholder="اكتب رسالتك…" value=${body} onInput=${(e) => setBody(e.target.value)} required></textarea></div>
-      <div class="row"><input type="file" style="max-width:260px" onChange=${(e) => setFile(e.target.files[0] || null)} />
+      <div class="field"><textarea placeholder="اكتب رسالتك… (أو أرفق ملفاً فقط)" value=${body} onInput=${(e) => setBody(e.target.value)}></textarea></div>
+      <div class="row"><input key=${pick} type="file" style="max-width:260px" accept=".pdf,.doc,.docx,.pptx,.xlsx,.txt,.png,.jpg,.jpeg,.zip"
+        onChange=${(e) => setFile(e.target.files[0] || null)} />
         <span class="spacer"></span><button disabled=${busy}>إرسال</button></div></form>
   </div>`}<//>`;
 }

@@ -164,10 +164,13 @@ def get_messages(cid: int, user: User = Depends(get_current_user), db: Session =
 
 
 @router.post("/conversations/{cid}/messages")
-async def post_message(cid: int, body: str = Form(..., min_length=1, max_length=5000),
+async def post_message(cid: int, body: str = Form("", max_length=5000),
                        upload: UploadFile | None = File(None), user: User = Depends(get_current_user),
                        db: Session = Depends(get_db)):
     conv = _participant(db, user, cid)
+    body = body.strip()
+    if not body and upload is None:  # a file alone is a message too
+        raise HTTPException(status_code=400, detail="اكتب رسالة أو أرفق ملفاً")
     if not limiter.hit(f"msg:{user.id}", 30, 60):
         raise HTTPException(status_code=429, detail="عدد كبير من الرسائل، حاول بعد قليل")
     others = db.scalars(select(User).join(ConversationParticipant, ConversationParticipant.user_id == User.id).where(

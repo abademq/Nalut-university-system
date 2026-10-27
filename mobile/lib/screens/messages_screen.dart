@@ -1,9 +1,12 @@
 import 'dart:async';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../api/api_client.dart';
 import '../config.dart';
+import '../links.dart';
 import '../state/session.dart';
 import '../widgets/common.dart';
 
@@ -151,6 +154,7 @@ class _ThreadScreenState extends State<ThreadScreen> {
   Map<String, dynamic>? _data;
   Timer? _timer;
   bool _sending = false;
+  UploadFile? _file; // attachment waiting to be sent
 
   @override
   void initState() {
@@ -175,13 +179,28 @@ class _ThreadScreenState extends State<ThreadScreen> {
     }
   }
 
+  Future<void> _attach() async {
+    final picked = await FilePicker.pickFiles(
+        type: FileType.custom, allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png', 'docx', 'doc', 'pptx', 'xlsx', 'txt', 'zip']);
+    if (picked.isEmpty) return;
+    final f = picked.first;
+    final bytes = await f.xFile.readAsBytes();
+    if (bytes.length > 5 * 1024 * 1024) {
+      if (mounted) showMessage(context, 'الملف أكبر من 5 ميغابايت', error: true);
+      return;
+    }
+    if (mounted) setState(() => _file = UploadFile('upload', f.name, bytes));
+  }
+
   Future<void> _send() async {
-    if (_body.text.trim().isEmpty) return;
+    if (_body.text.trim().isEmpty && _file == null) return;
     final s = context.read<Session>();
     setState(() => _sending = true);
     try {
-      await s.api.multipart('/api/conversations/${widget.id}/messages', fields: {'body': _body.text.trim()});
+      await s.api.multipart('/api/conversations/${widget.id}/messages',
+          fields: {'body': _body.text.trim()}, files: [?_file]);
       _body.clear();
+      setState(() => _file = null);
       await _load();
     } catch (e) {
       if (mounted) showMessage(context, e, error: true);
@@ -245,9 +264,16 @@ class _ThreadScreenState extends State<ThreadScreen> {
                           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                             Text('${m['sender']} · ${fmtDate(m['created_at'])}', style: const TextStyle(fontSize: 11, color: Colors.grey)),
                             const SizedBox(height: 2),
-                            Text(m['body'] as String),
+                            if ((m['body'] as String).isNotEmpty) Text(m['body'] as String),
                             if (m['file'] != null)
-                              Text('📎 ${m['file']['name']}', style: const TextStyle(fontSize: 12)),
+                              // tap to download and open with the phone's viewer
+                              TextButton.icon(
+                                style: TextButton.styleFrom(padding: EdgeInsets.zero, visualDensity: VisualDensity.compact),
+                                icon: const Icon(Icons.attach_file, size: 18),
+                                label: Text('${m['file']['name']}', overflow: TextOverflow.ellipsis),
+                                onPressed: () => downloadAndOpen(context, context.read<Session>(),
+                                    '/api/files/${m['file']['id']}', m['file']['name'] as String),
+                              ),
                           ]),
                         ),
                       ),
@@ -263,12 +289,20 @@ class _ThreadScreenState extends State<ThreadScreen> {
           child: Padding(
             padding: const EdgeInsets.all(8),
             child: Row(children: [
+              IconButton(tooltip: 'إرفاق ملف', onPressed: _sending ? null : _attach, icon: const Icon(Icons.attach_file)),
               Expanded(
                 child: TextField(
                   controller: _body,
                   minLines: 1,
                   maxLines: 4,
-                  decoration: const InputDecoration(hintText: 'اكتب رسالتك…', isDense: true),
+                  decoration: InputDecoration(
+                    hintText: 'اكتب رسالتك…',
+                    isDense: true,
+                    helperText: _file == null ? null : 'مرفق: ${_file!.filename}',
+                    suffixIcon: _file == null
+                        ? null
+                        : IconButton(icon: const Icon(Icons.close, size: 18), onPressed: () => setState(() => _file = null)),
+                  ),
                 ),
               ),
               const SizedBox(width: 8),

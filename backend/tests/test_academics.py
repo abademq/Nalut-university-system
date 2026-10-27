@@ -218,3 +218,22 @@ def test_reports(client, as_):
     assert csv.headers["content-type"].startswith("text/csv")
     assert client.get("/api/reports/staff-attendance", headers=as_(DEAN)).json()
     assert client.get("/api/me/insights", headers=as_("student9@nalut.edu.ly")).json()["attention"]
+
+
+def test_message_attachment_reaches_the_other_side(client, as_):
+    s = as_("s.ali@nalut.edu.ly")
+    teacher_id = client.get("/api/me", headers=as_(TEACHER)).json()["id"]
+    conv = client.post("/api/conversations", headers=s, json={"recipient_ids": [teacher_id], "subject": "واجب",
+                                                              "body": "مرفق الواجب"}).json()["id"]
+    pdf = b"%PDF-1.4\n% homework\n"
+    # a file with no text is accepted; an empty message is not
+    assert client.post(f"/api/conversations/{conv}/messages", headers=s, data={"body": ""}).status_code == 400
+    r = client.post(f"/api/conversations/{conv}/messages", headers=s, data={"body": ""},
+                    files={"upload": ("homework.pdf", pdf, "application/pdf")})
+    assert r.status_code == 200, r.text
+    msgs = client.get(f"/api/conversations/{conv}/messages", headers=as_(TEACHER)).json()["messages"]
+    f = msgs[-1]["file"]
+    assert f["name"] == "homework.pdf"
+    got = client.get(f"/api/files/{f['id']}", headers=as_(TEACHER))
+    assert got.status_code == 200 and got.content == pdf
+    assert client.get(f"/api/files/{f['id']}", headers=as_("student2@nalut.edu.ly")).status_code == 404
