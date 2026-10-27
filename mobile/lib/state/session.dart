@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart' show ThemeMode;
 import 'package:flutter/foundation.dart';
 
 import '../api/api_client.dart';
@@ -36,8 +37,20 @@ class Session extends ChangeNotifier {
 
   /// Restores a saved session. Never leaves the app on the loading screen: any failure
   /// (unreadable secure storage, slow network) falls back to the login screen.
+  /// Light, dark or the phone's setting ("المظهر" in the account screen); kept on the phone.
+  final themeMode = ValueNotifier<ThemeMode>(ThemeMode.system);
+
+  Future<void> setThemeMode(ThemeMode mode) async {
+    themeMode.value = mode;
+    await store.write(StoreKeys.theme, mode == ThemeMode.system ? null : mode.name).catchError((Object _) {});
+  }
+
   Future<void> start() async {
     Map<String, dynamic>? profile;
+    try {
+      final saved = await store.read(StoreKeys.theme);
+      themeMode.value = ThemeMode.values.firstWhere((m) => m.name == saved, orElse: () => ThemeMode.system);
+    } catch (_) {}
     try {
       api.baseUrl = await store.read(StoreKeys.serverUrl) ?? defaultServerUrl;
       profile = await api.restore().timeout(const Duration(seconds: 15));

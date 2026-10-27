@@ -183,3 +183,20 @@ export function useCourses() {
 }
 
 export function navigate(hash) { location.hash = hash; }
+
+// ------------------------------------------------------------------ appearance (light / dark / automatic)
+
+export const THEMES = { auto: "تلقائي حسب الجهاز", light: "فاتح", dark: "داكن" };
+export function getTheme() {
+  try { return localStorage.getItem("nus-theme") || "auto"; } catch { return "auto"; }
+}
+export function setTheme(t) {
+  try { if (t === "auto") localStorage.removeItem("nus-theme"); else localStorage.setItem("nus-theme", t); } catch { /* private mode */ }
+  applyTheme();
+}
+export function applyTheme() {
+  const t = getTheme();
+  if (t === "auto") delete document.documentElement.dataset.theme;
+  else document.documentElement.dataset.theme = t;
+}
+applyTheme();

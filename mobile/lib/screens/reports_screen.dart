@@ -22,8 +22,8 @@ class _Stat extends StatelessWidget {
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
             child: Column(children: [
-              if (icon != null) Icon(icon, color: color, size: 20),
-              Text(value, style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: color)),
+              if (icon != null) Icon(icon, color: readable(context, color), size: 20),
+              Text(value, style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: readable(context, color))),
               Text(label, textAlign: TextAlign.center, style: const TextStyle(fontSize: 12, color: Colors.grey)),
             ]),
           ),
@@ -258,7 +258,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
             Row(children: [
               _Stat('مراجعات حضور', '${o['pending_attendance_reviews']}', color: AppColors.warning),
               _Stat('نتائج بانتظار الاعتماد', '${o['results_awaiting_approval']}', color: AppColors.info),
-              if (o['open_requests'] != null) _Stat('طلبات مفتوحة', '${o['open_requests']}', color: AppColors.primaryText),
+              if (o['open_requests'] != null) _Stat('طلبات مفتوحة', '${o['open_requests']}', color: goldText(context)),
             ]),
             if ((o['breakdown'] as List).isNotEmpty)
               SectionCard(

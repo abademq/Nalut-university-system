@@ -99,6 +99,17 @@ String pct(Object? v) => v == null ? '—' : '$v%';
 
 // ------------------------------------------------------------------ widgets
 
+/// A brand or status colour made readable on the current background: in the dark theme, dark
+/// colours (the deep gold, warning brown…) are lifted towards white.
+Color readable(BuildContext context, Color c) {
+  if (Theme.of(context).brightness != Brightness.dark || c.computeLuminance() > 0.3) return c;
+  if (c == AppColors.primaryText) return AppColors.primaryTextDark;
+  return Color.lerp(c, Colors.white, 0.45)!;
+}
+
+/// The gold used for text and icons, for the current theme.
+Color goldText(BuildContext context) => readable(context, AppColors.primaryText);
+
 class StatusChip extends StatelessWidget {
   const StatusChip(this.style, {super.key});
   StatusChip.of(Map<String, StatusStyle> map, String? value, {super.key})
@@ -114,7 +125,7 @@ class StatusChip extends StatelessWidget {
           borderRadius: BorderRadius.circular(20),
         ),
         child: Text(style.label,
-            style: TextStyle(color: style.color, fontSize: 12, fontWeight: FontWeight.w600)),
+            style: TextStyle(color: readable(context, style.color), fontSize: 12, fontWeight: FontWeight.w600)),
       );
 }
 

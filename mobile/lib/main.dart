@@ -56,39 +56,23 @@ class UniversityApp extends StatelessWidget {
               ? null
               : SnackBarAction(label: 'فتح', onPressed: () => session.openLater(m)),
         ));
-    // gold fills with dark text on them; text-only buttons and links use the darker gold to stay readable
-    final scheme = ColorScheme.fromSeed(
-        seedColor: AppColors.primary, primary: AppColors.primary, onPrimary: AppColors.onPrimary);
-    final goldText = ButtonStyle(foregroundColor: WidgetStateProperty.all(AppColors.primaryText));
     return ChangeNotifierProvider.value(
       value: session,
-      child: MaterialApp(
-        scaffoldMessengerKey: messengerKey,
-        title: 'منصة الجامعة',
-        debugShowCheckedModeBanner: false,
-        locale: const Locale('ar'),
-        supportedLocales: const [Locale('ar')],
-        localizationsDelegates: GlobalMaterialLocalizations.delegates,
-        theme: ThemeData(
-          colorScheme: scheme,
-          useMaterial3: true,
-          scaffoldBackgroundColor: const Color(0xFFF7F5F2),
-          cardTheme: CardThemeData(
-            elevation: 0,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(14),
-              side: const BorderSide(color: Color(0xFFE8E0DB)),
-            ),
-          ),
-          inputDecorationTheme: const InputDecorationTheme(border: OutlineInputBorder()),
-          textButtonTheme: TextButtonThemeData(style: goldText),
-          outlinedButtonTheme: OutlinedButtonThemeData(style: goldText),
+      child: ValueListenableBuilder<ThemeMode>(
+        valueListenable: session.themeMode,
+        builder: (context, mode, home) => MaterialApp(
+          scaffoldMessengerKey: messengerKey,
+          title: 'منصة الجامعة',
+          debugShowCheckedModeBanner: false,
+          locale: const Locale('ar'),
+          supportedLocales: const [Locale('ar')],
+          localizationsDelegates: GlobalMaterialLocalizations.delegates,
+          themeMode: mode,
+          theme: _theme(Brightness.light),
+          darkTheme: _theme(Brightness.dark),
+          home: home,
         ),
-        darkTheme: ThemeData(
-          colorScheme: ColorScheme.fromSeed(seedColor: AppColors.primary, brightness: Brightness.dark),
-          useMaterial3: true,
-        ),
-        home: Consumer<Session>(builder: (context, s, _) {
+        child: Consumer<Session>(builder: (context, s, _) {
           final page = switch (s.status) {
             SessionStatus.loading => const SplashView(),
             SessionStatus.signedOut => const LoginScreen(),
@@ -106,4 +90,35 @@ class UniversityApp extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Light and dark themes in the university's gold: gold fills with dark text on them, and a
+/// gold dark enough (light theme) or light enough (dark theme) for text-only buttons and links.
+ThemeData _theme(Brightness brightness) {
+  final dark = brightness == Brightness.dark;
+  final scheme = ColorScheme.fromSeed(
+    seedColor: AppColors.primary,
+    brightness: brightness,
+    primary: dark ? const Color(0xFFD9AD4F) : AppColors.primary,
+    onPrimary: AppColors.onPrimary,
+    surface: dark ? const Color(0xFF1D1716) : null,
+  );
+  final linkGold = ButtonStyle(
+      foregroundColor: WidgetStateProperty.all(dark ? AppColors.primaryTextDark : AppColors.primaryText));
+  return ThemeData(
+    colorScheme: scheme,
+    useMaterial3: true,
+    scaffoldBackgroundColor: dark ? const Color(0xFF141010) : const Color(0xFFF7F5F2),
+    cardTheme: CardThemeData(
+      elevation: 0,
+      color: dark ? const Color(0xFF1D1716) : Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(color: dark ? const Color(0xFF3B2F2B) : const Color(0xFFE8E0DB)),
+      ),
+    ),
+    inputDecorationTheme: const InputDecorationTheme(border: OutlineInputBorder()),
+    textButtonTheme: TextButtonThemeData(style: linkGold),
+    outlinedButtonTheme: OutlinedButtonThemeData(style: linkGold),
+  );
 }

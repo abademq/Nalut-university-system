@@ -54,6 +54,27 @@ class AccountScreen extends StatelessWidget {
           ]),
         ),
         Card(
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              const Text('المظهر', style: TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              ValueListenableBuilder<ThemeMode>(
+                valueListenable: s.themeMode,
+                builder: (context, mode, _) => SegmentedButton<ThemeMode>(
+                  segments: const [
+                    ButtonSegment(value: ThemeMode.system, icon: Icon(Icons.brightness_auto), label: Text('تلقائي')),
+                    ButtonSegment(value: ThemeMode.light, icon: Icon(Icons.light_mode_outlined), label: Text('فاتح')),
+                    ButtonSegment(value: ThemeMode.dark, icon: Icon(Icons.dark_mode_outlined), label: Text('داكن')),
+                  ],
+                  selected: {mode},
+                  onSelectionChanged: (v) => s.setThemeMode(v.first),
+                ),
+              ),
+            ]),
+          ),
+        ),
+        Card(
           child: ListTile(
             leading: const Icon(Icons.devices_other, color: AppColors.danger),
             title: const Text('تسجيل الخروج من كل الأجهزة'),
@@ -366,7 +387,7 @@ class _MfaScreenState extends State<MfaScreen> {
           if (methods.contains('sms'))
             Card(
               child: ListTile(
-                leading: const Icon(Icons.sms_outlined, color: AppColors.primaryText),
+                leading: Icon(Icons.sms_outlined, color: goldText(context)),
                 title: const Text('رسالة نصية'),
                 subtitle: Text(u['phone'] == null ? 'لا يوجد رقم هاتف في حسابك' : 'يصلك رمز عند كل دخول'),
                 enabled: u['phone'] != null && !_busy,
@@ -376,7 +397,7 @@ class _MfaScreenState extends State<MfaScreen> {
           if (methods.contains('totp'))
             Card(
               child: ListTile(
-                leading: const Icon(Icons.phonelink_lock, color: AppColors.primaryText),
+                leading: Icon(Icons.phonelink_lock, color: goldText(context)),
                 title: const Text('تطبيق المصادقة'),
                 subtitle: const Text('مثل Google Authenticator، يعمل دون شبكة'),
                 enabled: !_busy,

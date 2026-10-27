@@ -1,4 +1,6 @@
-import { html, render, useState, useEffect, ROLE, toastError } from "./ui.js";
+import { html, render, useState, useEffect, ROLE, toastError, THEMES, getTheme, setTheme } from "./ui.js";
+
+const THEME_ICON = { auto: "🌓", light: "☀️", dark: "🌙" };
 import { api, setToken, setLogoutHandler, tryRefresh, getActing, setActing } from "./api.js";
 import { Login } from "./views/login.js";
 import { Home } from "./views/home.js";
@@ -109,6 +111,12 @@ function Shell({ user, onLogout }) {
   const hash = useHash();
   const [unread, setUnread] = useState(0);
   const [menu, setMenu] = useState(false);  // the full menu on narrow screens
+  const [theme, setThemeState] = useState(getTheme());
+  const cycleTheme = () => {
+    const next = { auto: "light", light: "dark", dark: "auto" }[theme];
+    setTheme(next);
+    setThemeState(next);
+  };
   useEffect(() => setMenu(false), [hash]);
   useEffect(() => {
     if (user.role === "platform_admin") return undefined;
@@ -133,6 +141,7 @@ function Shell({ user, onLogout }) {
       <nav class="nav">${items.map(([h, label, icon]) => html`
         <a href=${h} class=${active(h) ? "active" : ""}><span>${icon} ${label}</span>
           ${h === "#/notifications" && unread ? html`<span class="count">${unread}</span>` : null}</a>`)}
+        <a href="#/" onClick=${(e) => { e.preventDefault(); cycleTheme(); }}><span>${THEME_ICON[theme]} المظهر: ${THEMES[theme]}</span></a>
         <a href="#/" onClick=${(e) => { e.preventDefault(); onLogout(); }}><span>⎋ تسجيل الخروج</span></a>
       </nav>
     </aside>
@@ -158,7 +167,8 @@ function Shell({ user, onLogout }) {
         <nav class="nav">${items.map(([h, label, icon]) => html`
           <a href=${h} class=${active(h) ? "active" : ""}><span>${icon} ${label}</span>
             ${h === "#/notifications" && unread ? html`<span class="count">${unread}</span>` : null}</a>`)}
-          <a href="#/" onClick=${(e) => { e.preventDefault(); onLogout(); }}><span>⎋ تسجيل الخروج</span></a>
+          <a href="#/" onClick=${(e) => { e.preventDefault(); cycleTheme(); }}><span>${THEME_ICON[theme]} المظهر: ${THEMES[theme]}</span></a>
+        <a href="#/" onClick=${(e) => { e.preventDefault(); onLogout(); }}><span>⎋ تسجيل الخروج</span></a>
         </nav></div></div>` : null}
   </div>`;
 }

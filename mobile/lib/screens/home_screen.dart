@@ -158,7 +158,7 @@ class _StudentHome extends StatelessWidget {
                           ? AppColors.danger
                           : (c['absence_percent'] as num) >= 15
                               ? AppColors.warning
-                              : AppColors.primaryText,
+                              : goldText(context),
                       minHeight: 6,
                       borderRadius: BorderRadius.circular(6),
                     ),

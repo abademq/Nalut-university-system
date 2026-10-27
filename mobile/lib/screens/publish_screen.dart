@@ -359,7 +359,7 @@ class _ManagePublicationsScreenState extends State<ManagePublicationsScreen> {
                         ? PublicationImage(fileId: p['file']['id'] as int)
                         : Container(
                             color: AppColors.primary.withValues(alpha: 0.06),
-                            child: const Center(child: Icon(Icons.picture_as_pdf_outlined, size: 48, color: AppColors.primaryText)),
+                            child: Center(child: Icon(Icons.picture_as_pdf_outlined, size: 48, color: goldText(context))),
                           ),
                   ),
                 ),
@@ -507,7 +507,7 @@ class _PublicationFormScreenState extends State<PublicationFormScreen> {
                     ? Image.memory(f.bytes, fit: BoxFit.contain)
                     : Center(
                         child: Column(mainAxisSize: MainAxisSize.min, children: [
-                          const Icon(Icons.picture_as_pdf_outlined, size: 56, color: AppColors.primaryText),
+                          Icon(Icons.picture_as_pdf_outlined, size: 56, color: goldText(context)),
                           Text(f.filename),
                         ]),
                       ),

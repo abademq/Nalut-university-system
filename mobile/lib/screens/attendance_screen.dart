@@ -58,7 +58,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                                 ? AppColors.danger
                                 : (c['absence_percent'] as num) >= 15
                                     ? AppColors.warning
-                                    : AppColors.primaryText,
+                                    : goldText(context),
                           ),
                         ),
                         const SizedBox(width: 8),

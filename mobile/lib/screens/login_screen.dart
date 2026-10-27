@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../config.dart';
 import '../state/session.dart';
+import '../widgets/common.dart';
 import 'forgot_password_screen.dart';
 
 enum _Step { credentials, code, chooseMethod, setupSms, setupTotp }
@@ -274,7 +275,7 @@ class _LoginScreenState extends State<LoginScreen> {
           if (_methods.contains('sms'))
             Card(
               child: ListTile(
-                leading: const Icon(Icons.sms_outlined, color: AppColors.primaryText),
+                leading: Icon(Icons.sms_outlined, color: goldText(context)),
                 title: const Text('رسالة نصية'),
                 subtitle: Text(
                   _phoneHint == null
@@ -288,7 +289,7 @@ class _LoginScreenState extends State<LoginScreen> {
           if (_methods.contains('totp'))
             Card(
               child: ListTile(
-                leading: const Icon(Icons.phonelink_lock, color: AppColors.primaryText),
+                leading: Icon(Icons.phonelink_lock, color: goldText(context)),
                 title: const Text('تطبيق المصادقة'),
                 subtitle: const Text('مثل Google Authenticator، يعمل دون شبكة'),
                 enabled: !_busy,
@@ -374,7 +375,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     if (_error != null)
                       _Note(text: _error!, color: AppColors.danger)
                     else if (_info != null && _step != _Step.credentials)
-                      _Note(text: _info!, color: AppColors.primaryText),
+                      _Note(text: _info!, color: goldText(context)),
                     Offstage(offstage: _step != _Step.credentials, child: _credentialFields()),
                     ..._stepBody(),
                     const SizedBox(height: 24),
@@ -404,6 +405,6 @@ class _Note extends StatelessWidget {
     padding: const EdgeInsets.all(12),
     margin: const EdgeInsets.only(bottom: 12),
     decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10)),
-    child: Text(text, style: TextStyle(color: color)),
+    child: Text(text, style: TextStyle(color: readable(context, color))),
   );
 }

@@ -13,9 +13,9 @@
   --border: #e8e0db;
   --danger: #b42318;
   --danger-soft: #fdecea;
-  --warning: #9a6700;
+  --warning: #855900;
   --warning-soft: #fff4d6;
-  --success: #17803d;
+  --success: #136b33;
   --success-soft: #e5f5ea;
   --info: #1d5fa8;
   --info-soft: #e6effa;
@@ -30,7 +30,7 @@
     --primary: #d9ad4f;
     --on-primary: #2b1e04;
     --primary-text: #e8c372;
-    --primary-strong: #e8c372;
+    --primary-strong: #1f1816;  /* the sidebar stays dark, under white text */
     --primary-soft: #33221b;
     --bg: #141010;
     --surface: #1d1716;
@@ -49,6 +49,30 @@
     --shadow: none;
     color-scheme: dark;
   }
+}
+/* chosen in the app ("المظهر"): data-theme on <html> overrides the device setting */
+:root[data-theme="dark"] {
+  --primary: #d9ad4f;
+  --on-primary: #2b1e04;
+  --primary-text: #e8c372;
+  --primary-strong: #1f1816;  /* the sidebar stays dark, under white text */
+  --primary-soft: #33221b;
+  --bg: #141010;
+  --surface: #1d1716;
+  --surface-2: #241c1a;
+  --text: #eee6e2;
+  --muted: #ab9e98;
+  --border: #3b2f2b;
+  --danger: #ff8a7a;
+  --danger-soft: #3a1d1a;
+  --warning: #f0c060;
+  --warning-soft: #352a12;
+  --success: #6fd394;
+  --success-soft: #16301f;
+  --info: #8db8f0;
+  --info-soft: #172537;
+  --shadow: none;
+  color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
@@ -214,7 +238,7 @@ td input { padding: .3rem .4rem; min-width: 64px; }
 
 /* ---------- bars */
 .bar { height: 8px; background: var(--surface-2); border-radius: 99px; overflow: hidden; border: 1px solid var(--border); }
-.bar > span { display: block; height: 100%; background: var(--primary); border-radius: 99px; }
+.bar > span { display: block; height: 100%; background: var(--primary-text); border-radius: 99px; }
 .bar.warn > span { background: var(--warning); }
 .bar.bad > span { background: var(--danger); }
 .hbars { display: grid; gap: .55rem; }

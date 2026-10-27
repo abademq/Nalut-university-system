@@ -42,6 +42,7 @@ class StoreKeys {
   static const refreshToken = 'refresh_token';
   static const serverUrl = 'server_url';
   static const deviceId = 'device_id';
+  static const theme = 'theme'; // system | light | dark
 }
 
 /// Random per-install identifier (not a hardware id), sent with check-ins as a risk signal.
