@@ -779,24 +779,25 @@ def audit_meta(user: User = Depends(require_roles(Role.PLATFORM_ADMIN, Role.UNIV
     return {"categories": L.CATEGORIES}
 
 
-def _target_names(db: Session, rows: list) -> dict[tuple[str, int], str]:
+def _target_names(db: Session, rows: list) -> dict[tuple[str, str], str]:
     """Readable names of the records the operations touched (people, courses, units)."""
     from ..models import Course, Term
 
     wanted: dict[str, set[int]] = {}
     for r in rows:
-        if r.target_type and r.target_id:
-            wanted.setdefault(r.target_type, set()).add(r.target_id)
-    out: dict[tuple[str, int], str] = {}
+        # target_id is stored as text; PostgreSQL will not compare it with integer ids
+        if r.target_type and r.target_id and str(r.target_id).isdigit():
+            wanted.setdefault(r.target_type, set()).add(int(r.target_id))
+    out: dict[tuple[str, str], str] = {}
     people = wanted.get("user", set()) | wanted.get("student", set())
     for u in db.scalars(select(User).where(User.id.in_(people or {-1}))):
         for t in ("user", "student"):
-            out[(t, u.id)] = u.full_name
+            out[(t, str(u.id))] = u.full_name
     for c in db.scalars(select(Course).where(Course.id.in_(wanted.get("course", set()) or {-1}))):
-        out[("course", c.id)] = f"{c.code} — {c.title}"
+        out[("course", str(c.id))] = f"{c.code} — {c.title}"
     for model, t in ((Faculty, "faculty"), (Department, "department"), (Term, "term"), (University, "university")):
         for x in db.scalars(select(model).where(model.id.in_(wanted.get(t, set()) or {-1}))):
-            out[(t, x.id)] = x.name
+            out[(t, str(x.id))] = x.name
     return out
 
 
@@ -826,7 +827,7 @@ def audit_log(action: str | None = None, category: str | None = None, limit: int
     out = []
     for r in rows:
         cat = L.category(r.action)
-        target_name = targets.get((r.target_type, r.target_id))
+        target_name = targets.get((r.target_type, str(r.target_id)))
         out.append({
             "id": r.id, "action": r.action, "label": L.label(r.action), "category": cat,
             "category_label": L.CATEGORIES.get(cat, ""), "actor": names.get(r.actor_id), "actor_id": r.actor_id,
