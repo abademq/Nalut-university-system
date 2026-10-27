@@ -44,6 +44,7 @@ def check(phone: str | None = None) -> int:
     _line(None, f"RESALA_SENDER = {settings.resala_sender!r} (empty: the account's default name)")
     _line(not settings.resala_test, f"RESALA_TEST = {settings.resala_test}"
           + ("  -> test mode: Resala accepts but does NOT deliver; set RESALA_TEST=false" if settings.resala_test else ""))
+    _line(None, f"RESALA_TEMPLATE_VARS = {settings.resala_template_vars} (variables in the template: 0, 1 or 2)")
     _line(bool(settings.resala_sms_template_id) or None, f"RESALA_SMS_TEMPLATE_ID = {settings.resala_sms_template_id!r}"
           + ("" if settings.resala_sms_template_id else "  (only needed for notification SMS; codes work without it)"))
 
@@ -70,6 +71,9 @@ def check(phone: str | None = None) -> int:
             _line(False, str(exc))
             problems += 1
         except ResalaError as exc:
+            from .resala import explain
+
+            print(f"         => {explain(exc)}")
             _line(False, f"Resala answered {exc.status} {exc.type}: {exc.message}")
             for field, messages in exc.errors.items():
                 print(f"         {field}: {'; '.join(messages)}")

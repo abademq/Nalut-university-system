@@ -235,7 +235,7 @@ function NotificationStatus() {
         <li>${h.sms_ready ? "✅" : "❌"} الرسائل النصية — ${h.sms_ready ? `المزود: ${h.sms_provider}` : "غير مفعلة: أضف SMS_PROVIDER=resala في /etc/nus/nus.env"}</li>
         <li class="small">آخر 24 ساعة — إشعارات: ${counts(h.last_24h.push, PUSH)}<br />رسائل: ${counts(h.last_24h.sms, SMS)}</li>
         ${h.last_push_error ? html`<li class="small">آخر خطأ Firebase (${fmtDate(h.last_push_error_at)}): <span class="ltr">${h.last_push_error}</span></li>` : null}
-        ${h.last_sms_error ? html`<li class="small">آخر خطأ رسائل: <span class="ltr">${JSON.stringify(h.last_sms_error)}</span></li>` : null}
+        ${h.last_sms_error ? html`<li class="small">آخر خطأ رسائل: <strong>${h.last_sms_error.summary || h.last_sms_error.message}</strong></li>` : null}
       </ul>`}<//>
     <h4>تجربة على هاتفي</h4>
     <div class="row">
@@ -259,8 +259,9 @@ function SmsCheck() {
     <div class="row"><button type="button" class="secondary small" disabled=${busy} onClick=${() => run("otp")}>رمز تحقق تجريبي</button>
       <button type="button" class="secondary small" disabled=${busy} onClick=${() => run("template")}>رسالة إشعار تجريبية</button></div>
     ${res ? html`<div class=${`alert ${res.ok ? "success" : "error"}`} style="margin-top:.75rem">
-      <strong>${res.ok ? "تم القبول" : "فشل"}</strong>${res.test_mode ? " (وضع التجربة: لا تُرسل فعلاً)" : ""}
-      <div class="small ltr" style="white-space:pre-wrap;margin-top:.4rem">${JSON.stringify(res, null, 1)}</div></div>` : null}
+      <strong>${res.ok ? "✅ " : "❌ "}${res.summary || (res.ok ? "تم القبول" : res.error_message || "فشل الإرسال")}</strong>
+      <details style="margin-top:.4rem"><summary class="small">التفاصيل التقنية</summary>
+        <div class="small ltr" style="white-space:pre-wrap;margin-top:.4rem">${JSON.stringify(res, null, 1)}</div></details></div>` : null}
   </div>`;
 }
 

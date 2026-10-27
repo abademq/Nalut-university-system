@@ -241,3 +241,45 @@ def _error_from(status: int, raw: bytes) -> ResalaError:
     message = str(payload.get("message", "")) or raw[:200].decode("utf-8", "replace").strip()
     return ResalaError(status, str(payload.get("type") or fallback.get(status, "HttpError")), message,
                        {k: v if isinstance(v, list) else [str(v)] for k, v in errors.items()})
+
+
+_EXPECTED = re.compile(r"\[\s*(\d+)\s*\]")
+
+
+def explain(exc: "ResalaError", *, sent_vars: int | None = None) -> str:
+    """One clear Arabic sentence for an administrator: what failed and what to change."""
+    code = f"كود {exc.status}" if exc.status else "لا يوجد رد"
+    errors = exc.errors or {}
+    if exc.type == NETWORK_ERROR:
+        return "تعذر الاتصال بخدمة الرسائل Resala (لا يوجد رد). تحقق من اتصال الخادم بالإنترنت."
+    if exc.type in (UNAUTHORIZED, TOKEN_EXPIRED):
+        return f"مفتاح Resala غير صحيح أو منتهي ({code}). حدّث RESALA_API_KEY في /etc/nus/nus.env."
+    if exc.type == ACCOUNT_EXPIRED:
+        return f"اشتراك حساب Resala منتهي ({code}). جدّد الاشتراك من resala.ly."
+    if exc.type == INSUFFICIENT_CREDIT:
+        return f"رصيد حساب Resala لا يكفي ({code}). اشحن الرصيد من resala.ly."
+    if exc.type == FORBIDDEN:
+        return f"حساب Resala لا يملك صلاحية هذه العملية ({code})."
+    if exc.type == NOT_FOUND:
+        return f"قالب الرسالة غير موجود في Resala ({code}). راجع RESALA_SMS_TEMPLATE_ID."
+    if exc.type == INPUT_VALIDATION:
+        for field_name, messages in errors.items():
+            text = " ".join(messages)
+            if field_name.endswith(".keys") or "الحقول" in text:
+                found = _EXPECTED.findall(text)  # "[ 0 ]" is the record, the last "[n]" what is expected
+                if found:
+                    want = int(found[-1])
+                    have = f"، والمنصة ترسل {sent_vars}" if sent_vars is not None else ""
+                    return (f"عدد المتغيرات في قالب الرسالة غير مطابق ({code}): القالب يقبل {want}{have}. "
+                            f"اضبط RESALA_TEMPLATE_VARS={want} في /etc/nus/nus.env ثم أعد تشغيل الخدمة.")
+            if "phone" in field_name:
+                return f"رقم الهاتف غير مقبول لدى Resala ({code}): {text}"
+        first = next((" ".join(v) for v in errors.values()), exc.message)
+        return f"بيانات الإرسال مرفوضة ({code}): {first}"
+    return f"خلل في الإرسال ({code}){': ' + exc.message if exc.message else ''}. راجع مشرف المنصة."
+
+
+def user_message(exc: "ResalaError") -> str:
+    """What a user (not the administrator) is told when a code could not be sent."""
+    code = f"كود {exc.status}" if exc.status else "لا يوجد اتصال"
+    return f"تعذر إرسال الرسالة الآن (خلل في خدمة الرسائل، {code}). حاول بعد قليل أو راجع مشرف المنصة."

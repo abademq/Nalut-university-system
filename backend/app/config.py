@@ -70,8 +70,10 @@ class Settings:
     sms_api_key: str | None = field(default_factory=lambda: _env("SMS_API_KEY"))
     sms_sender: str = field(default_factory=lambda: _env("SMS_SENDER", "UNIV"))
     # SMS_PROVIDER=resala: Resala (resala.ly). The key itself is read from RESALA_API_KEY by app/resala.py.
-    # Notifications go through an approved template whose $1 is the title and $2 the body.
+    # Notifications go through an approved template. RESALA_TEMPLATE_VARS is how many variables it has:
+    # 2: $1 = title, $2 = text; 1: $1 = "title: text"; 0: the template's fixed text only.
     resala_sms_template_id: str | None = field(default_factory=lambda: _env("RESALA_SMS_TEMPLATE_ID"))
+    resala_template_vars: int = field(default_factory=lambda: int(_env("RESALA_TEMPLATE_VARS", "1") or 1))
     resala_sender: str | None = field(default_factory=lambda: _env("RESALA_SENDER"))
     resala_service_name: str = field(default_factory=lambda: _env("RESALA_SERVICE_NAME", "منصة الجامعة"))
     # test mode: Resala accepts the request without sending or charging

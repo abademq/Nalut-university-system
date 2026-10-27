@@ -229,13 +229,27 @@ LAST_SMS_ERROR: dict | None = None
 
 def record_sms_error(kind: str, exc) -> None:
     global LAST_SMS_ERROR
-    LAST_SMS_ERROR = {"kind": kind, "type": getattr(exc, "type", type(exc).__name__),
+    from .resala import ResalaError, explain
+
+    summary = explain(exc, sent_vars=settings.resala_template_vars if kind == "template" else None) \
+        if isinstance(exc, ResalaError) else str(exc)
+    LAST_SMS_ERROR = {"kind": kind, "summary": summary, "type": getattr(exc, "type", type(exc).__name__),
                       "status": getattr(exc, "status", None), "message": getattr(exc, "message", str(exc))[:300],
                       "errors": getattr(exc, "errors", {}), "at": time.time()}
 
 
+def template_params(title: str, body: str) -> list[str]:
+    """The template's $1, $2… for a notification, as many as RESALA_TEMPLATE_VARS says."""
+    n = settings.resala_template_vars
+    if n <= 0:
+        return []
+    if n == 1:
+        return [f"{title}: {body}"[:300] if body else title[:300]]
+    return [title[:120], body[:300]] + [""] * (n - 2)
+
+
 class ResalaSmsProvider:
-    """Resala (resala.ly): one template request for the whole batch ($1 = title, $2 = body).
+    """Resala (resala.ly): one template request for the whole batch (variables: see template_params).
 
     Never retried: a failed request may already have delivered some messages.
     """
@@ -253,7 +267,7 @@ class ResalaSmsProvider:
         for phone, title, body in items:
             number = libyan_mobile(phone)
             if number:  # the API only delivers notifications to Libyan mobiles
-                records.append(TemplateRecord(number, [title[:120], body[:300]]))
+                records.append(TemplateRecord(number, template_params(title, body)))
                 by_number[number[-9:]] = phone
         if not records:
             return result

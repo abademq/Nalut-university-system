@@ -105,7 +105,9 @@ def _deliver(phone: str) -> tuple[str, str | None]:
 
             log.warning("Resala pin failed: %s %s", exc.type, exc.message)
             record_sms_error("otp", exc)
-            raise OtpError("تعذر إرسال رمز التحقق الآن، حاول بعد قليل") from None
+            from .resala import user_message
+
+            raise OtpError(user_message(exc)) from None
         return pin.pin, pin.id
     from .notifications import sms_provider
 

@@ -203,3 +203,34 @@ def test_password_reset_by_sms_code(client, db):
     again = client.post("/api/auth/password/reset", json={"identifier": "s.ali@nalut.edu.ly", "code": code,
                                                           "new_password": "Brand2026Again"})
     assert again.status_code == 400
+
+
+def test_template_variable_count_and_clear_errors(client, as_, monkeypatch):
+    from app import notifications
+    from app.config import settings
+
+    # the error Resala gives when the template has fewer variables than sent
+    exc = resala.ResalaError(422, "InputValidation", "خطأ في التحقق من صحة الإدخال.", {
+        "records": ["ملف البيانات أو قيمة السجلات مطلوبة"],
+        "records.0.keys": ["القيمة [ 0 ] تحتوي على عدد غير صحيح من الحقول, المتوقع [1]"]})
+    text = resala.explain(exc, sent_vars=2)
+    assert "RESALA_TEMPLATE_VARS=1" in text and "كود 422" in text and "ترسل 2" in text
+    assert "كود 422" in resala.user_message(exc) and "مشرف المنصة" in resala.user_message(exc)
+    assert "رصيد" in resala.explain(resala.ResalaError(400, "InsufficientCredit"))
+    # the variables follow RESALA_TEMPLATE_VARS
+    for n, want in ((0, []), (1, ["عنوان: نص"]), (2, ["عنوان", "نص"])):
+        monkeypatch.setattr(settings, "resala_template_vars", n)
+        assert notifications.template_params("عنوان", "نص") == want
+    # the admin check gives the sentence first
+    p = as_(PRES)
+    monkeypatch.setattr(settings, "sms_provider", "resala")
+    monkeypatch.setattr(settings, "resala_sms_template_id", "tpl")
+    monkeypatch.setenv("RESALA_API_KEY", "rsl_test")
+
+    def reject(self, *a, **k):
+        raise exc
+
+    monkeypatch.setattr(resala.ResalaClient, "send_template", reject)
+    r = client.post("/api/notifications/test-sms", headers=p, json={"kind": "template"}).json()
+    assert r["ok"] is False and "RESALA_TEMPLATE_VARS=1" in r["summary"]
+    assert client.get("/api/notifications/health", headers=p).json()["last_sms_error"]["summary"]

@@ -249,9 +249,9 @@ class TestSmsIn(BaseModel):
 
 @router.post("/test-sms")
 def test_sms(body: TestSmsIn, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    """Sends one SMS to the administrator's own phone and returns the provider's exact answer."""
+    """Sends one SMS to the administrator's own phone: a clear summary first, the provider's answer after."""
     from ..config import settings
-    from ..resala import ResalaClient, ResalaError, TemplateRecord, libyan_mobile
+    from ..resala import ResalaClient, ResalaError, TemplateRecord, explain, libyan_mobile
     from ..security import limiter
 
     if user.role not in (Role.UNIVERSITY_ADMIN, Role.PLATFORM_ADMIN):
@@ -260,29 +260,38 @@ def test_sms(body: TestSmsIn, user: User = Depends(get_current_user), db: Sessio
         raise HTTPException(status_code=400, detail="أضف رقم هاتف لحسابك أولاً")
     if not limiter.hit(f"test-sms:{user.id}", 5, 600):
         raise HTTPException(status_code=429, detail="محاولات كثيرة، حاول بعد دقائق")
+    number = libyan_mobile(user.phone)
     out = {"provider": settings.sms_provider, "test_mode": settings.resala_test, "phone": user.phone,
-           "normalized": libyan_mobile(user.phone)}
+           "normalized": number}
     if settings.sms_provider != "resala":
         sent = notifications.sms_provider().send(user.phone, "تجربة: رسالة من منصة الجامعة")
-        return {**out, "ok": bool(sent), "note": "مزود الرسائل ليس Resala (SMS_PROVIDER)"}
+        return {**out, "ok": bool(sent), "summary": "أُرسلت عبر المزود المضبوط" if sent else
+                "مزود الرسائل ليس Resala: أضف SMS_PROVIDER=resala في /etc/nus/nus.env"}
+    if not number:
+        return {**out, "ok": False, "summary": "رقم هاتف حسابك ليس رقماً ليبياً صحيحاً (091/092/093/094 ثم 7 أرقام)."}
     try:
         client = ResalaClient.from_env()
         if body.kind == "otp":
-            pin = client.send_pin(out["normalized"] or user.phone, service_name=settings.resala_service_name,
+            pin = client.send_pin(number, service_name=settings.resala_service_name,
                                   test=settings.resala_test or None, sender=settings.resala_sender)
-            return {**out, "ok": True, "sender_name": pin.sender_name, "content": pin.content}
+            note = " (وضع التجربة: لا يُرسل فعلاً)" if settings.resala_test else ""
+            return {**out, "ok": True, "summary": "قبلت Resala رمز التحقق" + note,
+                    "sender_name": pin.sender_name, "content": pin.content}
         if not settings.resala_sms_template_id:
-            return {**out, "ok": False, "error_type": "Config",
-                    "error_message": "RESALA_SMS_TEMPLATE_ID غير مضبوط في /etc/nus/nus.env"}
-        res = client.send_template(settings.resala_sms_template_id,
-                                   [TemplateRecord(out["normalized"] or user.phone, ["تجربة", "رسالة من منصة الجامعة"])],
+            return {**out, "ok": False, "summary": "قالب رسائل الإشعارات غير مضبوط: أضف RESALA_SMS_TEMPLATE_ID "
+                                                   "في /etc/nus/nus.env (رموز التحقق لا تحتاجه)."}
+        params = notifications.template_params("تجربة", "رسالة من منصة الجامعة")
+        res = client.send_template(settings.resala_sms_template_id, [TemplateRecord(number, params)],
                                    test=settings.resala_test or None, sender=settings.resala_sender)
-        return {**out, "ok": res.succeeded > 0 or (settings.resala_test and not res.invalid_numbers),
+        ok = res.succeeded > 0 or (settings.resala_test and not res.invalid_numbers)
+        return {**out, "ok": ok, "summary": "قبلت Resala رسالة الإشعار" if ok else "رفضت Resala الرقم أو فشل الإرسال إليه",
                 "succeeded": res.succeeded, "failed_numbers": res.failed_numbers,
                 "invalid_numbers": res.invalid_numbers, "sender_names": res.sender_names, "is_prod": res.is_prod}
     except ValueError as exc:  # missing key
-        return {**out, "ok": False, "error_type": "Config", "error_message": str(exc)}
+        return {**out, "ok": False, "error_type": "Config", "summary": "مفتاح Resala غير موجود: أضف RESALA_API_KEY في /etc/nus/nus.env.",
+                "error_message": str(exc)}
     except ResalaError as exc:
         notifications.record_sms_error(body.kind, exc)
-        return {**out, "ok": False, "error_type": exc.type, "error_status": exc.status,
-                "error_message": exc.message, "errors": exc.errors}
+        sent_vars = settings.resala_template_vars if body.kind == "template" else None
+        return {**out, "ok": False, "summary": explain(exc, sent_vars=sent_vars), "error_type": exc.type,
+                "error_status": exc.status, "error_message": exc.message, "errors": exc.errors}
