@@ -45,8 +45,29 @@ export function ThreadView({ id }) {
   const [file, setFile] = useState(null);
   const [pick, setPick] = useState(0);  // remounts the file input to clear it after sending
   const end = useRef(null);
-  useEffect(() => { end.current?.scrollIntoView({ block: "end" }); window.dispatchEvent(new Event("nus:notifications")); }, [state.data]);
-  useEffect(() => { const t = setInterval(state.reload, 15000); return () => clearInterval(t); }, [id]);
+  const [fresh, setFresh] = useState([]); // messages that arrived after the page loaded
+  useEffect(() => setFresh([]), [state.data]);
+  const all = state.data ? [...state.data.messages, ...fresh] : [];
+  const lastId = all.length ? all[all.length - 1].id : 0;
+  const last = useRef(0);
+  last.current = lastId;
+  useEffect(() => { end.current?.scrollIntoView({ block: "end" }); window.dispatchEvent(new Event("nus:notifications")); }, [lastId]);
+  // live: every few seconds ask only for what is newer (small on weak networks), paused while the
+  // page is hidden
+  const poll = async () => {
+    if (document.hidden || !last.current) return;
+    try {
+      const r = await api.get(`/api/conversations/${id}/messages?after=${last.current}`);
+      const got = r.messages.filter((m) => m.id > last.current);
+      if (got.length) setFresh((f) => [...f, ...got.filter((m) => !f.some((x) => x.id === m.id))]);
+    } catch { /* a missed poll is retried on the next tick */ }
+  };
+  useEffect(() => {
+    const t = setInterval(poll, 4000);
+    const back = () => { if (!document.hidden) poll(); };
+    document.addEventListener("visibilitychange", back);
+    return () => { clearInterval(t); document.removeEventListener("visibilitychange", back); };
+  }, [id]);
   const [send, busy, error] = useSubmit(async () => {
     if (!body.trim() && !file) throw new Error("اكتب رسالة أو أرفق ملفاً");
     const fd = new FormData();
@@ -56,7 +77,7 @@ export function ThreadView({ id }) {
     setBody("");
     setFile(null);
     setPick(pick + 1);
-    state.reload();
+    await poll();
   });
   const report = async (m) => {
     const reason = prompt("سبب الإبلاغ عن هذه الرسالة:");
@@ -65,7 +86,7 @@ export function ThreadView({ id }) {
   };
   return html`<${Async} state=${state}>${(c) => html`<div>
     <div class="row"><a href="#/messages">← الرسائل</a></div><h1>${c.subject}</h1>
-    <div class="card"><div class="thread">${c.messages.map((m) => html`<div class=${`bubble ${m.mine ? "mine" : ""}`}>
+    <div class="card"><div class="thread">${all.map((m) => html`<div class=${`bubble ${m.mine ? "mine" : ""}`}>
       <div class="meta">${m.sender} · ${fmtDate(m.created_at)}</div>
       ${m.body ? html`<div style="white-space:pre-wrap">${m.body}</div>` : null}
       ${m.file ? html`<button class="secondary small" style="margin-top:.35rem" title="تنزيل الملف"

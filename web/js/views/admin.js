@@ -551,6 +551,15 @@ function SettingsForm({ data, acting, onSaved }) {
     <button disabled=${busy}>حفظ الإعدادات</button></form>`;
 }
 
+// who did it: the name, then their role in its colour; the platform administrator once, not twice
+function Actor({ r }) {
+  if (!r.actor) return html`<span class="muted">النظام</span>`;
+  const role = r.by_platform_admin ? "platform_admin" : r.actor_role;
+  const roleName = ROLE[role] || "";
+  return html`<div>${r.actor !== roleName ? html`<div>${r.actor}</div>` : null}
+    ${roleName ? html`<span class=${`cat role-${role}`}>${roleName}</span>` : null}</div>`;
+}
+
 export function AuditView() {
   const [category, setCategory] = useState("");
   const meta = useAsync(() => api.get("/api/audit/meta"), []);
@@ -568,10 +577,10 @@ export function AuditView() {
       ${Object.entries(meta.data?.categories || {}).map(([k, l]) => html`<option value=${k}>${l}</option>`)}</select></div>
     <${Async} state=${state}>${(rows) => rows.length ? html`<div class="card"><div class="table-wrap"><table>
       <thead><tr><th>الوقت</th><th>العملية</th><th>من نفّذها</th><th>على</th><th>التفاصيل</th></tr></thead>
-      <tbody>${rows.map((r) => html`<tr>
+      <tbody>${rows.map((r) => html`<tr class=${`audit-row cat-${r.category}`}>
         <td class="small" style="white-space:nowrap">${fmtDate(r.created_at)}</td>
-        <td><strong>${r.label}</strong>${r.category_label ? html`<div class="small muted">${r.category_label}</div>` : null}</td>
-        <td class="small">${r.actor || "النظام"}${r.by_platform_admin ? html` <${Chip} kind="info">مشرف المنصة<//>` : null}</td>
+        <td><strong>${r.label}</strong>${r.category_label ? html`<div style="margin-top:.25rem"><span class=${`cat cat-${r.category}`}>${r.category_label}</span></div>` : null}</td>
+        <td class="small"><${Actor} r=${r} /></td>
         <td class="small">${r.target || "—"}</td>
         <td class="small" style="max-width:340px">${r.summary || html`<span class="muted">—</span>`}
           <div><button class="ghost small" onClick=${() => setOpen(open === r.id ? null : r.id)}>${open === r.id ? "إخفاء" : "المزيد"}</button></div>

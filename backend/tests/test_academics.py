@@ -324,3 +324,16 @@ def test_student_answers_the_office_that_wrote_to_them(client, as_):
     r = client.post(f"/api/conversations/{conv}/messages", headers=as_("s.ali@nalut.edu.ly"),
                     data={"body": "حاضر، سأمر غداً"})
     assert r.status_code == 200, r.text
+
+
+def test_thread_polling_returns_only_newer_messages(client, as_):
+    s = as_("s.ali@nalut.edu.ly")
+    teacher_id = client.get("/api/me", headers=as_(TEACHER)).json()["id"]
+    conv = client.post("/api/conversations", headers=s, json={"recipient_ids": [teacher_id], "subject": "مباشر",
+                                                              "body": "الأولى"}).json()["id"]
+    first = client.get(f"/api/conversations/{conv}/messages", headers=as_(TEACHER)).json()["messages"]
+    last = first[-1]["id"]
+    assert client.get(f"/api/conversations/{conv}/messages?after={last}", headers=as_(TEACHER)).json()["messages"] == []
+    client.post(f"/api/conversations/{conv}/messages", headers=s, data={"body": "الثانية"})
+    new = client.get(f"/api/conversations/{conv}/messages?after={last}", headers=as_(TEACHER)).json()["messages"]
+    assert [m["body"] for m in new] == ["الثانية"]

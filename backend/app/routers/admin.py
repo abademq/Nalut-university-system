@@ -836,7 +836,7 @@ def audit_log(action: str | None = None, category: str | None = None, limit: int
         names = [a for a, (_, c) in L.ACTIONS.items() if c == category]
         stmt = stmt.where(or_(AuditLog.action.in_(names or ["-"]), AuditLog.action.like(f"{category}.%")))
     rows = db.scalars(stmt.order_by(AuditLog.id.desc()).limit(limit).offset(offset)).all()
-    names = {u.id: u.full_name for u in db.scalars(select(User).where(User.id.in_({r.actor_id for r in rows if r.actor_id})))}
+    actors = {u.id: u for u in db.scalars(select(User).where(User.id.in_({r.actor_id for r in rows if r.actor_id})))}
     targets = _target_names(db, rows)
     out = []
     for r in rows:
@@ -844,7 +844,8 @@ def audit_log(action: str | None = None, category: str | None = None, limit: int
         target_name = targets.get((r.target_type, str(r.target_id)))
         out.append({
             "id": r.id, "action": r.action, "label": L.label(r.action), "category": cat,
-            "category_label": L.CATEGORIES.get(cat, ""), "actor": names.get(r.actor_id), "actor_id": r.actor_id,
+            "category_label": L.CATEGORIES.get(cat, ""), "actor": actors[r.actor_id].full_name if r.actor_id in actors else None,
+            "actor_role": actors[r.actor_id].role if r.actor_id in actors else None, "actor_id": r.actor_id,
             "target_type": r.target_type, "target_id": r.target_id,
             "target": (f"{L.TARGETS.get(r.target_type, r.target_type)}: {target_name}" if target_name
                        else (L.TARGETS.get(r.target_type, "") + (f" رقم {r.target_id}" if r.target_id else "")

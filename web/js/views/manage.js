@@ -1,6 +1,6 @@
 import {
   html, useState, useEffect, useAsync, Async, Empty, Chip, ErrorBox, useForm, useSubmit, toast, toastError, Modal,
-  fmtDate, toLocalInput, navigate, Icon } from "../ui.js";
+  fmtDate, toLocalInput, navigate, Icon, NationalId } from "../ui.js";
 import { api, blobUrl } from "../api.js";
 
 // ------------------------------------------------------------------ pinned announcements
@@ -192,7 +192,9 @@ function RecordForm({ id, record, statuses, onSaved }) {
         : type === "status" ? html`<select ...${bind(k)}>${Object.entries(statuses).map(([s, l]) => html`<option value=${s}>${l}</option>`)}</select>`
           : html`<input type=${type} step=${type === "number" ? "0.01" : null} ...${bind(k)} />`}</div>`)}</div>
     <div class="field"><label>ملاحظات</label><textarea ...${bind("notes")}></textarea></div>
-    <p class="small muted">الرقم الوطني يُحفظ مشفراً. ${record.updated_at ? `آخر تحديث ${fmtDate(record.updated_at)} بواسطة ${record.updated_by || ""}` : ""}</p>
+    ${record.national_id ? html`<p class="small">الرقم الوطني المحفوظ: <${NationalId} value=${record.national_id} url=${`/api/archive/students/${id}/national-id`} />
+      — اتركه كما هو، أو اكتب رقماً جديداً لتغييره.</p>` : null}
+    <p class="small muted">الرقم الوطني يُحفظ مشفراً ويظهر مخفياً. ${record.updated_at ? `آخر تحديث ${fmtDate(record.updated_at)} بواسطة ${record.updated_by || ""}` : ""}</p>
     <button disabled=${busy}>حفظ البيانات</button></form>`;
 }
 

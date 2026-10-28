@@ -207,3 +207,15 @@ export function applyTheme() {
   else document.documentElement.dataset.theme = t;
 }
 applyTheme();
+
+// A national id shown masked (last four digits); "إظهار" asks the server for the full number,
+// which records the request in the audit log.
+export function NationalId({ value, url }) {
+  const [full, setFull] = useState(null);
+  if (!value) return html`<span class="muted">—</span>`;
+  const reveal = () => api.get(url).then((r) => setFull(r.national_id)).catch(toastError);
+  return html`<span class="row" style="gap:.5rem;display:inline-flex;align-items:center">
+    <span class="mono ltr">${full || value}</span>
+    ${full ? html`<button type="button" class="ghost small" onClick=${() => setFull(null)}>إخفاء</button>`
+      : html`<button type="button" class="ghost small" onClick=${reveal} title="يُسجَّل الإظهار في سجل التدقيق">إظهار</button>`}</span>`;
+}

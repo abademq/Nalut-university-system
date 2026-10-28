@@ -11,6 +11,8 @@ on:
 jobs:
   android:
     runs-on: ubuntu-latest
+    outputs:
+      signed: ${{ steps.key.outputs.signed }}
     defaults:
       run:
         working-directory: mobile
@@ -23,8 +25,32 @@ jobs:
       - run: flutter pub get
       - run: flutter analyze
       - run: flutter test
+      # The release key lives in the secrets ANDROID_KEYSTORE_BASE64 and ANDROID_KEYSTORE_PASSWORD. Every
+      # build is signed with it, so a new version installs over the old one; the build number grows each run.
+      - name: Release key
+        id: key
+        env:
+          KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE" ] || [ -z "$PASSWORD" ]; then
+            echo "::warning::ANDROID_KEYSTORE_* secrets missing: signed with a throw-away key, phones cannot update over it"
+            exit 0
+          fi
+          printf '%s' "$KEYSTORE" | tr -d '\r\n ' | base64 -d > "$RUNNER_TEMP/release.jks"
+          echo "NUS_KEYSTORE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+          echo "::add-mask::$PASSWORD"
+          echo "NUS_KEYSTORE_PASSWORD=$PASSWORD" >> "$GITHUB_ENV"
+          echo "signed=true" >> "$GITHUB_OUTPUT"
       - name: Build APK
-        run: flutter build apk --release --dart-define=SERVER_URL=${{ github.event.inputs.server_url || 'https://nalut.abade.ly' }}
+        run: >-
+          flutter build apk --release --build-number=$((1000 + ${{ github.run_number }}))
+          --dart-define=SERVER_URL=${{ github.event.inputs.server_url || 'https://nalut.abade.ly' }}
+      - name: Signing check
+        continue-on-error: true
+        run: |
+          APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
+          "$APKSIGNER" verify --print-certs build/app/outputs/flutter-apk/app-release.apk | grep -m2 -E "DN|SHA-256"
       - uses: actions/upload-artifact@v4
         with:
           name: nalut-university-apk
@@ -35,7 +61,10 @@ jobs:
   # through the same restricted deploy key (deploy/nus-update checks it is a real APK).
   publish:
     needs: android
-    if: github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    # only builds signed with the release key are published: any other would not install over the app
+    if: >-
+      github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+      && needs.android.outputs.signed == 'true'
     runs-on: ubuntu-latest
     environment: production
     steps:

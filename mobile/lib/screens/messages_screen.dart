@@ -154,7 +154,7 @@ class ThreadScreen extends StatefulWidget {
   State<ThreadScreen> createState() => _ThreadScreenState();
 }
 
-class _ThreadScreenState extends State<ThreadScreen> {
+class _ThreadScreenState extends State<ThreadScreen> with WidgetsBindingObserver {
   final _body = TextEditingController();
   Map<String, dynamic>? _data;
   Timer? _timer;
@@ -164,12 +164,21 @@ class _ThreadScreenState extends State<ThreadScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _load();
-    _timer = Timer.periodic(const Duration(seconds: 15), (_) => _load());
+    // live: every few seconds only the messages newer than the last one shown (small on weak networks)
+    _timer = Timer.periodic(const Duration(seconds: 4), (_) => _poll());
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _active = state == AppLifecycleState.resumed;
+    if (_active) _poll();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _timer?.cancel();
     _body.dispose();
     super.dispose();
@@ -181,6 +190,28 @@ class _ThreadScreenState extends State<ThreadScreen> {
       if (mounted) setState(() => _data = d);
     } catch (e) {
       if (mounted && _data == null) showMessage(context, e, error: true);
+    }
+  }
+
+  bool _active = true;
+  bool _polling = false;
+
+  Future<void> _poll() async {
+    final msgs = (_data?['messages'] as List?) ?? const [];
+    if (!_active || _polling || msgs.isEmpty) return;
+    _polling = true;
+    try {
+      final lastId = (msgs.last as Map)['id'] as int;
+      final d = await context.read<Session>().api.get('/api/conversations/${widget.id}/messages?after=$lastId')
+          as Map<String, dynamic>;
+      final got = [for (final m in (d['messages'] as List)) if ((m as Map)['id'] as int > lastId) m];
+      if (got.isNotEmpty && mounted) {
+        setState(() => _data = {..._data!, 'messages': [...msgs, ...got]});
+      }
+    } catch (_) {
+      // a missed poll is retried on the next tick
+    } finally {
+      _polling = false;
     }
   }
 
@@ -206,7 +237,7 @@ class _ThreadScreenState extends State<ThreadScreen> {
           fields: {'body': _body.text.trim()}, files: [?_file]);
       _body.clear();
       setState(() => _file = null);
-      await _load();
+      await _poll();
     } catch (e) {
       if (mounted) showMessage(context, e, error: true);
     } finally {

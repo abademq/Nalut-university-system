@@ -111,7 +111,13 @@ def test_archive_record_and_documents(client, as_, db):
     r = client.put(f"/api/archive/students/{ali}/record", headers=d, json={
         "national_id": "119900012345", "birth_date": "2004-05-01", "guardian_name": "محمد الطاهر",
         "high_school_score": 88.5, "status": "active"})
-    assert r.status_code == 200 and r.json()["national_id"] == "119900012345"
+    assert r.status_code == 200 and r.json()["national_id"] == "••••••••2345"  # shown masked
+    full = client.get(f"/api/archive/students/{ali}/national-id", headers=d).json()
+    assert full["national_id"] == "119900012345"
+    assert db.query(AuditLog).filter_by(action="archive.national_id_viewed", target_id=str(ali)).count() == 1
+    # sending the masked copy back leaves the number as it was
+    client.put(f"/api/archive/students/{ali}/record", headers=d, json={"national_id": "••••••••2345"})
+    assert client.get(f"/api/archive/students/{ali}/national-id", headers=d).json()["national_id"] == "119900012345"
     rec = db.query(StudentRecord).filter_by(student_id=ali).one()
     assert "119900012345" not in (rec.national_id_enc or "")  # encrypted at rest
     up = client.post(f"/api/archive/students/{ali}/documents", headers=d,

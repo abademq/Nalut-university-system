@@ -1,6 +1,6 @@
 import {
   html, useState, useEffect, useAsync, Async, Empty, Chip, ErrorBox, useForm, useSubmit, toast, toastError, Modal,
-  fmtDate, navigate, ROLE,
+  fmtDate, navigate, ROLE, NationalId,
 } from "../ui.js";
 import { api, blobUrl } from "../api.js";
 
@@ -72,7 +72,7 @@ export function PersonnelDetail({ id }) {
         · <span class="ltr">${p.email || ""} ${p.phone || ""}</span>${p.is_active ? "" : " · الحساب موقوف"}</p>
       <div class="grid cols-2">
         ${d.can_manage && m ? html`<${RecordForm} id=${p.id} record=${d.record} fields=${fields} choices=${choices} onSaved=${state.reload} />`
-          : html`<${RecordView} record=${d.record} fields=${fields} choices=${choices} />`}
+          : html`<${RecordView} id=${p.id} record=${d.record} fields=${fields} choices=${choices} />`}
         <div>
           ${d.section === "faculty" ? html`<div class="card"><h3>المقررات (${d.teaching.length})</h3>${d.teaching.length
             ? html`<ul class="list">${d.teaching.map((c) => html`<li class="row between"><span><a href=${`#/courses/${c.id}`}>${c.code} — ${c.title}</a>
@@ -104,9 +104,9 @@ const show = (f, value, choices) => {
   return f.type === "date" ? fmtDate(value, false) : String(value);
 };
 
-function RecordView({ record, fields, choices }) {
+function RecordView({ id, record, fields, choices }) {
   return html`<div class="card"><h3>البيانات</h3><dl class="form-grid">
-    <div class="field"><label>الرقم الوطني</label><div>${record.national_id || html`<span class="muted">—</span>`}</div></div>
+    <div class="field"><label>الرقم الوطني</label><div><${NationalId} value=${record.national_id} url=${`/api/personnel/${id}/national-id`} /></div></div>
     ${fields.map((f) => html`<div class="field"><label>${f.label}</label><div>${show(f, record[f.key], choices)}</div></div>`)}</dl>
     <p class="small muted">${record.updated_at ? `آخر تحديث ${fmtDate(record.updated_at)}${record.updated_by ? ` بواسطة ${record.updated_by}` : ""}` : "لم يُعبأ الملف بعد"}</p></div>`;
 }
@@ -127,7 +127,8 @@ function RecordForm({ id, record, fields, choices, onSaved }) {
     : f.type === "textarea" ? html`<textarea ...${bind(f.key)}></textarea>`
       : html`<input type=${f.type} step=${f.type === "number" ? "0.5" : null} ...${bind(f.key)} />`;
   return html`<form class="card" onSubmit=${submit}><h3>البيانات</h3><${ErrorBox} error=${error} />
-    <div class="form-grid"><div class="field"><label>الرقم الوطني (يُحفظ مشفراً)</label><input ...${bind("national_id")} /></div>
+    <div class="form-grid"><div class="field"><label>الرقم الوطني (يُحفظ مشفراً، ويظهر مخفياً)</label><input ...${bind("national_id")} placeholder="اكتب الرقم لتغييره" />
+      ${record.national_id ? html`<div class="small"><${NationalId} value=${record.national_id} url=${`/api/personnel/${id}/national-id`} /></div>` : null}</div>
       ${fields.filter((f) => f.type !== "textarea").map((f) => html`<div class="field"><label>${f.label}</label>${input(f)}</div>`)}</div>
     ${fields.filter((f) => f.type === "textarea").map((f) => html`<div class="field"><label>${f.label}</label>${input(f)}</div>`)}
     <p class="small muted">${record.updated_at ? `آخر تحديث ${fmtDate(record.updated_at)}${record.updated_by ? ` بواسطة ${record.updated_by}` : ""}` : ""}</p>

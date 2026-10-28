@@ -32,7 +32,7 @@ def test_faculty_and_staff_files(client, as_, db):
                       files={"upload": ("cv.pdf", PDF, "application/pdf")})
     assert doc.status_code == 200, doc.text
     f = client.get(f"/api/personnel/{teacher}", headers=p).json()
-    assert f["record"]["national_id"] == "119900112233" and f["record"]["academic_rank"] == "assistant_professor"
+    assert f["record"]["national_id"] == "••••••••2233" and f["record"]["academic_rank"] == "assistant_professor"
     assert f["documents"][0]["type_label"] == "السيرة الذاتية" and f["teaching"]
     # the faculty administration may read (default) but not edit; staff see nothing by default
     assert client.get(f"/api/personnel/{teacher}", headers=dean).status_code == 200

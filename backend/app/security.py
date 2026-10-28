@@ -153,6 +153,13 @@ def encrypt_str(value: str) -> str:
     return encrypt_bytes(value.encode()).decode()
 
 
+def mask_id(value: str | None) -> str | None:
+    """A national id as lists and files show it: only the last four digits."""
+    if not value:
+        return None
+    return "•" * max(len(value) - 4, 2) + value[-4:]
+
+
 def decrypt_str(value: str) -> str | None:
     try:
         return decrypt_bytes(value.encode()).decode()

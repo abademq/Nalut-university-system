@@ -152,9 +152,15 @@ def start_conversation(body: ConversationIn, user: User = Depends(get_current_us
 
 
 @router.get("/conversations/{cid}/messages")
-def get_messages(cid: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def get_messages(cid: int, after: int = 0, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """The conversation; with ``after`` only the messages newer than that id (cheap live polling)."""
     conv = _participant(db, user, cid)
-    msgs = db.scalars(select(Message).where(Message.conversation_id == conv.id).order_by(Message.id)).all()
+    stmt = select(Message).where(Message.conversation_id == conv.id)
+    if after:
+        stmt = stmt.where(Message.id > after)
+    msgs = db.scalars(stmt.order_by(Message.id)).all()
+    if after and not msgs:
+        return {"id": conv.id, "subject": conv.subject, "messages": []}
     names = {u.id: u.full_name for u in db.scalars(select(User).where(User.id.in_({m.sender_id for m in msgs} or {-1})))}
     part = db.scalar(select(ConversationParticipant).where(ConversationParticipant.conversation_id == conv.id,
                                                           ConversationParticipant.user_id == user.id))

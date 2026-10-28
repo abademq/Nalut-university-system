@@ -26,7 +26,7 @@ from .. import audit, files, permissions
 from ..db import get_db, utcnow
 from ..deps import client_ip, forbidden, get_current_user, not_found, tenant_settings
 from ..models import Department, Role, StoredFile, StudentDocument, StudentRecord, User
-from ..security import decrypt_str, encrypt_str
+from ..security import decrypt_str, encrypt_str, mask_id
 
 router = APIRouter(prefix="/api/archive", tags=["archive"])
 
@@ -72,7 +72,8 @@ def _record_out(r: StudentRecord | None) -> dict:
     if r is None:
         return {f: None for f in RECORD_FIELDS} | {"national_id": None, "status": "active", "updated_at": None}
     out = {f: getattr(r, f) for f in RECORD_FIELDS}
-    out["national_id"] = decrypt_str(r.national_id_enc) if r.national_id_enc else None
+    # shown masked: the full number is asked for separately, and each such request is audited
+    out["national_id"] = mask_id(decrypt_str(r.national_id_enc)) if r.national_id_enc else None
     out["updated_at"] = r.updated_at
     return out
 
@@ -158,6 +159,16 @@ class RecordIn(BaseModel):
     notes: str | None = Field(default=None, max_length=5000)
 
 
+@router.get("/students/{sid}/national-id")
+def reveal_national_id(sid: int, request: Request, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    st = _student(db, user, sid)
+    rec = db.scalar(select(StudentRecord).where(StudentRecord.student_id == st.id))
+    audit.record(db, "archive.national_id_viewed", actor=user, target_type="student", target_id=st.id,
+                 ip=client_ip(request))
+    db.commit()
+    return {"national_id": decrypt_str(rec.national_id_enc) if rec and rec.national_id_enc else None}
+
+
 @router.put("/students/{sid}/record")
 def save_record(sid: int, body: RecordIn, request: Request, user: User = Depends(get_current_user),
                 db: Session = Depends(get_db)):
@@ -171,7 +182,7 @@ def save_record(sid: int, body: RecordIn, request: Request, user: User = Depends
     if "national_id" in data:
         nid = (data.pop("national_id") or "").strip()
         old = decrypt_str(rec.national_id_enc) if rec.national_id_enc else ""
-        if nid != old:
+        if nid != old and "•" not in nid:  # a masked copy sent back means unchanged
             rec.national_id_enc = encrypt_str(nid) if nid else None
             changed.append("national_id")
     for k, v in data.items():

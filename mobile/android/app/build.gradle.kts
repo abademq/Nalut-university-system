@@ -29,11 +29,23 @@ android {
         versionName = flutter.versionName
     }
 
+    // One fixed release key (from the CI secrets, see .github/workflows/mobile.yml): Android accepts an
+    // update only when it is signed like the installed app. Without it, local builds use the debug key.
+    val releaseKeystore = System.getenv("NUS_KEYSTORE")?.let { file(it) }?.takeIf { it.exists() }
+    signingConfigs {
+        if (releaseKeystore != null) {
+            create("release") {
+                storeFile = releaseKeystore
+                storePassword = System.getenv("NUS_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("NUS_KEY_ALIAS") ?: "nalut"
+                keyPassword = System.getenv("NUS_KEY_PASSWORD") ?: System.getenv("NUS_KEYSTORE_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName(if (releaseKeystore != null) "release" else "debug")
         }
     }
 }

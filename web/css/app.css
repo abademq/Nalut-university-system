@@ -359,3 +359,15 @@ button.ghost .icon, .btn .icon { opacity: .9; }
 .dl-card { text-align: center; }
 .dl-steps { text-align: start; }
 .dl-hash { word-break: break-all; }
+
+/* audit log: one colour per kind of operation and per role (mid tones, readable in both themes) */
+.cat { --c: #7a7a7a; display: inline-block; padding: .1rem .55rem; border-radius: 999px; font-size: .78rem;
+  font-weight: 600; color: var(--c); background: color-mix(in srgb, var(--c) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--c) 35%, transparent); white-space: nowrap; }
+tr.audit-row > td:first-child { box-shadow: inset -4px 0 0 var(--c, transparent); }
+.cat-auth { --c: #d64545; } .cat-user { --c: #2f7fd1; } .cat-structure { --c: #8a5cd0; }
+.cat-settings { --c: #c08a14; } .cat-course { --c: #1f9d8a; } .cat-grade { --c: #d0661f; }
+.cat-results { --c: #2e9e4f; } .cat-attendance { --c: #2b8fb3; } .cat-archive { --c: #9a7550; }
+.cat-personnel { --c: #b5487f; } .cat-communication { --c: #5b6bd6; } .cat-requests { --c: #6f8a2a; }
+.role-platform_admin { --c: #c08a14; } .role-university_admin { --c: #8a5cd0; } .role-faculty_admin { --c: #2f7fd1; }
+.role-staff { --c: #1f9d8a; } .role-teacher { --c: #d0661f; } .role-assistant { --c: #b5487f; } .role-student { --c: #2e9e4f; }

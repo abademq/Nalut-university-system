@@ -69,11 +69,13 @@ ACTIONS: dict[str, tuple[str, str]] = {
     "attendance.selfie_viewed": ("الاطلاع على صورة تحقق", "attendance"),
     # files and records
     "archive.viewed": ("الاطلاع على ملف طالب", "archive"),
+    "archive.national_id_viewed": ("إظهار الرقم الوطني لطالب", "archive"),
     "archive.record_updated": ("تعديل بيانات ملف طالب", "archive"),
     "archive.document_added": ("إضافة مستند لملف طالب", "archive"),
     "archive.document_downloaded": ("تنزيل مستند من ملف طالب", "archive"),
     "archive.document_deleted": ("حذف مستند من ملف طالب", "archive"),
     "personnel.viewed": ("الاطلاع على ملف وظيفي", "personnel"),
+    "personnel.national_id_viewed": ("إظهار الرقم الوطني في ملف وظيفي", "personnel"),
     "personnel.record_updated": ("تعديل ملف وظيفي", "personnel"),
     "personnel.document_added": ("إضافة مستند لملف وظيفي", "personnel"),
     "personnel.document_downloaded": ("تنزيل مستند من ملف وظيفي", "personnel"),
@@ -155,6 +157,7 @@ FIELD_NAMES = {
     "hire_date": "تاريخ التعيين", "birth_date": "تاريخ الميلاد", "address": "العنوان",
     "branding": "الهوية", "security": "الأمان", "notifications": "الإشعارات", "attendance": "الحضور",
     "grading": "التقييم", "permissions": "الصلاحيات", "launch": "شاشة البداية", "archive": "الأرشيف",
+    "messaging": "الرسائل", "uploads": "رفع الملفات", "languages": "اللغات", "default_language": "اللغة الافتراضية",
 }
 
 

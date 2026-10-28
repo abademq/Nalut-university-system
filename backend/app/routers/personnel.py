@@ -39,7 +39,7 @@ from ..models import (
     Term,
     User,
 )
-from ..security import decrypt_str, encrypt_str
+from ..security import decrypt_str, encrypt_str, mask_id
 
 router = APIRouter(prefix="/api/personnel", tags=["personnel"])
 
@@ -120,7 +120,8 @@ def _person(db: Session, user: User, uid: int, *, manage: bool = False) -> tuple
 def _record_out(rec: PersonnelRecord | None, section: str) -> dict:
     data = dict(rec.data or {}) if rec else {}
     out = {k: data.get(k) for k, _, _ in fields(section)}
-    out["national_id"] = decrypt_str(rec.national_id_enc) if rec and rec.national_id_enc else None
+    # shown masked: the full number is asked for separately, and each such request is audited
+    out["national_id"] = mask_id(decrypt_str(rec.national_id_enc)) if rec and rec.national_id_enc else None
     out["status"] = out.get("status") or "active"
     out["updated_at"] = rec.updated_at if rec else None
     return out
@@ -225,6 +226,19 @@ def get_file(uid: int, request: Request, user: User = Depends(get_current_user),
     return _file(db, user, person, section)
 
 
+@router.get("/{uid}/national-id")
+def reveal_national_id(uid: int, request: Request, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if uid == user.id and section_of(user):
+        person = user  # one's own number
+    else:
+        person, _ = _person(db, user, uid)
+    rec = db.scalar(select(PersonnelRecord).where(PersonnelRecord.user_id == person.id))
+    audit.record(db, "personnel.national_id_viewed", actor=user, target_type="user", target_id=person.id,
+                 ip=client_ip(request))
+    db.commit()
+    return {"national_id": decrypt_str(rec.national_id_enc) if rec and rec.national_id_enc else None}
+
+
 class RecordIn(BaseModel):
     national_id: str | None = Field(default=None, max_length=30)
     data: dict = Field(default_factory=dict)
@@ -275,7 +289,7 @@ def save_record(uid: int, body: RecordIn, request: Request, user: User = Depends
     old = dict(rec.data or {})
     changed = sorted(k for k, v in data.items() if old.get(k) != v)
     rec.data = {**old, **data}
-    if "national_id" in body.model_fields_set:
+    if "national_id" in body.model_fields_set and "•" not in (body.national_id or ""):  # a masked copy: unchanged
         nid = (body.national_id or "").strip()
         if nid != (decrypt_str(rec.national_id_enc) if rec.national_id_enc else ""):
             rec.national_id_enc = encrypt_str(nid) if nid else None
