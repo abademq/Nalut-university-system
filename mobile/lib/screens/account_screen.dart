@@ -323,12 +323,22 @@ class _MfaScreenState extends State<MfaScreen> {
 
   Future<void> _disable() async {
     final s = context.read<Session>();
-    final sms = s.user?['mfa_method'] == 'sms';
     final password = TextEditingController();
     final code = TextEditingController();
+    var sms = s.user?['mfa_method'] == 'sms';
+    try {
+      // the method on now, from the server (it may have been set up a moment ago on this screen)
+      final o = await s.api.get('/api/auth/mfa/options') as Map<String, dynamic>;
+      sms = o['method'] == 'sms';
+    } catch (_) {}
     if (sms) {
       try {
-        await s.api.post('/api/auth/mfa/sms/start');
+        final r = await s.api.post('/api/auth/mfa/sms/start') as Map<String, dynamic>;
+        if (mounted) {
+          showMessage(context, r['sent'] == true
+              ? 'أُرسل الرمز إلى ${r['phone_hint'] ?? 'هاتفك'}'
+              : 'أُرسل رمز قبل قليل؛ استعمله أو انتظر ${r['retry_after']} ثانية لطلب غيره');
+        }
       } catch (e) {
         if (mounted) showMessage(context, e, error: true);
         return;

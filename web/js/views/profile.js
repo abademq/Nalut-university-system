@@ -21,18 +21,29 @@ function ChangePassword() {
 function Mfa({ user }) {
   const [setup, setSetup] = useState(false);
   const [enabled, setEnabled] = useState(user.mfa_enabled);
-  const sms = user.mfa_method === "sms";
+  const [method, setMethod] = useState(user.mfa_method);
+  const sms = method === "sms";
   const disable = async () => {
     const password = prompt("كلمة المرور الحالية:");
     if (!password) return;
-    if (sms && !(await api.post("/api/auth/mfa/sms/start").catch(toastError))) return;
-    const code = prompt(sms ? "الرمز المرسل برسالة نصية:" : "رمز التحقق من التطبيق:");
+    // ask the server which method is on now (it may have been set up a moment ago on this page)
+    const opts = await api.get("/api/auth/mfa/options").catch(toastError);
+    if (!opts) return;
+    const bySms = opts.method === "sms";
+    setMethod(opts.method);
+    if (bySms) {
+      const r = await api.post("/api/auth/mfa/sms/start").catch(toastError);
+      if (!r) return;
+      toast(r.sent ? `أُرسل الرمز إلى ${r.phone_hint || "هاتفك"}` : `أُرسل رمز قبل قليل؛ استعمله أو انتظر ${r.retry_after} ثانية لطلب غيره`);
+    }
+    const code = prompt(bySms ? "الرمز المرسل برسالة نصية:" : "رمز التحقق من التطبيق:");
     if (!code) return;
     await api.post("/api/auth/mfa/disable", { password, code }).then(() => { setEnabled(false); toast("تم إيقاف المصادقة الثنائية"); }).catch(toastError);
   };
   return html`<div class="card"><h3>المصادقة الثنائية</h3>
     ${enabled ? html`<p><span class="ok-mark">✓</span> مفعلة على حسابك ${sms ? "برسالة نصية" : "بتطبيق المصادقة"}.</p>${!user.mfa_required ? html`<button class="secondary" onClick=${disable}>إيقاف</button>` : html`<p class="small muted">إلزامية لحسابك. لتغيير الطريقة اطلب من الإدارة إعادة تعيينها.</p>`}`
-      : setup ? html`<${MfaSetup} onDone=${() => { setEnabled(true); setSetup(false); toast("تم تفعيل المصادقة الثنائية"); }} />`
+      : setup ? html`<${MfaSetup} onDone=${() => { setEnabled(true); setSetup(false); toast("تم تفعيل المصادقة الثنائية");
+        api.get("/api/auth/mfa/options").then((o) => setMethod(o.method)).catch(() => {}); }} />`
         : html`<p class="muted">أضف طبقة حماية: رمز برسالة نصية أو من تطبيق المصادقة عند تسجيل الدخول.</p><button onClick=${() => setSetup(true)}>تفعيل</button>`}</div>`;
 }
 

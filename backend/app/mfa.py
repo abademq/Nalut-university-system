@@ -122,7 +122,10 @@ def start(db: Session, user: User, purpose: str) -> dict:
     if not user.phone:
         raise OtpError("لا يوجد رقم هاتف مسجل لحسابك، تواصل مع الإدارة")
     now = utcnow()
-    last = db.scalar(select(OtpChallenge).where(OtpChallenge.user_id == user.id)
+    # the one-a-minute rule concerns a code still waiting for this same step: the code used to
+    # sign in a moment ago must not hold back the one that confirms turning verification off
+    last = db.scalar(select(OtpChallenge).where(OtpChallenge.user_id == user.id, OtpChallenge.purpose == purpose,
+                                                OtpChallenge.consumed_at.is_(None))
                      .order_by(OtpChallenge.id.desc()).limit(1))
     if last and (now - last.created_at).total_seconds() < RESEND_AFTER_SECONDS:
         wait = RESEND_AFTER_SECONDS - int((now - last.created_at).total_seconds())

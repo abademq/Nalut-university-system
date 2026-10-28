@@ -301,3 +301,24 @@ def test_sms_signed_by_the_sending_faculty(client, as_, db, monkeypatch):
         "target_type": "user", "target_ids": [student.id], "channels": ["inapp", "sms"]})
     assert r.status_code == 200, r.text
     assert seen and seen[-1].params == ["إنذار", "تجاوز الغياب", "كلية تقنية المعلومات بجامعة نالوت"]
+
+
+def test_student_turns_sms_verification_off_right_after_signing_in(client, db):
+    """The code used to sign in a moment ago must not hold back the one that confirms switching off."""
+    st = db.query(User).filter_by(email="s.ali@nalut.edu.ly").one()
+    st.phone = st.phone or "0912345678"
+    db.commit()
+    token = login(client, st.email).json()["access_token"]
+    h = {"Authorization": f"Bearer {token}"}
+    assert client.post("/api/auth/mfa/sms/start", headers=h).json()["sent"] is True
+    assert client.post("/api/auth/mfa/sms/enable", headers=h, json={"code": last_code()}).status_code == 200
+    assert client.get("/api/auth/mfa/options", headers=h).json()["method"] == "sms"
+    age_codes(db)
+    assert login(client, st.email).json()["sent"]
+    signed = login(client, st.email, last_code()).json()
+    h = {"Authorization": f"Bearer {signed['access_token']}"}
+    # within the same minute: a new code is still sent for this step
+    r = client.post("/api/auth/mfa/sms/start", headers=h).json()
+    assert r["sent"] is True
+    off = client.post("/api/auth/mfa/disable", headers=h, json={"password": PASSWORD, "code": last_code()})
+    assert off.status_code == 200, off.text
