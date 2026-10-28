@@ -38,8 +38,14 @@ def can_message(db: Session, sender: User, recipient: User, course_id: int | Non
         return False
     s, r = sender.role, recipient.role
     if s == Role.STUDENT:
-        # institution policy: students write only to the teaching staff of their own courses
-        return r in Role.INSTRUCTORS and _shared_course(db, sender.id, recipient.id, course_id)
+        # institution policy (messaging.student_can_message): the teaching staff of their own
+        # courses; or also their faculty's staff and administration; or nobody
+        rule = tenant_settings(db, sender)["messaging"].get("student_can_message", "course_staff")
+        if rule == "none":
+            return False
+        if r in Role.INSTRUCTORS and _shared_course(db, sender.id, recipient.id, course_id):
+            return True
+        return rule == "faculty" and r in (Role.STAFF, Role.FACULTY_ADMIN) and recipient.faculty_id == sender.faculty_id
     if s in Role.INSTRUCTORS:
         if r == Role.STUDENT:
             return _shared_course(db, recipient.id, sender.id, course_id)

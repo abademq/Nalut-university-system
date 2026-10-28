@@ -168,3 +168,56 @@ def test_requirements_visible_only_to_participants(client, as_):
                       headers=as_("student12@nalut.edu.ly")).status_code == 404
     # the QR itself is only available to the session's managers
     assert client.get(f"/api/attendance/sessions/{sid}/qr", headers=as_("s.ali@nalut.edu.ly")).status_code == 403
+
+
+def _set(client, as_, **sections):
+    cur = client.get("/api/settings", headers=as_("president@nalut.edu.ly")).json()["effective"]
+    body = {k: {**cur[k], **v} for k, v in sections.items()}
+    return client.put("/api/settings", headers=as_("president@nalut.edu.ly"), json={"settings": body})
+
+
+def test_late_thresholds_differ_for_lectures_and_staff_and_are_validated(client, as_, db):
+    assert _set(client, as_, attendance={"late_after_minutes": 7, "staff_late_after_minutes": 25,
+                                         "default_duration_minutes": 100,
+                                         "staff_default_duration_minutes": 420}).status_code == 200
+    lecture = db.get(AttendanceSession, open_session(client, as_))
+    assert lecture.late_after_minutes == 7
+    assert (lecture.ends_at - lecture.starts_at).total_seconds() == 100 * 60
+    r = client.post("/api/attendance/sessions", headers=as_("dean.it@nalut.edu.ly"), json={"kind": "staff"})
+    shift = db.get(AttendanceSession, r.json()["id"])
+    assert shift.late_after_minutes == 25 and (shift.ends_at - shift.starts_at).total_seconds() == 420 * 60
+    # out-of-range values and inconsistent pairs are refused with an Arabic reason
+    r = _set(client, as_, attendance={"staff_late_after_minutes": 999})
+    assert r.status_code == 400 and "التأخر عن الدوام" in r.json()["detail"]
+    r = _set(client, as_, attendance={"warning_absence_percent": 40, "limit_absence_percent": 20})
+    assert r.status_code == 400
+    assert _set(client, as_, attendance={"risk_weights": {"shared_device": 500}}).status_code == 400
+    assert _set(client, as_, grading={"scale": [[50, "P", "ناجح"], [60, "A", "ممتاز"], [0, "F", "راسب"]]}).status_code == 400
+    assert _set(client, as_, messaging={"student_can_message": "anyone"}).status_code == 400
+
+
+def test_risk_weights_decide_review(client, as_, db):
+    # a new device alone (15 points) normally passes; weighted at 60 it goes to review
+    assert _set(client, as_, attendance={"risk_weights": {"new_device": 60}}).status_code == 200
+    sid = open_session(client, as_)
+    h = as_("s.ali@nalut.edu.ly")
+    first = open_session(client, as_)
+    scan(client, h, qr(client, as_, first)["payload"], device="phone-a")  # the student's known phone
+    r = scan(client, h, qr(client, as_, sid)["payload"], device="phone-b")
+    assert r.status_code == 200 and r.json()["status"] == "pending_review"
+
+
+def test_early_leave_is_flagged_for_staff(client, as_, db):
+    from datetime import timedelta
+    assert _set(client, as_, attendance={"staff_early_leave_minutes": 30}).status_code == 200
+    r = client.post("/api/attendance/sessions", headers=as_("dean.it@nalut.edu.ly"), json={"kind": "staff"})
+    sid = r.json()["id"]
+    payload = client.get(f"/api/attendance/sessions/{sid}/qr", headers=as_("dean.it@nalut.edu.ly")).json()["payload"]
+    h = as_("registrar@nalut.edu.ly")
+    assert scan(client, h, payload).status_code == 200
+    rec = db.query(AttendanceRecord).filter_by(session_id=sid).one()
+    rec.check_in_at -= timedelta(hours=1)
+    db.commit()
+    assert scan(client, h, payload).status_code == 200
+    db.refresh(rec)
+    assert "early_leave" in rec.risk_flags

@@ -31,6 +31,7 @@ export const RISK_FLAG = {
   outside_geofence: "خارج نطاق القاعة", shared_device: "جهاز مشترك مع حساب آخر",
   device_used_by_other_account: "جهاز استُخدم لحساب آخر مؤخراً", new_device: "جهاز جديد",
   no_device_id: "بدون معرف جهاز", face_no_match: "عدم تطابق الوجه", face_liveness_failed: "فشل فحص الحيوية",
+  early_leave: "انصراف مبكر",
 };
 export const DAYS = ["السبت", "الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة"];
 

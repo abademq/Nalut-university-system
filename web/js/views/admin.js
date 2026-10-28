@@ -1,4 +1,4 @@
-import { html, useState, useEffect, useAsync, Async, Empty, Chip, ErrorBox, useForm, useSubmit, toast, toastError, Modal, ROLE, fmtDate } from "../ui.js";
+import { html, useState, useEffect, useAsync, Async, Empty, Chip, ErrorBox, useForm, useSubmit, toast, toastError, Modal, ROLE, CATEGORY, fmtDate } from "../ui.js";
 import { api, setActing } from "../api.js";
 
 const CREATABLE = {
@@ -375,13 +375,28 @@ function LaunchSettings({ data, universityId, onSaved }) {
     </div></form>`;
 }
 
+const RISK_LABELS = {
+  outside_geofence: "خارج نطاق القاعة", shared_device: "جهاز مشترك مع حساب آخر في الجلسة",
+  device_used_by_other_account: "جهاز استُخدم لحساب آخر خلال أسبوع", new_device: "جهاز جديد للطالب",
+  no_device_id: "بلا معرّف جهاز (متصفح)", face_mismatch: "الصورة الحية لا تطابق",
+};
+
 const HINTS = {
   due_reminder_hours: "قبل كم ساعة من موعد التسليم يُرسل تذكير تلقائي للطلبة الذين لم يسلّموا.",
   late_after_minutes: "إذا سجّل الطالب حضوره بعد هذه المدة من بداية المحاضرة يُعلَّم «متأخر» بدل «حاضر».",
+  default_duration_minutes: "مدة جلسة الحضور حين لا يحددها الأستاذ. بعد انتهائها يُغلق التسجيل.",
+  staff_late_after_minutes: "إذا سجّل الموظف دخوله بعد هذه المدة من بداية الدوام يُعلَّم «متأخر».",
+  staff_early_leave_minutes: "إذا سجّل الموظف انصرافه قبل نهاية الدوام بأكثر من هذه المدة يُعلَّم «انصراف مبكر» في سجله. 0 يوقف هذا الفحص.",
+  staff_default_duration_minutes: "طول الدوام حين لا تحدده الإدارة عند فتح جلسة الدوام (480 دقيقة = 8 ساعات).",
+  open_before_minutes: "يُسمح بالتسجيل قبل بداية الجلسة بهذه المدة، لمن يصل مبكراً.",
+  default_radius_m: "نصف قطر القاعة بالأمتار عند تفعيل التحقق بالموقع. من يسجل من أبعد يُحال للمراجعة.",
+  max_login_failures: "عدد كلمات المرور الخاطئة المتتالية قبل قفل الحساب مؤقتاً.",
+  lockout_minutes: "مدة قفل الحساب بعد بلوغ عدد المحاولات الخاطئة.",
+  max_attachment_mb: "أكبر حجم لملف يُرفق في الرسائل.",
   rotation_seconds: "كل كم ثانية يتغير رمز QR المعروض. كلما قلّت المدة صعُب تمرير صورة الرمز لطالب غائب (15 ثانية مناسبة).",
   warning_absence_percent: "عند بلوغ نسبة غياب الطالب في مقرر هذه القيمة يصله تنبيه تحذيري.",
   limit_absence_percent: "الحد الأقصى المعتمد للغياب. عند تجاوزه يُنبَّه الطالب وأستاذ المقرر وإدارة الكلية لاتخاذ الإجراء وفق اللوائح (بقرار بشري، لا تلقائياً).",
-  review_threshold: "كل تسجيل حضور يحصل على نقاط مخاطر من مؤشرات مثل: خارج نطاق القاعة (50)، جهاز مشترك مع طالب آخر (60)، جهاز استُخدم لحساب آخر مؤخراً (30)، جهاز جديد (15). إذا بلغ المجموع هذه القيمة لا يُعتمد الحضور تلقائياً ويُحال «للمراجعة» ليقبله أو يرفضه الأستاذ. قيمة أقل = تشدد أكثر.",
+  review_threshold: "كل تسجيل حضور يجمع نقاطاً من مؤشرات المخاطر أدناه. إذا بلغ المجموع هذه القيمة لا يُعتمد الحضور تلقائياً ويُحال «للمراجعة» ليقبله أو يرفضه الأستاذ. قيمة أقل = تشدد أكثر.",
   selfie_retention_days: "بعد هذه المدة تُحذف صور التحقق الحية تلقائياً من الخادم حمايةً للخصوصية.",
   pass_mark: "النسبة الدنيا للنجاح في المقرر.",
   low_performance_percent: "إذا قلّ متوسط درجات الطالب في مهام مقرر عن هذه النسبة يظهر ضمن «طلبة يحتاجون متابعة».",
@@ -393,6 +408,11 @@ function SettingsForm({ data, acting, onSaved }) {
     display_name: e.branding.display_name || data.university.name, primary_color: e.branding.primary_color, accent_color: e.branding.accent_color,
     require_mfa: e.security.require_mfa_for_admins, first_login_otp: e.security.first_login_otp !== false, sms_enabled: e.notifications.sms_enabled, due_reminder_hours: e.notifications.due_reminder_hours,
     late_after_minutes: e.attendance.late_after_minutes, rotation_seconds: e.attendance.rotation_seconds,
+    default_duration_minutes: e.attendance.default_duration_minutes, open_before_minutes: e.attendance.open_before_minutes,
+    staff_late_after_minutes: e.attendance.staff_late_after_minutes, staff_early_leave_minutes: e.attendance.staff_early_leave_minutes,
+    staff_default_duration_minutes: e.attendance.staff_default_duration_minutes, default_radius_m: e.attendance.default_radius_m,
+    max_login_failures: e.security.max_login_failures, lockout_minutes: e.security.lockout_minutes,
+    max_attachment_mb: e.messaging.max_attachment_mb, student_can_message: e.messaging.student_can_message,
     warning_absence_percent: e.attendance.warning_absence_percent, limit_absence_percent: e.attendance.limit_absence_percent,
     review_threshold: e.attendance.review_threshold, selfie_retention_days: e.attendance.selfie_retention_days,
     pass_mark: e.grading.pass_mark, low_performance_percent: e.grading.low_performance_percent,
@@ -404,18 +424,30 @@ function SettingsForm({ data, acting, onSaved }) {
   const caps = useAsync(() => api.get("/api/permissions"), []);
   const toneInfo = useAsync(() => api.get("/api/notifications/tones"), []);
   const [tones, setTones] = useState(e.notifications.tones || {});
+  const [weights, setWeights] = useState({ ...e.attendance.risk_weights });
+  const [levels, setLevels] = useState(JSON.parse(JSON.stringify(e.attendance.levels)));
+  const [smsCats, setSmsCats] = useState(e.notifications.sms_categories || []);
+  const [scale, setScale] = useState(e.grading.scale.map((r) => [...r]));
+  const setRow = (i, j, val) => setScale(scale.map((r, k) => (k === i ? r.map((c, m) => (m === j ? val : c)) : r)));
   const flip = (list, set, k) => set(list.includes(k) ? list.filter((x) => x !== k) : [...list, k]);
   const [submit, busy, error] = useSubmit(async () => {
     await api.put("/api/settings", { settings: {
       branding: { display_name: v.display_name, primary_color: v.primary_color, accent_color: v.accent_color },
       security: { ...e.security, require_mfa_for_admins: v.require_mfa, first_login_otp: v.first_login_otp, mfa_methods: mfaMethods,
-        mfa_required_roles: mfaRoles, mfa_required_capabilities: mfaCaps },
+        mfa_required_roles: mfaRoles, mfa_required_capabilities: mfaCaps,
+        max_login_failures: n("max_login_failures"), lockout_minutes: n("lockout_minutes") },
       notifications: { ...e.notifications, sms_enabled: v.sms_enabled, due_reminder_hours: n("due_reminder_hours"),
-        tones: acting ? tones : e.notifications.tones },
+        sms_categories: smsCats, tones: acting ? tones : e.notifications.tones },
       attendance: { ...e.attendance, late_after_minutes: n("late_after_minutes"), rotation_seconds: n("rotation_seconds"),
+        default_duration_minutes: n("default_duration_minutes"), open_before_minutes: n("open_before_minutes"),
+        staff_late_after_minutes: n("staff_late_after_minutes"), staff_early_leave_minutes: n("staff_early_leave_minutes"),
+        staff_default_duration_minutes: n("staff_default_duration_minutes"), default_radius_m: n("default_radius_m"),
         warning_absence_percent: n("warning_absence_percent"), limit_absence_percent: n("limit_absence_percent"),
-        review_threshold: n("review_threshold"), selfie_retention_days: n("selfie_retention_days") },
-      grading: { ...e.grading, pass_mark: n("pass_mark"), low_performance_percent: n("low_performance_percent") },
+        review_threshold: n("review_threshold"), selfie_retention_days: n("selfie_retention_days"),
+        risk_weights: Object.fromEntries(Object.entries(weights).map(([k, w]) => [k, Number(w)])), levels },
+      messaging: { ...e.messaging, max_attachment_mb: n("max_attachment_mb"), student_can_message: v.student_can_message },
+      grading: { ...e.grading, pass_mark: n("pass_mark"), low_performance_percent: n("low_performance_percent"),
+        scale: scale.map(([m, l, a]) => [Number(m), String(l).trim(), String(a).trim()]) },
     } });
     toast("تم حفظ الإعدادات");
     onSaved();
@@ -441,6 +473,8 @@ function SettingsForm({ data, acting, onSaved }) {
       <h4>ولكل من يملك صلاحية</h4>
       ${caps.data ? caps.data.capabilities.map((c) => html`<label class="check"><input type="checkbox" checked=${mfaCaps.includes(c.key)}
         onChange=${() => flip(mfaCaps, setMfaCaps, c.key)} /> ${c.label}</label>`) : html`<p class="small muted">جارٍ التحميل…</p>`}
+      <h4>قفل الحساب</h4>
+      <div class="form-grid">${num("max_login_failures", "محاولات خاطئة قبل القفل", { min: 3, max: 20 })}${num("lockout_minutes", "مدة القفل (دقيقة)", { min: 1, max: 1440 })}</div>
     </div>
     <div class="card"><h3>نغمات الإشعارات على الهواتف</h3>
       <p class="small muted">${acting ? "تحدد نغمة كل نوع، وتصل كما هي لكل المستخدمين." : "يحددها مشرف المنصة، وتصل كما هي لكل المستخدمين."} اضغط ▶ لسماع النغمة.</p>
@@ -453,13 +487,51 @@ function SettingsForm({ data, acting, onSaved }) {
     </div>
     <div class="card"><h3>الإشعارات</h3>
       <label class="check"><input type="checkbox" ...${bind("sms_enabled", "checkbox")} /> تفعيل الرسائل النصية SMS للإشعارات العاجلة</label>
-      <div class="form-grid">${num("due_reminder_hours", "التذكير قبل موعد التسليم (ساعة)")}</div></div>
-    <div class="card"><h3>سياسة الحضور</h3><div class="form-grid">
-      ${num("late_after_minutes", "يعتبر متأخراً بعد (دقيقة)")}${num("rotation_seconds", "مدة صلاحية رمز QR (ثانية)", { min: 5, max: 120 })}
-      ${num("warning_absence_percent", "نسبة غياب للتنبيه %")}${num("limit_absence_percent", "حد الغياب المعتمد %")}
-      ${num("review_threshold", "درجة المخاطر للمراجعة البشرية")}${num("selfie_retention_days", "مدة الاحتفاظ بالصور (يوم)")}</div></div>
-    <div class="card"><h3>التقييم</h3><div class="form-grid">${num("pass_mark", "درجة النجاح %")}${num("low_performance_percent", "حد الأداء الضعيف %")}</div>
-      <p class="small muted">سلم التقديرات: ${e.grading.scale.map(([m, l, a]) => `${l} (${a}) ≥ ${m}`).join(" · ")}</p></div>
+      <h4>الأنواع التي تُرسل برسالة نصية</h4>
+      <p class="small muted">الإشعار العاجل يُرسل برسالة نصية دائماً، وهذه الأنواع تُرسل أيضاً مهما كانت أولويتها.</p>
+      ${Object.entries(CATEGORY).map(([k, l]) => html`<label class="check"><input type="checkbox" checked=${smsCats.includes(k)}
+        onChange=${() => flip(smsCats, setSmsCats, k)} /> ${l}</label>`)}
+      <div class="form-grid">${num("due_reminder_hours", "التذكير قبل موعد التسليم (ساعة)", { min: 1, max: 168 })}</div></div>
+    <div class="card"><h3>الرسائل</h3><div class="form-grid">
+      <div class="field"><label>الطالب يراسل</label><select ...${bind("student_can_message")}>
+        <option value="course_staff">أساتذة مقرراته ومعيديها فقط</option>
+        <option value="faculty">أساتذة مقرراته، وموظفي كليته وإدارتها</option>
+        <option value="none">لا يبدأ محادثات (يرد فقط)</option></select></div>
+      ${num("max_attachment_mb", "أكبر حجم للمرفق (ميغابايت)", { min: 1, max: 25 })}</div></div>
+    <div class="card"><h3>حضور المحاضرات</h3><div class="form-grid">
+      ${num("late_after_minutes", "الطالب متأخر بعد (دقيقة من بداية المحاضرة)", { min: 0, max: 180 })}
+      ${num("default_duration_minutes", "مدة المحاضرة الافتراضية (دقيقة)", { min: 5, max: 720 })}
+      ${num("warning_absence_percent", "نسبة غياب للتنبيه %", { min: 0, max: 100 })}${num("limit_absence_percent", "حد الغياب المعتمد %", { min: 0, max: 100 })}</div></div>
+    <div class="card"><h3>دوام الموظفين</h3><div class="form-grid">
+      ${num("staff_late_after_minutes", "الموظف متأخر بعد (دقيقة من بداية الدوام)", { min: 0, max: 240 })}
+      ${num("staff_early_leave_minutes", "انصراف مبكر إذا خرج قبل النهاية بـ (دقيقة)", { min: 0, max: 240 })}
+      ${num("staff_default_duration_minutes", "مدة الدوام الافتراضية (دقيقة)", { min: 30, max: 960 })}</div></div>
+    <div class="card"><h3>رمز الحضور والتحقق</h3><div class="form-grid">
+      ${num("rotation_seconds", "مدة صلاحية رمز QR (ثانية)", { min: 5, max: 120 })}
+      ${num("open_before_minutes", "فتح التسجيل قبل البداية بـ (دقيقة)", { min: 0, max: 120 })}
+      ${num("default_radius_m", "نطاق القاعة (متر)", { min: 20, max: 5000 })}
+      ${num("review_threshold", "درجة المخاطر للمراجعة البشرية", { min: 1, max: 300 })}
+      ${num("selfie_retention_days", "مدة الاحتفاظ بالصور (يوم)", { min: 1, max: 365 })}</div>
+      <h4>مؤشرات المخاطر (نقاط كل مؤشر)</h4>
+      <div class="form-grid">${Object.entries(RISK_LABELS).map(([k, l]) => html`<div class="field"><label>${l}</label>
+        <input type="number" min="0" max="100" value=${weights[k] ?? 0} onInput=${(ev) => setWeights({ ...weights, [k]: ev.target.value })} /></div>`)}</div>
+      <h4>مستويات التحقق</h4>
+      <p class="small muted">يختار الأستاذ مستوى الجلسة عند فتحها، وهذه متطلبات كل مستوى.</p>
+      ${[["normal", "عادي"], ["high", "مرتفع (امتحانات ومحاضرات حساسة)"]].map(([lv, name]) => html`<div class="row" style="margin-bottom:.4rem">
+        <strong style="min-width:14rem">${name}</strong>
+        ${[["require_location", "الموقع داخل القاعة"], ["require_selfie", "صورة حية"]].map(([f, fl]) => html`<label class="check" style="margin:0">
+          <input type="checkbox" checked=${!!levels[lv]?.[f]} onChange=${(ev) => setLevels({ ...levels, [lv]: { ...levels[lv], [f]: ev.target.checked } })} /> ${fl}</label>`)}</div>`)}
+    </div>
+    <div class="card"><h3>التقييم</h3><div class="form-grid">${num("pass_mark", "درجة النجاح %", { min: 0, max: 100 })}${num("low_performance_percent", "حد الأداء الضعيف %", { min: 0, max: 100 })}</div>
+      <h4>سلم التقديرات</h4>
+      <p class="small muted">من الأعلى للأدنى. الحد الأدنى بالنسبة المئوية، وآخر تقدير يبدأ من 0.</p>
+      <div class="table-wrap"><table><thead><tr><th>من (%)</th><th>الرمز</th><th>التقدير</th><th></th></tr></thead>
+      <tbody>${scale.map((r, i) => html`<tr>
+        <td><input type="number" min="0" max="100" value=${r[0]} onInput=${(ev) => setRow(i, 0, ev.target.value)} /></td>
+        <td><input maxlength="4" value=${r[1]} onInput=${(ev) => setRow(i, 1, ev.target.value)} /></td>
+        <td><input maxlength="40" value=${r[2]} onInput=${(ev) => setRow(i, 2, ev.target.value)} /></td>
+        <td><button type="button" class="ghost small" disabled=${scale.length <= 2} onClick=${() => setScale(scale.filter((_, k) => k !== i))}>حذف</button></td></tr>`)}</tbody></table></div>
+      <button type="button" class="secondary small" disabled=${scale.length >= 12} onClick=${() => setScale([...scale.slice(0, -1), [Math.min(99, Number(scale[scale.length - 2]?.[0] ?? 50) - 5), "", ""], scale[scale.length - 1]])}>+ تقدير</button></div>
     <button disabled=${busy}>حفظ الإعدادات</button></form>`;
 }
 

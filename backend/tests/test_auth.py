@@ -109,3 +109,14 @@ def test_audit_chain(client, as_):
     s.commit()
     s.close()
     assert not client.get("/api/audit/verify", headers=as_("president@nalut.edu.ly")).json()["ok"]
+
+
+def test_lockout_limits_come_from_institution_settings(client, as_):
+    admin = as_("president@nalut.edu.ly")
+    cur = client.get("/api/settings", headers=admin).json()["effective"]["security"]
+    assert client.put("/api/settings", headers=admin, json={"settings": {"security": {
+        **cur, "max_login_failures": 3, "lockout_minutes": 5}}}).status_code == 200
+    for _ in range(3):
+        client.post("/api/auth/login", json={"identifier": "t.ahmed@nalut.edu.ly", "password": "wrong-password"})
+    r = client.post("/api/auth/login", json={"identifier": "t.ahmed@nalut.edu.ly", "password": "Demo@12345"})
+    assert r.status_code == 423

@@ -205,8 +205,8 @@ function MyAttendance({ user }) {
 
 function CreateSession({ user, kind, onCreated }) {
   const courses = useCourses();
-  const [v, bind, setV] = useForm({ course_id: "", title: "", location: "", risk_level: "normal", duration_minutes: 90,
-    geofence: false, latitude: "", longitude: "", radius_m: 150 });
+  const [v, bind, setV] = useForm({ course_id: "", title: "", location: "", risk_level: "normal", duration_minutes: "",
+    geofence: false, latitude: "", longitude: "", radius_m: "" });
   const useHere = async () => {
     const p = await getPosition();
     if (!p) return toast("تعذر تحديد الموقع", "error");
@@ -214,9 +214,9 @@ function CreateSession({ user, kind, onCreated }) {
   };
   const [submit, busy, error] = useSubmit(async () => {
     const body = { kind, title: v.title || null, location: v.location || null, risk_level: v.risk_level,
-      duration_minutes: Number(v.duration_minutes) };
+      duration_minutes: v.duration_minutes ? Number(v.duration_minutes) : null };
     if (kind === "course") body.course_id = Number(v.course_id);
-    if (v.geofence && v.latitude) Object.assign(body, { latitude: Number(v.latitude), longitude: Number(v.longitude), radius_m: Number(v.radius_m) });
+    if (v.geofence && v.latitude) Object.assign(body, { latitude: Number(v.latitude), longitude: Number(v.longitude), radius_m: v.radius_m ? Number(v.radius_m) : null });
     const s = await api.post("/api/attendance/sessions", body);
     onCreated(s);
   });
@@ -226,15 +226,15 @@ function CreateSession({ user, kind, onCreated }) {
         ${(courses.data || []).map((c) => html`<option value=${c.id}>${c.code} — ${c.title}</option>`)}</select></div>`
         : html`<div class="field"><label>العنوان</label><input ...${bind("title")} placeholder="دوام — المدخل الرئيسي" /></div>`}
       <div class="field"><label>المكان / القاعة</label><input ...${bind("location")} /></div>
-      <div class="field"><label>المدة (دقيقة)</label><input type="number" min="5" max="720" ...${bind("duration_minutes")} /></div>
+      <div class="field"><label>المدة (دقيقة)</label><input type="number" min="5" max="960" placeholder="الافتراضي من إعدادات المؤسسة" ...${bind("duration_minutes")} /></div>
       <div class="field"><label>مستوى التحقق</label><select ...${bind("risk_level")}>
-        <option value="normal">عادي — QR ديناميكي</option><option value="high">مرتفع (امتحان) — QR + موقع + صورة حية</option></select></div>
+        <option value="normal">عادي — QR ديناميكي</option><option value="high">مرتفع (امتحان) — حسب إعدادات المؤسسة</option></select></div>
     </div>
     <label class="check"><input type="checkbox" ...${bind("geofence", "checkbox")} /> تحديد نطاق جغرافي للقاعة (إشارة مساعدة وليست دليلاً قاطعاً)</label>
     ${v.geofence || v.risk_level === "high" ? html`<div class="form-grid">
       <div class="field"><label>خط العرض</label><input class="ltr" ...${bind("latitude")} /></div>
       <div class="field"><label>خط الطول</label><input class="ltr" ...${bind("longitude")} /></div>
-      <div class="field"><label>نصف القطر (م)</label><input type="number" min="20" ...${bind("radius_m")} /></div>
+      <div class="field"><label>نصف القطر (م)</label><input type="number" min="20" placeholder="الافتراضي" ...${bind("radius_m")} /></div>
       <div class="field"><label> </label><button type="button" class="secondary" onClick=${useHere}><${Icon} name="pin_map" size=${18} />استخدام موقعي الحالي</button></div></div>` : null}
     <button disabled=${busy}>بدء الجلسة وعرض الرمز</button></form>`;
 }

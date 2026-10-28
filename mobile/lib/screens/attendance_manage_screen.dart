@@ -16,6 +16,8 @@ const riskFlags = {
   'device_used_by_other_account': 'جهاز استُخدم لحساب آخر مؤخراً',
   'new_device': 'جهاز جديد',
   'no_device_id': 'بدون معرّف جهاز',
+  'face_no_match': 'عدم تطابق الوجه',
+  'early_leave': 'انصراف مبكر',
 };
 
 /// Instructors and administration: sessions, live rotating QR, manual marks and review.
@@ -101,7 +103,7 @@ class _NewSessionScreenState extends State<NewSessionScreen> {
   String _kind = 'course';
   String _risk = 'normal';
   final _location = TextEditingController();
-  final _duration = TextEditingController(text: '90');
+  final _duration = TextEditingController(); // empty: the institution's default
   Position? _pos;
   bool _geofence = false;
   bool _busy = false;
@@ -140,7 +142,7 @@ class _NewSessionScreenState extends State<NewSessionScreen> {
 
   Future<void> _create() async {
     if (_kind == 'course' && _course == null) return showMessage(context, 'اختر المقرر', error: true);
-    if ((_risk == 'high' || _geofence) && _pos == null) {
+    if (_geofence && _pos == null) {
       return showMessage(context, 'التحقق بالموقع يتطلب تحديد موقع القاعة: اضغط «استخدام موقعي الحالي» وأنت داخلها', error: true);
     }
     setState(() => _busy = true);
@@ -149,9 +151,9 @@ class _NewSessionScreenState extends State<NewSessionScreen> {
         'kind': _kind,
         if (_kind == 'course') 'course_id': _course,
         'location': _location.text.trim().isEmpty ? null : _location.text.trim(),
-        'duration_minutes': int.tryParse(_duration.text) ?? 90,
+        if (int.tryParse(_duration.text) != null) 'duration_minutes': int.parse(_duration.text),
         'risk_level': _risk,
-        if (_geofence && _pos != null) ...{'latitude': _pos!.latitude, 'longitude': _pos!.longitude, 'radius_m': 150},
+        if (_geofence && _pos != null) ...{'latitude': _pos!.latitude, 'longitude': _pos!.longitude},
       }) as Map<String, dynamic>;
       if (mounted) Navigator.pop(context, r);
     } catch (e) {
@@ -187,7 +189,7 @@ class _NewSessionScreenState extends State<NewSessionScreen> {
         const SizedBox(height: 12),
         TextField(controller: _location, decoration: const InputDecoration(labelText: 'المكان / القاعة')),
         const SizedBox(height: 12),
-        TextField(controller: _duration, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'المدة (دقيقة)')),
+        TextField(controller: _duration, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'المدة (دقيقة)', hintText: 'الافتراضي من إعدادات المؤسسة')),
         const SizedBox(height: 12),
         DropdownButtonFormField<String>(
           initialValue: _risk,

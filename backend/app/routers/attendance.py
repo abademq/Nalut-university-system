@@ -74,7 +74,7 @@ class SessionIn(BaseModel):
     longitude: float | None = Field(default=None, ge=-180, le=180)
     radius_m: int | None = Field(default=None, ge=20, le=5000)
     starts_at: datetime | None = None
-    duration_minutes: int = Field(default=90, ge=5, le=720)
+    duration_minutes: int | None = Field(default=None, ge=5, le=960)  # none: the institution's default
     risk_level: str = Field(default="normal", pattern="^(normal|high)$")
     require_location: bool | None = None
     require_selfie: bool | None = None
@@ -108,8 +108,10 @@ def create_session(body: SessionIn, request: Request, user: User = Depends(get_c
         title=body.title or (f"محاضرة {course.title}" if course else "دوام الموظفين"),
         location=body.location, latitude=body.latitude, longitude=body.longitude,
         radius_m=body.radius_m or policy["default_radius_m"], starts_at=starts,
-        ends_at=starts + timedelta(minutes=body.duration_minutes),
-        late_after_minutes=policy["late_after_minutes"] if body.late_after_minutes is None else body.late_after_minutes,
+        ends_at=starts + timedelta(minutes=body.duration_minutes or (
+            policy["staff_default_duration_minutes"] if body.kind == "staff" else policy["default_duration_minutes"])),
+        late_after_minutes=body.late_after_minutes if body.late_after_minutes is not None else (
+            policy["staff_late_after_minutes"] if body.kind == "staff" else policy["late_after_minutes"]),
         rotation_seconds=int(policy["rotation_seconds"]), risk_level=body.risk_level,
         require_location=require_location,
         require_selfie=level.get("require_selfie", False) if body.require_selfie is None else body.require_selfie,

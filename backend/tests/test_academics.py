@@ -261,3 +261,16 @@ def test_university_admin_reads_every_conversation_and_each_read_is_audited(clie
     for who in (DEAN, TEACHER, "registrar@nalut.edu.ly"):
         assert client.get("/api/oversight/conversations", headers=as_(who)).status_code == 403
         assert client.get(f"/api/oversight/conversations/{conv}", headers=as_(who)).status_code == 403
+
+
+def test_student_messaging_policy_is_configurable(client, as_):
+    admin = as_("president@nalut.edu.ly")
+    cur = client.get("/api/settings", headers=admin).json()["effective"]["messaging"]
+    teacher_id = client.get("/api/me", headers=as_(TEACHER)).json()["id"]
+    body = {"recipient_ids": [teacher_id], "subject": "سؤال", "body": "نص"}
+    assert client.put("/api/settings", headers=admin, json={"settings": {"messaging": {
+        **cur, "student_can_message": "none"}}}).status_code == 200
+    assert client.post("/api/conversations", headers=as_("s.ali@nalut.edu.ly"), json=body).status_code == 403
+    assert client.put("/api/settings", headers=admin, json={"settings": {"messaging": {
+        **cur, "student_can_message": "course_staff"}}}).status_code == 200
+    assert client.post("/api/conversations", headers=as_("s.ali@nalut.edu.ly"), json=body).status_code == 200

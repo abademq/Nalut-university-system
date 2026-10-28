@@ -25,6 +25,9 @@ DEFAULT_SETTINGS: dict = {
         "mfa_required_capabilities": [],
         # second-factor methods users may choose: authenticator app and/or SMS code
         "mfa_methods": ["totp", "sms"],
+        # wrong passwords in a row before the account is locked, and for how long
+        "max_login_failures": 5,
+        "lockout_minutes": 15,
     },
     "grading": {
         "pass_mark": 50,
@@ -39,7 +42,16 @@ DEFAULT_SETTINGS: dict = {
         "low_performance_percent": 50,
     },
     "attendance": {
+        # lectures: a student is late this many minutes after the session starts
         "late_after_minutes": 15,
+        "default_duration_minutes": 90,
+        # staff shifts: an employee is late this many minutes after the shift starts, and
+        # leaving more than staff_early_leave_minutes before its end is flagged (0 = not checked)
+        "staff_late_after_minutes": 15,
+        "staff_early_leave_minutes": 15,
+        "staff_default_duration_minutes": 480,
+        # check-in opens this many minutes before a session starts
+        "open_before_minutes": 10,
         "rotation_seconds": 15,
         "warning_absence_percent": 15,
         "limit_absence_percent": 25,
@@ -47,6 +59,9 @@ DEFAULT_SETTINGS: dict = {
         # risk score at or above which a check-in waits for human review
         "review_threshold": 50,
         "selfie_retention_days": 30,
+        # points each signal adds to a check-in's risk score
+        "risk_weights": {"outside_geofence": 50, "no_device_id": 20, "shared_device": 60,
+                         "device_used_by_other_account": 30, "new_device": 15, "face_mismatch": 60},
         # Per risk level: which extra factors are required.
         "levels": {
             "normal": {"require_location": False, "require_selfie": False},
@@ -54,7 +69,8 @@ DEFAULT_SETTINGS: dict = {
         },
     },
     "messaging": {
-        # students may only start conversations with staff of courses they are enrolled in
+        # whom students may start conversations with: course_staff (the teaching staff of
+        # their courses), faculty (also their faculty's staff and administration) or none
         "student_can_message": "course_staff",
         "max_attachment_mb": 5,
     },
@@ -144,3 +160,85 @@ def validate_launch(launch: dict) -> dict:
     if out["sound"] != "none" and out["sound"] not in LAUNCH_SOUNDS and out["sound"] not in TONES:
         raise HTTPException(status_code=400, detail="نغمة تشغيل غير معروفة")
     return out
+
+
+# (section, key) -> (minimum, maximum) for the numbers an administration may change
+NUMBER_LIMITS = {
+    ("security", "max_login_failures"): (3, 20), ("security", "lockout_minutes"): (1, 1440),
+    ("attendance", "late_after_minutes"): (0, 180), ("attendance", "default_duration_minutes"): (5, 720),
+    ("attendance", "staff_late_after_minutes"): (0, 240), ("attendance", "staff_early_leave_minutes"): (0, 240),
+    ("attendance", "staff_default_duration_minutes"): (30, 960), ("attendance", "open_before_minutes"): (0, 120),
+    ("attendance", "rotation_seconds"): (5, 120), ("attendance", "warning_absence_percent"): (0, 100),
+    ("attendance", "limit_absence_percent"): (0, 100), ("attendance", "review_threshold"): (1, 300),
+    ("attendance", "default_radius_m"): (20, 5000), ("attendance", "selfie_retention_days"): (1, 365),
+    ("grading", "pass_mark"): (0, 100), ("grading", "low_performance_percent"): (0, 100),
+    ("notifications", "due_reminder_hours"): (1, 168), ("messaging", "max_attachment_mb"): (1, 25),
+}
+NUMBER_LABELS = {
+    "max_login_failures": "عدد محاولات الدخول الخاطئة", "lockout_minutes": "مدة قفل الحساب",
+    "late_after_minutes": "التأخر عن المحاضرة", "default_duration_minutes": "مدة المحاضرة الافتراضية",
+    "staff_late_after_minutes": "التأخر عن الدوام", "staff_early_leave_minutes": "الانصراف المبكر",
+    "staff_default_duration_minutes": "مدة الدوام الافتراضية", "open_before_minutes": "فتح التسجيل قبل البداية",
+    "rotation_seconds": "مدة صلاحية الرمز", "warning_absence_percent": "نسبة غياب التنبيه",
+    "limit_absence_percent": "حد الغياب", "review_threshold": "درجة المراجعة", "default_radius_m": "نطاق القاعة",
+    "selfie_retention_days": "مدة الاحتفاظ بالصور", "pass_mark": "درجة النجاح",
+    "low_performance_percent": "حد الأداء الضعيف", "due_reminder_hours": "التذكير قبل التسليم",
+    "max_attachment_mb": "حجم المرفق",
+}
+RISK_SIGNALS = ("outside_geofence", "no_device_id", "shared_device", "device_used_by_other_account",
+                "new_device", "face_mismatch")
+STUDENT_MESSAGING = ("course_staff", "faculty", "none")
+NOTIFICATION_CATEGORIES = ("announcement", "academic_note", "official_warning", "admin_notice", "system")
+
+
+def validate_policies(changes: dict) -> None:
+    """Range and shape checks for the policy sections; HTTP 400 naming the field in Arabic."""
+    from fastapi import HTTPException
+
+    def bad(msg: str):
+        raise HTTPException(status_code=400, detail=msg)
+
+    for (section, key), (lo, hi) in NUMBER_LIMITS.items():
+        part = changes.get(section)
+        if not isinstance(part, dict) or key not in part:
+            continue
+        try:
+            value = float(part[key])
+        except (TypeError, ValueError):
+            bad(f"{NUMBER_LABELS[key]}: أدخل رقماً")
+        if not lo <= value <= hi:
+            bad(f"{NUMBER_LABELS[key]} يجب أن يكون بين {lo} و {hi}")
+    att = changes.get("attendance") or {}
+    if "warning_absence_percent" in att and "limit_absence_percent" in att \
+            and float(att["warning_absence_percent"]) > float(att["limit_absence_percent"]):
+        bad("نسبة غياب التنبيه يجب ألا تتجاوز حد الغياب")
+    weights = att.get("risk_weights")
+    if weights is not None:
+        if not isinstance(weights, dict) or not set(weights) <= set(RISK_SIGNALS):
+            bad("مؤشرات المخاطر غير صحيحة")
+        for k, v in weights.items():
+            if not isinstance(v, (int, float)) or not 0 <= v <= 100:
+                bad("وزن كل مؤشر مخاطر بين 0 و 100")
+    levels = att.get("levels")
+    if levels is not None:
+        if not isinstance(levels, dict) or not set(levels) <= {"normal", "high"} or any(
+                not isinstance(v, dict) or not set(v) <= {"require_location", "require_selfie"}
+                or not all(isinstance(x, bool) for x in v.values()) for v in levels.values()):
+            bad("مستويات التحقق في الحضور غير صحيحة")
+    msg = changes.get("messaging") or {}
+    if "student_can_message" in msg and msg["student_can_message"] not in STUDENT_MESSAGING:
+        bad("سياسة مراسلة الطلبة غير معروفة")
+    cats = (changes.get("notifications") or {}).get("sms_categories")
+    if cats is not None and (not isinstance(cats, list) or not set(cats) <= set(NOTIFICATION_CATEGORIES)):
+        bad("نوع إشعار غير معروف في الرسائل النصية")
+    scale = (changes.get("grading") or {}).get("scale")
+    if scale is not None:
+        ok = isinstance(scale, list) and 2 <= len(scale) <= 12 and all(
+            isinstance(r, list) and len(r) == 3 and isinstance(r[0], (int, float)) and 0 <= r[0] <= 100
+            and isinstance(r[1], str) and 1 <= len(r[1].strip()) <= 4 and isinstance(r[2], str)
+            and 1 <= len(r[2].strip()) <= 40 for r in scale)
+        if not ok:
+            bad("سلم التقديرات غير صحيح: لكل تقدير حد أدنى بين 0 و 100 ورمز واسم")
+        mins = [r[0] for r in scale]
+        if mins != sorted(mins, reverse=True) or len(set(mins)) != len(mins) or mins[-1] != 0:
+            bad("رتّب سلم التقديرات من الأعلى للأدنى بحدود مختلفة، وآخرها يبدأ من 0")

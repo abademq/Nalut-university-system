@@ -40,7 +40,7 @@ from ..models import (
 )
 from ..routers.auth import normalize_identifier
 from ..security import hash_password
-from ..tenancy import DEFAULT_SETTINGS, effective_settings, validate_launch
+from ..tenancy import DEFAULT_SETTINGS, effective_settings, validate_launch, validate_policies
 
 router = APIRouter(prefix="/api", tags=["admin"])
 
@@ -753,12 +753,7 @@ def put_settings(body: SettingsIn, request: Request, user: User = Depends(requir
         if not acting:
             raise forbidden("شاشة البداية ونغمة التشغيل يحددها مشرف المنصة فقط")
         body.settings["launch"] = validate_launch({**current["launch"], **(body.settings["launch"] or {})})
-    att = body.settings.get("attendance", {})
-    for key in ("warning_absence_percent", "limit_absence_percent", "review_threshold"):
-        if key in att and not (0 <= float(att[key]) <= 100):
-            raise HTTPException(status_code=400, detail=f"{key} يجب أن يكون بين 0 و 100")
-    if "rotation_seconds" in att and not (5 <= int(att["rotation_seconds"]) <= 120):
-        raise HTTPException(status_code=400, detail="مدة تحديث الرمز بين 5 و 120 ثانية")
+    validate_policies(body.settings)
     uni = db.get(University, user.university_id)
     merged = dict(uni.settings or {})
     merged.update(body.settings)

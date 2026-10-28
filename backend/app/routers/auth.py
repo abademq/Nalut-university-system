@@ -142,9 +142,13 @@ def login(body: LoginIn, request: Request, response: Response, db: Session = Dep
         raise HTTPException(status_code=423, detail="تم قفل الحساب مؤقتاً بسبب محاولات فاشلة متكررة")
 
     def fail(reason: str):
+        # the university's own limits (institution settings); the server's for accounts outside one
+        sec = tenant_settings(db, user)["security"] if user.university_id else {}
+        max_failures = int(sec.get("max_login_failures") or settings.max_login_failures)
+        lock_minutes = int(sec.get("lockout_minutes") or settings.lockout_minutes)
         user.failed_logins += 1
-        if user.failed_logins >= settings.max_login_failures:
-            user.locked_until = now + timedelta(minutes=settings.lockout_minutes)
+        if user.failed_logins >= max_failures:
+            user.locked_until = now + timedelta(minutes=lock_minutes)
             user.failed_logins = 0
             audit.record(db, "auth.locked", actor=user, ip=ip, target_type="user", target_id=user.id)
         audit.record(db, "auth.login_failed", actor=user, ip=ip, details={"reason": reason})

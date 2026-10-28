@@ -49,7 +49,7 @@ from .models import (
     UserDevice,
 )
 from .security import limiter
-from .tenancy import effective_settings
+from .tenancy import DEFAULT_SETTINGS, effective_settings
 
 QR_PREFIX = "NUS1"
 COUNTED_ABSENT = {"absent", "rejected"}
@@ -232,7 +232,9 @@ def check_in(db: Session, user: User, *, payload: str | None, short_code: str | 
         raise HTTPException(status_code=409, detail="تم استخدام هذا الطلب من قبل") from exc
 
     now = utcnow()
-    if session.status != "open" or now > session.ends_at or now < session.starts_at - timedelta(minutes=10):
+    policy = policy_for(db, session.university_id)
+    opens = int(policy.get("open_before_minutes", 10))
+    if session.status != "open" or now > session.ends_at or now < session.starts_at - timedelta(minutes=opens):
         raise HTTPException(status_code=400, detail="جلسة الحضور مغلقة")
     if not eligible(db, user, session):
         raise HTTPException(status_code=403, detail="أنت غير مسجل في هذه الجلسة")
@@ -245,6 +247,9 @@ def check_in(db: Session, user: User, *, payload: str | None, short_code: str | 
         if session.kind == "staff" and existing.check_out_at is None and existing.check_in_at \
                 and now - existing.check_in_at >= timedelta(minutes=1):
             existing.check_out_at = now
+            early = int(policy.get("staff_early_leave_minutes", 0))
+            if early and now < session.ends_at - timedelta(minutes=early) and "early_leave" not in existing.risk_flags:
+                existing.risk_flags = [*existing.risk_flags, "early_leave"]  # a signal for reports, status kept
             db.flush()
             return existing
         raise HTTPException(status_code=409, detail="تم تسجيل حضورك مسبقاً في هذه الجلسة")
@@ -254,23 +259,23 @@ def check_in(db: Session, user: User, *, payload: str | None, short_code: str | 
     if session.require_selfie and not selfie:
         raise HTTPException(status_code=400, detail="هذه الجلسة تتطلب التقاط صورة حية")
 
-    policy = policy_for(db, session.university_id)
+    weights = {**DEFAULT_SETTINGS["attendance"]["risk_weights"], **(policy.get("risk_weights") or {})}
     score, flags = 0, []
     distance = None
     if latitude is not None and longitude is not None and session.latitude is not None:
         distance = haversine_m(latitude, longitude, session.latitude, session.longitude)
         if distance > session.radius_m:
-            score += 50
+            score += weights["outside_geofence"]
             flags.append("outside_geofence")
     if not device_id:
-        score += 20
+        score += weights["no_device_id"]
         flags.append("no_device_id")
     else:
         same_device = db.scalars(select(AttendanceRecord).where(
             AttendanceRecord.session_id == session.id, AttendanceRecord.device_id == device_id,
             AttendanceRecord.user_id != user.id)).all()
         if same_device:
-            score += 60
+            score += weights["shared_device"]
             flags.append("shared_device")
             for other in same_device:
                 if "shared_device" not in other.risk_flags:
@@ -283,12 +288,12 @@ def check_in(db: Session, user: User, *, payload: str | None, short_code: str | 
                 UserDevice.device_id == device_id, UserDevice.user_id != user.id,
                 UserDevice.last_seen >= now - timedelta(days=7)))
             if recent_other:
-                score += 30
+                score += weights["device_used_by_other_account"]
                 flags.append("device_used_by_other_account")
         known = db.scalars(select(UserDevice).where(UserDevice.user_id == user.id)).all()
         mine = next((d for d in known if d.device_id == device_id), None)
         if known and not mine:
-            score += 15
+            score += weights["new_device"]
             flags.append("new_device")
         if mine:
             mine.last_seen = now
@@ -307,7 +312,7 @@ def check_in(db: Session, user: User, *, payload: str | None, short_code: str | 
         result = get_verifier().verify(user.id, selfie)
         face = result.status
         if result.status in ("no_match", "liveness_failed"):
-            score += 60
+            score += weights["face_mismatch"]
             flags.append("face_" + result.status)
 
     provisional = None
