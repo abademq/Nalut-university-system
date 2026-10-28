@@ -40,6 +40,10 @@ class Settings:
     storage_dir: Path = field(
         default_factory=lambda: Path(_env("STORAGE_DIR", str(BASE_DIR / "data" / "files")))
     )
+    # the Android app offered at /download (put there by deploy/nus-update from the deploy button)
+    app_download_dir: Path = field(
+        default_factory=lambda: Path(_env("APP_DOWNLOAD_DIR", str(Path(_env("STORAGE_DIR", str(BASE_DIR / "data" / "files"))).parent / "app")))
+    )
     web_dir: Path = field(
         default_factory=lambda: Path(_env("WEB_DIR", str(BASE_DIR.parent / "web")))
     )

@@ -21,6 +21,9 @@ jobs:
     needs: tests
     runs-on: ubuntu-latest
     environment: production
+    permissions:
+      contents: read
+      actions: read   # to fetch the APK built by the "mobile app" workflow
     steps:
       - name: Update the server
         env:
@@ -28,6 +31,7 @@ jobs:
           KNOWN: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
           HOST: ${{ secrets.DEPLOY_HOST }}
           PORT: ${{ secrets.DEPLOY_PORT }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           [ -n "$KEY" ] && [ -n "$HOST" ] && [ -n "$KNOWN" ] || { echo "::error::Add the DEPLOY_* secrets (see docs/deploy-vps.md)"; exit 1; }
           install -d -m 700 ~/.ssh
@@ -39,5 +43,17 @@ jobs:
           HOST=$(printf '%s' "$HOST" | tr -d '[:space:]')
           PORT=$(printf '%s' "${PORT:-22}" | tr -d '[:space:]')
           if [ "$PORT" = "22" ]; then echo "$HOST $HOSTKEY" > ~/.ssh/known_hosts; else echo "[$HOST]:$PORT $HOSTKEY" > ~/.ssh/known_hosts; fi
-          ssh -i ~/.ssh/deploy -p "$PORT" -o StrictHostKeyChecking=yes -o BatchMode=yes -o ConnectTimeout=20 \
-            "nus-deploy@$HOST" "$GITHUB_SHA"
+          SSH=(ssh -i ~/.ssh/deploy -p "$PORT" -o StrictHostKeyChecking=yes -o BatchMode=yes -o ConnectTimeout=20)
+          "${SSH[@]}" "nus-deploy@$HOST" "$GITHUB_SHA"
+
+          # The Android app at https://<domain>/download: the newest successful "mobile app"
+          # build of this branch. A missing or expired build leaves the page as it was.
+          RUN=$(gh run list -R "$GITHUB_REPOSITORY" --workflow mobile.yml --branch "$GITHUB_REF_NAME" \
+                  --status success -L 1 --json databaseId,headSha -q '.[0] | "\(.databaseId) \(.headSha)"' || true)
+          if [ -z "$RUN" ]; then
+            echo "::warning::No successful mobile app build yet: /download not updated"
+          elif gh run download "${RUN% *}" -R "$GITHUB_REPOSITORY" -n nalut-university-apk -D apk; then
+            "${SSH[@]}" "nus-deploy@$HOST" "apk ${RUN#* }" < apk/app-release.apk
+          else
+            echo "::warning::Could not fetch the APK of run ${RUN% *} (expired?): /download not updated"
+          fi

@@ -181,6 +181,14 @@ exec sudo -u nus bash -c 'set -a; . $ENV_FILE; set +a; cd $APP_DIR/backend; exec
 CHECK
 chmod 755 /usr/local/sbin/nus-sms-check
 
+# Keep the deploy command current (only where the deploy button was set up). Written to a new
+# file and renamed: this script may be running from inside nus-update right now.
+if [ -f /usr/local/sbin/nus-update ]; then
+  install -o root -g root -m 755 "$SRC_DIR/deploy/nus-update" /usr/local/sbin/.nus-update.new
+  mv -f /usr/local/sbin/.nus-update.new /usr/local/sbin/nus-update
+fi
+install -d -m 755 "$DATA_DIR/app"   # the Android app offered at https://$DOMAIN/download
+
 say "Daily backup (03:30, keeps 14 days)"
 cat > /etc/cron.d/nus-backup <<CRON
 30 3 * * * nus $APP_DIR/.venv/bin/python -c "import sqlite3,datetime; d='$DATA_DIR/backups/nus-'+datetime.date.today().isoformat()+'.db'; s=sqlite3.connect('$DATA_DIR/nus.db'); t=sqlite3.connect(d); s.backup(t); t.close()" && tar -czf $DATA_DIR/backups/files-\$(date +\%F).tgz -C $DATA_DIR files && find $DATA_DIR/backups -mtime +14 -delete

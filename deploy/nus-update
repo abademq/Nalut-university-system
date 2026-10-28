@@ -16,10 +16,36 @@ CONF=/etc/nus/deploy.conf
 . "$CONF"   # DOMAIN, SRC_DIR
 
 exec 9>/run/nus-update.lock
-flock -n 9 || { echo "another update is running"; exit 1; }
+flock -w 600 9 || { echo "another update is running"; exit 1; }
+
+# "apk <sha>": the Android app built from that commit arrives on stdin and is published at
+# https://$DOMAIN/download (checked to be a real APK, at most 150 MB; the old one is kept on failure)
+if [[ "${1:-}" =~ ^apk\ ([0-9a-f]{40})$ ]]; then
+  APK_SHA="${BASH_REMATCH[1]}"
+  APP_DIR=/var/lib/nus/app
+  install -d -m 755 "$APP_DIR"
+  TMP_APK=$(mktemp "$APP_DIR/.incoming.XXXXXX")
+  trap 'rm -f "$TMP_APK"' EXIT
+  head -c 157286400 > "$TMP_APK"
+  python3 - "$TMP_APK" 2>/dev/null <<'PY' || { echo "refusing: not a valid Android APK"; exit 6; }
+import sys, zipfile
+z = zipfile.ZipFile(sys.argv[1])
+names = set(z.namelist())
+assert "AndroidManifest.xml" in names and any(n.startswith("classes") and n.endswith(".dex") for n in names)
+assert z.testzip() is None
+PY
+  SUM=$(sha256sum "$TMP_APK" | cut -d' ' -f1)
+  SIZE=$(stat -c %s "$TMP_APK")
+  chmod 644 "$TMP_APK"
+  mv -f "$TMP_APK" "$APP_DIR/nalut-university.apk"
+  printf '{"commit": "%s", "sha256": "%s", "size": %s, "updated": "%s"}\n' \
+    "$APK_SHA" "$SUM" "$SIZE" "$(date +%Y-%m-%dT%H:%M)" > "$APP_DIR/app.json"
+  echo "app published: ${APK_SHA:0:7}, $SIZE bytes, sha256 $SUM"
+  exit 0
+fi
 
 SHA="${1:-}"
-[[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "usage: nus-update <commit sha>"; exit 2; }
+[[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "usage: nus-update <commit sha> | nus-update 'apk <commit sha>' < app.apk"; exit 2; }
 
 cd "$SRC_DIR"
 git fetch --quiet origin

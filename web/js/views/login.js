@@ -169,6 +169,7 @@ export function Login({ onLogin }) {
           ${stage === "mfa" && mfa?.method === "sms"
             ? html`<button type="button" class="ghost small" onClick=${resend}>إعادة إرسال الرمز</button>`
             : html`<button type="button" class="ghost small" onClick=${() => setStage("forgot")}>نسيت كلمة المرور؟</button>`}</p>
+        ${stage === "login" ? html`<p class="small" style="text-align:center"><a href="/download">تحميل تطبيق أندرويد</a></p>` : null}
       </form>` : null}
     </div>
     ${demo && stage === "login" ? html`<div class="card">

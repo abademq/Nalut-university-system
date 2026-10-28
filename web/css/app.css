@@ -354,3 +354,8 @@ dl.guide dd { margin: .2rem 0 0; color: var(--text); line-height: 1.8; }
 .no-mark { background: var(--danger-soft); color: var(--danger); }
 .big-icon { display: grid; place-items: center; color: var(--primary-text); margin-bottom: .5rem; }
 button.ghost .icon, .btn .icon { opacity: .9; }
+
+/* ---------- app download page (/download) */
+.dl-card { text-align: center; }
+.dl-steps { text-align: start; }
+.dl-hash { word-break: break-all; }
