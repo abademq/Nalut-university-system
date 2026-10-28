@@ -181,6 +181,26 @@ exec sudo -u nus bash -c 'set -a; . $ENV_FILE; set +a; cd $APP_DIR/backend; exec
 CHECK
 chmod 755 /usr/local/sbin/nus-sms-check
 
+say "Installing the closing switch (sudo nus-close [\"message\"], sudo nus-open)"
+cat > /usr/local/sbin/nus-close <<CLOSE
+#!/usr/bin/env bash
+# Closes the platform: every page shows a "platform closed" notice, the app shows the same text.
+# Takes effect at once, no restart. Usage: sudo nus-close ["message"]   (reopen: sudo nus-open)
+set -euo pipefail
+[ "\$(id -u)" = 0 ] || { echo "run with sudo" >&2; exit 1; }
+umask 022
+printf '%s\n' "\${1:-}" > $DATA_DIR/.closed.new && mv -f $DATA_DIR/.closed.new $DATA_DIR/closed
+echo "platform closed\${1:+: \$1}  (reopen with: sudo nus-open)"
+CLOSE
+cat > /usr/local/sbin/nus-open <<OPEN
+#!/usr/bin/env bash
+# Reopens the platform closed with nus-close.
+set -euo pipefail
+[ "\$(id -u)" = 0 ] || { echo "run with sudo" >&2; exit 1; }
+rm -f $DATA_DIR/closed && echo "platform open"
+OPEN
+chmod 755 /usr/local/sbin/nus-close /usr/local/sbin/nus-open
+
 # Keep the deploy command current (only where the deploy button was set up). Written to a new
 # file and renamed: this script may be running from inside nus-update right now.
 if [ -f /usr/local/sbin/nus-update ]; then

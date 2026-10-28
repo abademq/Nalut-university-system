@@ -44,6 +44,10 @@ class Settings:
     app_download_dir: Path = field(
         default_factory=lambda: Path(_env("APP_DOWNLOAD_DIR", str(Path(_env("STORAGE_DIR", str(BASE_DIR / "data" / "files"))).parent / "app")))
     )
+    # present = the platform is closed (sudo nus-close); its text, if any, is shown to everyone
+    closed_file: Path = field(
+        default_factory=lambda: Path(_env("CLOSED_FILE", str(Path(_env("STORAGE_DIR", str(BASE_DIR / "data" / "files"))).parent / "closed")))
+    )
     web_dir: Path = field(
         default_factory=lambda: Path(_env("WEB_DIR", str(BASE_DIR.parent / "web")))
     )

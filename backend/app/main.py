@@ -10,7 +10,8 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from . import worker
+from . import closed, worker
+from .closed import ClosedGate
 from .config import settings
 from .db import init_db
 from .routers import (
@@ -72,6 +73,7 @@ class _Compress:
 
 
 app.add_middleware(_Compress)
+app.add_middleware(ClosedGate)  # sudo nus-close / nus-open (see closed.py)
 
 if settings.cors_origins:
     app.add_middleware(CORSMiddleware, allow_origins=settings.cors_origins, allow_credentials=True,
@@ -123,7 +125,7 @@ VERSION = _version_file.read_text().strip() if _version_file.exists() else "dev"
 
 @app.get("/api/health")
 def health():
-    return {"ok": True, "demo": not settings.is_production, "version": VERSION}
+    return {"ok": True, "demo": not settings.is_production, "version": VERSION, "closed": closed.message() is not None}
 
 
 # --------------------------------------------------------------------------- web client (PWA)

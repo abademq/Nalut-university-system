@@ -85,6 +85,8 @@ export async function request(method, path, { json, form, raw = false, retry = t
     return res;
   }
   const body = await res.json().catch(() => null);
+  // the platform was closed from the server (nus-close): show its notice page instead of the app
+  if (res.status === 503 && body?.closed) window.location.replace("/");
   if (!res.ok) throw new ApiError(res.status, errorMessage(body, res.status), body);
   return body;
 }
