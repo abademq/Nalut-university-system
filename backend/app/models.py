@@ -127,6 +127,20 @@ class AuthSession(Base):
     ip: Mapped[str | None] = mapped_column(String(60))
 
 
+class SessionRotation(Base):
+    """Which session replaced a rotated refresh token, and when.
+
+    A phone on a weak network may send its refresh token, lose the reply and retry with the same
+    token. Within a short grace period, from the same device, that retry is a lost reply rather
+    than a stolen token, and must not sign the user out everywhere."""
+
+    __tablename__ = "session_rotations"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    session_id: Mapped[int] = mapped_column(ForeignKey("auth_sessions.id"), unique=True)
+    successor_id: Mapped[int] = mapped_column(ForeignKey("auth_sessions.id"))
+    rotated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
 class PasswordResetToken(Base):
     __tablename__ = "password_reset_tokens"
     id: Mapped[int] = mapped_column(primary_key=True)

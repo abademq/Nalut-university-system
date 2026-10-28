@@ -24,7 +24,7 @@ import json
 import math
 import secrets
 import threading
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException
 from sqlalchemy import func, select
@@ -80,6 +80,30 @@ def token_for(session: AttendanceSession, window: int) -> str:
 def short_code_for(session: AttendanceSession, window: int) -> str:
     """6-digit code for manual entry when the camera cannot read the QR."""
     return f"{int.from_bytes(_mac(session, window)[10:14], 'big') % 1_000_000:06d}"
+
+
+def issue_ticket(session: AttendanceSession, user_id: int, at=None) -> str:
+    """A scan ticket: proof that this user scanned a valid code of this session at this time.
+
+    The slow parts of a check-in (location fix, live photo, upload on a weak network) can then
+    take longer than the code's 15 seconds without the student being refused. The ticket is
+    bound to the user and the session, so it cannot be handed to someone else."""
+    issued = int((at or utcnow()).timestamp())
+    mac = hmac.new(session.secret.encode(), f"ticket:{user_id}:{session.id}:{issued}".encode(), hashlib.sha256)
+    return f"{issued}.{mac.hexdigest()[:32]}"
+
+
+def verify_ticket(session: AttendanceSession, user_id: int, ticket: str, max_age_seconds: int) -> bool:
+    try:
+        issued_s, sig = ticket.split(".", 1)
+        issued = int(issued_s)
+    except ValueError:
+        return False
+    now = int(utcnow().timestamp())
+    if issued > now + 5 or now - issued > max_age_seconds:
+        return False
+    expected = issue_ticket(session, user_id, datetime.fromtimestamp(issued, timezone.utc)).split(".", 1)[1]
+    return hmac.compare_digest(expected, sig)
 
 
 def qr_state(session: AttendanceSession) -> dict:
@@ -205,7 +229,7 @@ def eligible(db: Session, user: User, session: AttendanceSession) -> bool:
 
 def check_in(db: Session, user: User, *, payload: str | None, short_code: str | None, session_id: int | None,
              nonce: str, device_id: str | None, latitude: float | None, longitude: float | None,
-             selfie: bytes | None, ip: str | None) -> AttendanceRecord:
+             selfie: bytes | None, ip: str | None, ticket: str | None = None) -> AttendanceRecord:
     if not limiter.hit(f"checkin:{user.id}", 10, 60):
         raise HTTPException(status_code=429, detail="محاولات كثيرة، حاول بعد قليل")
     if not nonce or not (16 <= len(nonce) <= 80):
@@ -214,7 +238,7 @@ def check_in(db: Session, user: User, *, payload: str | None, short_code: str | 
     window = token = None
     if payload:
         session_id, window, token = parse_payload(payload)
-    elif not (short_code and session_id):
+    elif not ((short_code or ticket) and session_id):
         raise HTTPException(status_code=400, detail="أدخل رمز الحضور")
 
     session = db.get(AttendanceSession, session_id)
@@ -238,7 +262,10 @@ def check_in(db: Session, user: User, *, payload: str | None, short_code: str | 
         raise HTTPException(status_code=400, detail="جلسة الحضور مغلقة")
     if not eligible(db, user, session):
         raise HTTPException(status_code=403, detail="أنت غير مسجل في هذه الجلسة")
-    if not verify_code(session, window=window, token=token, short_code=None if payload else short_code):
+    if ticket and not payload:
+        if not verify_ticket(session, user.id, ticket, int(policy.get("scan_ticket_seconds", 120))):
+            raise HTTPException(status_code=400, detail="انتهت مهلة التسجيل بعد المسح، امسح الرمز الحالي مرة أخرى")
+    elif not verify_code(session, window=window, token=token, short_code=None if payload else short_code):
         raise HTTPException(status_code=400, detail="رمز الحضور منتهي الصلاحية أو غير صحيح، امسح الرمز الحالي")
 
     existing = db.scalar(select(AttendanceRecord).where(AttendanceRecord.session_id == session.id,

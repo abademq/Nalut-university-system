@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from . import worker
@@ -52,6 +53,24 @@ app = FastAPI(
     redoc_url=None,
     openapi_url="/api/openapi.json",
 )
+
+class _Compress:
+    """gzip for the page's code, styles and API data: weak mobile networks gain the most.
+
+    Sign-in, session and password replies are left uncompressed: they carry tokens next to text
+    the client sent, the pattern compression side channels (BREACH) feed on."""
+
+    def __init__(self, app):
+        self.plain = app
+        self.gzip = GZipMiddleware(app, minimum_size=800)
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http" and not scope.get("path", "").startswith(("/api/auth/", "/api/me/password")):
+            return await self.gzip(scope, receive, send)
+        return await self.plain(scope, receive, send)
+
+
+app.add_middleware(_Compress)
 
 if settings.cors_origins:
     app.add_middleware(CORSMiddleware, allow_origins=settings.cors_origins, allow_credentials=True,

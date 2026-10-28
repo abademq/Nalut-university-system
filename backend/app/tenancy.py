@@ -52,6 +52,8 @@ DEFAULT_SETTINGS: dict = {
         "staff_default_duration_minutes": 480,
         # check-in opens this many minutes before a session starts
         "open_before_minutes": 10,
+        # after a valid scan, the student has this long to finish (location, live photo, upload)
+        "scan_ticket_seconds": 120,
         "rotation_seconds": 15,
         "warning_absence_percent": 15,
         "limit_absence_percent": 25,
@@ -168,6 +170,7 @@ NUMBER_LIMITS = {
     ("attendance", "late_after_minutes"): (0, 180), ("attendance", "default_duration_minutes"): (5, 720),
     ("attendance", "staff_late_after_minutes"): (0, 240), ("attendance", "staff_early_leave_minutes"): (0, 240),
     ("attendance", "staff_default_duration_minutes"): (30, 960), ("attendance", "open_before_minutes"): (0, 120),
+    ("attendance", "scan_ticket_seconds"): (30, 600),
     ("attendance", "rotation_seconds"): (5, 120), ("attendance", "warning_absence_percent"): (0, 100),
     ("attendance", "limit_absence_percent"): (0, 100), ("attendance", "review_threshold"): (1, 300),
     ("attendance", "default_radius_m"): (20, 5000), ("attendance", "selfie_retention_days"): (1, 365),
@@ -179,6 +182,7 @@ NUMBER_LABELS = {
     "late_after_minutes": "التأخر عن المحاضرة", "default_duration_minutes": "مدة المحاضرة الافتراضية",
     "staff_late_after_minutes": "التأخر عن الدوام", "staff_early_leave_minutes": "الانصراف المبكر",
     "staff_default_duration_minutes": "مدة الدوام الافتراضية", "open_before_minutes": "فتح التسجيل قبل البداية",
+    "scan_ticket_seconds": "مهلة إكمال التسجيل بعد المسح",
     "rotation_seconds": "مدة صلاحية الرمز", "warning_absence_percent": "نسبة غياب التنبيه",
     "limit_absence_percent": "حد الغياب", "review_threshold": "درجة المراجعة", "default_radius_m": "نطاق القاعة",
     "selfie_retention_days": "مدة الاحتفاظ بالصور", "pass_mark": "درجة النجاح",

@@ -55,11 +55,23 @@ export async function request(method, path, { json, form, raw = false, retry = t
   } else if (form) {
     opts.body = form;
   }
+  // a weak or dropped connection must not leave the page waiting forever
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), form ? 180000 : 40000);
+  opts.signal = ctrl.signal;
   let res;
   try {
     res = await fetch(path, opts);
-  } catch {
-    throw new ApiError(0, "تعذر الاتصال بالخادم، تحقق من الشبكة");
+  } catch (e) {
+    // a change that timed out may still have reached the server: say so before a retry
+    const sent = method !== "GET";
+    if (e?.name === "AbortError") {
+      throw new ApiError(0, sent ? "الشبكة بطيئة جداً ولم يصل الرد. تحقق هل تم الإجراء قبل إعادة المحاولة"
+        : "الشبكة بطيئة جداً، حاول مرة أخرى");
+    }
+    throw new ApiError(0, sent ? "انقطع الاتصال. تحقق هل تم الإجراء قبل إعادة المحاولة" : "تعذر الاتصال بالخادم، تحقق من الشبكة");
+  } finally {
+    clearTimeout(timer);
   }
   // the server's clock, so relative times are right even when this device's clock is not
   const date = Date.parse(res.headers.get("date") || "");

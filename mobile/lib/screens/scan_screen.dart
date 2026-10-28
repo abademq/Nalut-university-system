@@ -108,7 +108,12 @@ class _ScanScreenState extends State<ScanScreen> {
     });
     await _scanner.stop();
     try {
-      final req = await s.api.get('/api/attendance/sessions/$sessionId/requirements') as Map<String, dynamic>;
+      // the code is checked the moment it is scanned; the ticket then covers the slow parts
+      // (location, live photo, upload on a weak network) without the code expiring meanwhile
+      final req = await s.api.post('/api/attendance/prepare', {
+        'payload': ?payload,
+        if (payload == null) ...{'short_code': shortCode!, 'session_id': int.tryParse(sessionId)},
+      }) as Map<String, dynamic>;
       Uint8List? selfie;
       if (req['require_selfie'] == true) {
         if (!mounted) return;
@@ -125,8 +130,8 @@ class _ScanScreenState extends State<ScanScreen> {
         '/api/attendance/check-in',
         fields: {
           'nonce': newNonce(),
-          'payload': ?payload,
-          if (payload == null) ...{'short_code': shortCode!, 'session_id': sessionId},
+          'ticket': req['ticket'] as String,
+          'session_id': '${req['id']}',
           if (pos != null) ...{'latitude': '${pos.latitude}', 'longitude': '${pos.longitude}'},
         },
         files: [if (selfie != null) UploadFile('selfie', 'live.jpg', selfie)],

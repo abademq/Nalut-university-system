@@ -15,6 +15,7 @@ ACTIONS: dict[str, tuple[str, str]] = {
     "auth.mfa_disabled": ("إيقاف التحقق الثنائي", "auth"),
     "auth.sessions_revoked": ("الخروج من كل الأجهزة", "auth"),
     "auth.refresh_reuse": ("محاولة استخدام جلسة ملغاة (أُلغيت كل جلسات الحساب)", "auth"),
+    "auth.refresh_retried": ("تجديد جلسة بعد انقطاع الاتصال", "auth"),
     "auth.handoff_started": ("فتح لوحة التحكم من التطبيق", "auth"),
     # accounts
     "user.created": ("إنشاء حساب", "user"),

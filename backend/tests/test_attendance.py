@@ -221,3 +221,32 @@ def test_early_leave_is_flagged_for_staff(client, as_, db):
     assert scan(client, h, payload).status_code == 200
     db.refresh(rec)
     assert "early_leave" in rec.risk_flags
+
+
+def test_scan_ticket_survives_a_slow_network_but_not_another_user(client, as_, db):
+    from datetime import timedelta
+    sid = open_session(client, as_)
+    h = as_("s.ali@nalut.edu.ly")
+    prep = client.post("/api/attendance/prepare", headers=h, json={"payload": qr(client, as_, sid)["payload"]})
+    assert prep.status_code == 200, prep.text
+    ticket = prep.json()["ticket"]
+    # 70 seconds later (location fix, live photo, slow upload): the code itself has expired
+    s = db.get(AttendanceSession, sid)
+    stale = svc.issue_ticket(s, prep.json()["id"] and db.query(svc.User).filter_by(email="s.ali@nalut.edu.ly").one().id,
+                             svc.utcnow() - timedelta(seconds=70))
+    # someone else cannot use the ticket
+    other = client.post("/api/attendance/check-in", headers={**as_("student2@nalut.edu.ly"), "X-Device-Id": "d2"},
+                        data={"ticket": ticket, "session_id": sid, "nonce": nonce()})
+    assert other.status_code == 400
+    r = client.post("/api/attendance/check-in", headers={**h, "X-Device-Id": "d1"},
+                    data={"ticket": stale, "session_id": sid, "nonce": nonce()})
+    assert r.status_code == 200 and r.json()["status"] in ("present", "late")
+    # an expired ticket (beyond the institution's limit) is refused
+    s2 = open_session(client, as_)
+    old = svc.issue_ticket(db.get(AttendanceSession, s2), db.query(svc.User).filter_by(email="s.ali@nalut.edu.ly").one().id,
+                           svc.utcnow() - timedelta(seconds=200))
+    r = client.post("/api/attendance/check-in", headers={**h, "X-Device-Id": "d1"},
+                    data={"ticket": old, "session_id": s2, "nonce": nonce()})
+    assert r.status_code == 400
+    # a wrong code is refused at the scan itself
+    assert client.post("/api/attendance/prepare", headers=h, json={"short_code": "000000", "session_id": s2}).status_code == 400

@@ -48,8 +48,24 @@ function useCamera(facingMode, active) {
   return [videoRef, error];
 }
 
+// The QR decoder (250 KB) is only needed where the browser has no built-in one, and only on this
+// page: loading it on every page cost weak networks seconds on each first visit.
+let jsQRLoading = null;
+function loadJsQR() {
+  if (window.jsQR || "BarcodeDetector" in window) return Promise.resolve();
+  jsQRLoading = jsQRLoading || new Promise((resolve) => {
+    const s = document.createElement("script");
+    s.src = "/static/vendor/jsQR.js";
+    s.onload = resolve;
+    s.onerror = () => { jsQRLoading = null; resolve(); };
+    document.head.appendChild(s);
+  });
+  return jsQRLoading;
+}
+
 function QrScanner({ onCode }) {
   const [videoRef, error] = useCamera("environment", true);
+  useEffect(() => { loadJsQR(); }, []);
   useEffect(() => {
     let stop = false;
     const canvas = document.createElement("canvas");
@@ -126,8 +142,8 @@ export function ScanView() {
     setError(null);
     try {
       const fd = new FormData();
-      if (p.payload) fd.append("payload", p.payload);
-      else { fd.append("short_code", p.short_code); fd.append("session_id", p.session_id); }
+      fd.append("ticket", p.req.ticket);
+      fd.append("session_id", p.req.id);
       fd.append("nonce", newNonce());
       if (p.req.require_location || p.req.has_geofence) {
         const pos = await getPosition();
@@ -147,7 +163,9 @@ export function ScanView() {
 
   const begin = async (p) => {
     try {
-      const req = await api.get(`/api/attendance/sessions/${p.session_id}/requirements`);
+      // the code is checked the moment it is scanned; the ticket covers the slower steps after it
+      const req = await api.post("/api/attendance/prepare", p.payload ? { payload: p.payload }
+        : { short_code: p.short_code, session_id: Number(p.session_id) });
       const full = { ...p, req };
       setPending(full);
       if (req.require_selfie) setStage("selfie");

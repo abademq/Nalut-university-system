@@ -38,7 +38,9 @@ def test_refresh_rotation_and_reuse_detection(client):
     r2 = client.post("/api/auth/refresh", json={"refresh_token": first})
     assert r2.status_code == 200
     second = r2.json()["refresh_token"]
-    assert client.post("/api/auth/refresh", json={"refresh_token": first}).status_code == 401  # reuse
+    # reuse from another device (or after the 60-second grace for a lost reply) is theft
+    assert client.post("/api/auth/refresh", headers={"User-Agent": "attacker"},
+                       json={"refresh_token": first}).status_code == 401
     assert client.post("/api/auth/refresh", json={"refresh_token": second}).status_code == 401  # family revoked
 
 
@@ -120,3 +122,29 @@ def test_lockout_limits_come_from_institution_settings(client, as_):
         client.post("/api/auth/login", json={"identifier": "t.ahmed@nalut.edu.ly", "password": "wrong-password"})
     r = client.post("/api/auth/login", json={"identifier": "t.ahmed@nalut.edu.ly", "password": "Demo@12345"})
     assert r.status_code == 423
+
+
+def test_lost_refresh_reply_retried_from_same_device_keeps_the_user_signed_in(client):
+    """Weak network: the app refreshes, the reply never arrives, the app retries with the old token."""
+    ua = {"User-Agent": "NalutApp/1.0", "X-Client": "mobile"}
+    r = client.post("/api/auth/login", headers=ua, json={"identifier": "s.ali@nalut.edu.ly", "password": "Demo@12345"})
+    old = r.json()["refresh_token"]
+    first = client.post("/api/auth/refresh", headers=ua, json={"refresh_token": old})
+    assert first.status_code == 200  # this reply is "lost"
+    retry = client.post("/api/auth/refresh", headers=ua, json={"refresh_token": old})
+    assert retry.status_code == 200
+    new = retry.json()["refresh_token"]
+    # the token from the lost reply no longer works, the retried one does
+    assert client.post("/api/auth/refresh", headers=ua, json={"refresh_token": first.json()["refresh_token"]}).status_code == 401
+    # ... and that was treated as theft: every session is revoked
+    assert client.post("/api/auth/refresh", headers=ua, json={"refresh_token": new}).status_code == 401
+
+
+def test_reused_refresh_token_from_another_device_is_theft(client):
+    ua = {"User-Agent": "NalutApp/1.0", "X-Client": "mobile"}
+    r = client.post("/api/auth/login", headers=ua, json={"identifier": "s.ali@nalut.edu.ly", "password": "Demo@12345"})
+    old = r.json()["refresh_token"]
+    good = client.post("/api/auth/refresh", headers=ua, json={"refresh_token": old}).json()["refresh_token"]
+    thief = {"User-Agent": "curl/8", "X-Client": "mobile"}
+    assert client.post("/api/auth/refresh", headers=thief, json={"refresh_token": old}).status_code == 401
+    assert client.post("/api/auth/refresh", headers=ua, json={"refresh_token": good}).status_code == 401

@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from .. import attendance as svc
 from .. import audit, files, permissions
 from ..db import as_utc, get_db, utcnow
+from ..security import limiter
 from ..deps import (
     client_ip,
     forbidden,
@@ -200,9 +201,44 @@ def close(sid: int, user: User = Depends(get_current_user), db: Session = Depend
     return {"absent_marked": created, **_session_out(db, s)}
 
 
+class PrepareIn(BaseModel):
+    payload: str | None = Field(default=None, max_length=200)
+    short_code: str | None = Field(default=None, max_length=10)
+    session_id: int | None = None
+
+
+@router.post("/attendance/prepare")
+def prepare_check_in(body: PrepareIn, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Step 1 of a check-in: the code is verified the moment it is scanned, and the app gets what it
+    must collect plus a short ticket for step 2 (/attendance/check-in), however slow the network."""
+    if not limiter.hit(f"prepare:{user.id}", 20, 60):
+        raise HTTPException(status_code=429, detail="محاولات كثيرة، حاول بعد قليل")
+    window = token = None
+    sid = body.session_id
+    if body.payload:
+        sid, window, token = svc.parse_payload(body.payload)
+    elif not (body.short_code and sid):
+        raise HTTPException(status_code=400, detail="أدخل رمز الحضور")
+    s = db.get(AttendanceSession, sid)
+    if not s or s.university_id != user.university_id:
+        raise not_found("جلسة الحضور غير موجودة")
+    if not svc.eligible(db, user, s):
+        raise HTTPException(status_code=403, detail="أنت غير مسجل في هذه الجلسة")
+    now = utcnow()
+    policy = svc.policy_for(db, s.university_id)
+    if s.status != "open" or now > s.ends_at or now < s.starts_at - timedelta(minutes=int(policy.get("open_before_minutes", 10))):
+        raise HTTPException(status_code=400, detail="جلسة الحضور مغلقة")
+    if not svc.verify_code(s, window=window, token=token, short_code=None if body.payload else body.short_code):
+        raise HTTPException(status_code=400, detail="رمز الحضور منتهي الصلاحية أو غير صحيح، امسح الرمز الحالي")
+    return {"id": s.id, "title": s.title, "require_location": s.require_location, "require_selfie": s.require_selfie,
+            "has_geofence": s.latitude is not None, "ticket": svc.issue_ticket(s, user.id),
+            "ticket_seconds": int(policy.get("scan_ticket_seconds", 120))}
+
+
 @router.post("/attendance/check-in")
 async def check_in(request: Request, payload: str | None = Form(None, max_length=200),
                    short_code: str | None = Form(None, max_length=10), session_id: int | None = Form(None),
+                   ticket: str | None = Form(None, max_length=60),
                    nonce: str = Form(..., max_length=80), latitude: float | None = Form(None),
                    longitude: float | None = Form(None), selfie: UploadFile | None = File(None),
                    user: User = Depends(get_current_user), db: Session = Depends(get_db)):
@@ -210,7 +246,7 @@ async def check_in(request: Request, payload: str | None = Form(None, max_length
     device_id = (request.headers.get("x-device-id") or "")[:100] or None
     rec = svc.check_in(db, user, payload=payload, short_code=short_code, session_id=session_id, nonce=nonce,
                        device_id=device_id, latitude=latitude, longitude=longitude, selfie=selfie_bytes,
-                       ip=client_ip(request))
+                       ip=client_ip(request), ticket=ticket)
     db.commit()
     s = db.get(AttendanceSession, rec.session_id)
     messages = {

@@ -47,6 +47,16 @@ void main() {
     expect(store.values[StoreKeys.refreshToken], isNot(first));
   }, skip: skip);
 
+  test('requests failing together share one refresh (no false theft alarm)', () async {
+    final store = MemoryTokenStore();
+    final api = ApiClient(store: store, baseUrl: server!);
+    await api.login('s.ali@nalut.edu.ly', 'Demo@12345');
+    final results = await Future.wait([api.restore(), api.restore(), api.restore()]);
+    expect(results.every((u) => u?['role'] == 'student'), isTrue);
+    // the session is still alive afterwards
+    expect((await api.restore())?['role'], 'student');
+  }, skip: skip);
+
   test('full check-in: teacher opens a session, student scans the rotating QR', () async {
     final teacher = await signIn('t.ahmed@nalut.edu.ly');
     final courses = await teacher.get('/api/courses') as List;
@@ -56,10 +66,11 @@ void main() {
 
     final student = await signIn('student3@nalut.edu.ly');
     final store = MemoryTokenStore();
-    final req = await student.get('/api/attendance/sessions/${session['id']}/requirements') as Map;
+    final req = await student.post('/api/attendance/prepare', {'payload': qr['payload']}) as Map;
     expect(req['require_selfie'], isFalse);
+    expect(req['ticket'], isNotNull);
     final result = await student.multipart('/api/attendance/check-in',
-        fields: {'payload': qr['payload'] as String, 'nonce': newNonce()},
+        fields: {'ticket': req['ticket'] as String, 'session_id': '${req['id']}', 'nonce': newNonce()},
         headers: {'X-Device-Id': await deviceIdFrom(store)}) as Map;
     expect(result['status'], 'present');
 

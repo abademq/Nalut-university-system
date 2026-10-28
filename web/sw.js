@@ -1,8 +1,8 @@
 // Service worker: caches the application shell so the app opens quickly and offline.
 // API responses are never cached (they contain personal data).
-const CACHE = "nus-shell-v4";
+const CACHE = "nus-shell-v5";
 // The page's code is under /b/<build>/ and gets cached as it loads (network first).
-const SHELL = ["/", "/static/vendor/preact-htm.mjs", "/static/vendor/jsQR.js", "/static/icon.svg"];
+const SHELL = ["/", "/static/vendor/preact-htm.mjs", "/static/icon.svg"];
 
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));

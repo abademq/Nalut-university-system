@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io' show HttpDate;
 import 'dart:typed_data';
@@ -60,13 +61,21 @@ class ApiClient {
     return 'تعذر إتمام الطلب ($status)';
   }
 
-  Future<http.Response> _send(Future<http.Response> Function() call) async {
+  /// [change]: the request changes something on the server, so a timeout may hide a success.
+  Future<http.Response> _send(Future<http.Response> Function() call,
+      {bool change = false, Duration timeout = const Duration(seconds: 40)}) async {
     try {
-      return await call().timeout(const Duration(seconds: 40));
+      return await call().timeout(timeout);
     } on ApiException {
       rethrow;
+    } on TimeoutException {
+      throw ApiException(0, change
+          ? 'الشبكة بطيئة جداً ولم يصل الرد. تحقق هل تم الإجراء قبل إعادة المحاولة'
+          : 'الشبكة بطيئة جداً، حاول مرة أخرى');
     } catch (_) {
-      throw ApiException(0, 'تعذر الاتصال بالخادم، تحقق من الإنترنت');
+      throw ApiException(0, change
+          ? 'انقطع الاتصال. تحقق هل تم الإجراء قبل إعادة المحاولة'
+          : 'تعذر الاتصال بالخادم، تحقق من الإنترنت');
     }
   }
 
@@ -116,22 +125,22 @@ class ApiClient {
 
   Future<dynamic> patch(String path, Object body) async {
     call() => _http.patch(_uri(path), headers: _headers(json: true), body: jsonEncode(body));
-    return _handle(await _send(call), call, path);
+    return _handle(await _send(call, change: true), call, path);
   }
 
   Future<dynamic> post(String path, [Object? body]) async {
     call() => _http.post(_uri(path), headers: _headers(json: true), body: jsonEncode(body ?? {}));
-    return _handle(await _send(call), call, path);
+    return _handle(await _send(call, change: true), call, path);
   }
 
   Future<dynamic> put(String path, Object body) async {
     call() => _http.put(_uri(path), headers: _headers(json: true), body: jsonEncode(body));
-    return _handle(await _send(call), call, path);
+    return _handle(await _send(call, change: true), call, path);
   }
 
   Future<dynamic> delete(String path) async {
     call() => _http.delete(_uri(path), headers: _headers());
-    return _handle(await _send(call), call, path);
+    return _handle(await _send(call, change: true), call, path);
   }
 
   Future<dynamic> multipart(String path,
@@ -146,7 +155,8 @@ class ApiClient {
       return http.Response.fromStream(await _http.send(req));
     }
 
-    return _handle(await _send(call), call, path);
+    // uploads on a weak network take longer than ordinary requests
+    return _handle(await _send(call, change: true, timeout: const Duration(minutes: 3)), call, path);
   }
 
   // ------------------------------------------------------------------ auth
@@ -184,8 +194,16 @@ class ApiClient {
     }
   }
 
+  Future<Map<String, dynamic>?>? _restoring;
+
   /// Exchanges the stored refresh token for a new pair. Returns the user profile or null.
-  Future<Map<String, dynamic>?> restore() async {
+  /// Requests that fail together on a weak network share ONE refresh: a second refresh with the
+  /// same (already rotated) token would look like a stolen token to the server.
+  Future<Map<String, dynamic>?> restore() {
+    return _restoring ??= _restore().whenComplete(() => _restoring = null);
+  }
+
+  Future<Map<String, dynamic>?> _restore() async {
     final token = await store.read(StoreKeys.refreshToken);
     if (token == null) return null;
     try {

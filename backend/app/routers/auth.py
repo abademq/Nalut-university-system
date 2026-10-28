@@ -14,9 +14,9 @@ from sqlalchemy.orm import Session
 
 from .. import audit, mfa, permissions
 from ..config import settings
-from ..db import get_db, utcnow
+from ..db import as_utc, get_db, utcnow
 from ..deps import OTHER_UNIVERSITY, belongs_here, client_ip, forbidden, get_current_user, tenant_settings
-from ..models import AuthSession, DeviceToken, Faculty, PasswordResetToken, Role, University, User
+from ..models import AuthSession, DeviceToken, Faculty, PasswordResetToken, Role, SessionRotation, University, User
 from ..notifications import sms_provider
 from ..security import (
     DUMMY_HASH,
@@ -352,6 +352,24 @@ def refresh(request: Request, response: Response, body: RefreshIn | None = None,
     if not sess or sess.expires_at < now:
         raise HTTPException(status_code=401, detail="انتهت الجلسة")
     if sess.revoked_at is not None:
+        rot = db.scalar(select(SessionRotation).where(SessionRotation.session_id == sess.id))
+        successor = db.get(AuthSession, rot.successor_id) if rot else None
+        ua = (request.headers.get("user-agent") or "")[:300]
+        if rot and successor and successor.revoked_at is None and successor.user_agent == ua \
+                and now - as_utc(rot.rotated_at) <= timedelta(seconds=ROTATION_GRACE_SECONDS):
+            # the reply to the previous refresh was lost: the device never received the successor's
+            # token, so that session is closed and a fresh one issued in its place
+            user = db.get(User, sess.user_id)
+            if not user or not user.is_active:
+                raise HTTPException(status_code=401, detail="الحساب غير مفعل")
+            successor.revoked_at = now
+            out = _issue_session(db, user, request, response, include_refresh=bool(body and body.refresh_token))
+            db.flush()
+            rot.successor_id = _newest_session_id(db, user.id)
+            rot.rotated_at = now
+            audit.record(db, "auth.refresh_retried", actor=user, ip=client_ip(request))
+            db.commit()
+            return out
         # a rotated token was reused: assume theft and revoke every session of that user
         db.execute(update(AuthSession).where(AuthSession.user_id == sess.user_id, AuthSession.revoked_at.is_(None))
                    .values(revoked_at=now))
@@ -364,8 +382,17 @@ def refresh(request: Request, response: Response, body: RefreshIn | None = None,
         raise HTTPException(status_code=401, detail="الحساب غير مفعل")
     sess.revoked_at = now
     out = _issue_session(db, user, request, response, include_refresh=bool(body and body.refresh_token))
+    db.flush()
+    db.add(SessionRotation(session_id=sess.id, successor_id=_newest_session_id(db, user.id), rotated_at=now))
     db.commit()
     return out
+
+
+ROTATION_GRACE_SECONDS = 60
+
+
+def _newest_session_id(db: Session, user_id: int) -> int:
+    return db.scalar(select(AuthSession.id).where(AuthSession.user_id == user_id).order_by(AuthSession.id.desc()).limit(1))
 
 
 @router.post("/auth/logout")
