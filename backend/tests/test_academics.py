@@ -314,3 +314,13 @@ def test_teacher_hears_about_submissions_and_may_mute_only_what_is_allowed(clien
     bad = client.put("/api/settings", headers=admin, json={"settings": {"notifications": {
         **cur, "mutable_topics": {"teacher": ["official_warning"]}}}})
     assert bad.status_code == 400
+
+
+def test_student_answers_the_office_that_wrote_to_them(client, as_):
+    """The policy decides who may start a conversation; whoever was written to may answer."""
+    student = client.get("/api/me", headers=as_("s.ali@nalut.edu.ly")).json()["id"]
+    conv = client.post("/api/conversations", headers=as_("president@nalut.edu.ly"), json={
+        "recipient_ids": [student], "subject": "استدعاء", "body": "راجع مكتب الإدارة"}).json()["id"]
+    r = client.post(f"/api/conversations/{conv}/messages", headers=as_("s.ali@nalut.edu.ly"),
+                    data={"body": "حاضر، سأمر غداً"})
+    assert r.status_code == 200, r.text

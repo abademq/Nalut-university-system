@@ -181,8 +181,11 @@ async def post_message(cid: int, body: str = Form("", max_length=5000),
         raise HTTPException(status_code=429, detail="عدد كبير من الرسائل، حاول بعد قليل")
     others = db.scalars(select(User).join(ConversationParticipant, ConversationParticipant.user_id == User.id).where(
         ConversationParticipant.conversation_id == conv.id, User.id != user.id)).all()
-    # re-check policy on every message (e.g. the enrolment may have ended)
-    if not any(can_message(db, user, o, conv.course_id) for o in others):
+    # re-check policy on every message (e.g. the enrolment may have ended). A reply is allowed in
+    # either direction: a student may answer the administration or an office that wrote to them
+    # even though the policy does not let them start that conversation.
+    if not any(can_message(db, user, o, conv.course_id) or can_message(db, o, user, conv.course_id)
+               for o in others):
         raise forbidden("لم يعد مسموحاً بالمراسلة في هذه المحادثة")
     file_id = None
     if upload is not None:
