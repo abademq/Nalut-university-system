@@ -261,3 +261,16 @@ def test_audit_log_reads_in_arabic(client, as_, db):
     src = "".join(p.read_text() for p in pathlib.Path("app").rglob("*.py"))
     used = set(re.findall(r'audit\.record\(\s*db,\s*"([a-z_]+\.[a-z_]+)"', src))
     assert used - set(audit_labels.ACTIONS) == set()
+
+
+def test_platform_admin_reaches_every_administration_page(client, monkeypatch):
+    """Single-university mode: the platform administrator acts with the university's full powers,
+    on every page whose path merely starts like an account page (/api/message-reports)."""
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "single_university", True)
+    h = platform(client)
+    for path in ("/api/message-reports", "/api/audit", "/api/oversight/conversations", "/api/results/pending",
+                 "/api/archive/students", "/api/banners/manage", "/api/reports/overview", "/api/students",
+                 "/api/settings", "/api/permissions", "/api/users"):
+        assert client.get(path, headers=h).status_code == 200, path

@@ -83,10 +83,13 @@ def belongs_here(db: Session, user: User) -> bool:
 
 
 def _may_act(request: Request) -> bool:
+    """Everything but the platform account's own pages (/api/me/..., /api/auth/...).
+
+    Compared by path segment: /api/message-reports is not an account page."""
     path = request.url.path
     if path == "/api/me":
         return True
-    return not (path.startswith("/api/auth") or path.startswith("/api/me"))
+    return not (path.startswith("/api/auth/") or path.startswith("/api/me/"))
 
 
 def _acting_user(db: Session, user: User, university_id: str) -> User:
