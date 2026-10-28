@@ -127,6 +127,25 @@ class AuthSession(Base):
     ip: Mapped[str | None] = mapped_column(String(60))
 
 
+class NotificationTopic(Base):
+    """What a notification is about (see notifications.TOPICS), for the mutes below."""
+
+    __tablename__ = "notification_topics"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    notification_id: Mapped[int] = mapped_column(ForeignKey("notifications.id"), unique=True)
+    topic: Mapped[str] = mapped_column(String(40))
+
+
+class NotificationMute(Base):
+    """A notification topic a user chose not to receive (only where the administration allows it)."""
+
+    __tablename__ = "notification_mutes"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    topic: Mapped[str] = mapped_column(String(40))
+    __table_args__ = (UniqueConstraint("user_id", "topic"),)
+
+
 class SessionRotation(Base):
     """Which session replaced a rotated refresh token, and when.
 

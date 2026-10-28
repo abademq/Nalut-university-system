@@ -53,6 +53,7 @@ class AccountScreen extends StatelessWidget {
             ),
           ]),
         ),
+        const _NotificationChoices(),
         Card(
           child: Padding(
             padding: const EdgeInsets.all(12),
@@ -436,6 +437,72 @@ class _MfaScreenState extends State<MfaScreen> {
           FilledButton(onPressed: _busy ? null : _enable, child: const Text('تفعيل')),
           TextButton(onPressed: () => setState(() => _method = null), child: const Text('رجوع')),
         ],
+      ]),
+    );
+  }
+}
+
+
+/// The notification types the administration lets this user switch off (none: nothing shown).
+class _NotificationChoices extends StatefulWidget {
+  const _NotificationChoices();
+
+  @override
+  State<_NotificationChoices> createState() => _NotificationChoicesState();
+}
+
+class _NotificationChoicesState extends State<_NotificationChoices> {
+  List<Map<String, dynamic>> _topics = [];
+  bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final r = await context.read<Session>().api.get('/api/me/notification-mutes') as Map<String, dynamic>;
+      if (mounted) setState(() => _topics = (r['topics'] as List).cast<Map<String, dynamic>>());
+    } catch (_) {}
+  }
+
+  Future<void> _toggle(Map<String, dynamic> t, bool receive) async {
+    final muted = [
+      for (final x in _topics)
+        if (x['topic'] == t['topic'] ? !receive : x['muted'] == true) x['topic'] as String
+    ];
+    setState(() => _busy = true);
+    try {
+      final r = await context.read<Session>().api.put('/api/me/notification-mutes', {'muted': muted}) as Map<String, dynamic>;
+      if (mounted) setState(() => _topics = (r['topics'] as List).cast<Map<String, dynamic>>());
+    } catch (e) {
+      if (mounted) showMessage(context, e, error: true);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_topics.isEmpty) return const SizedBox.shrink();
+    return Card(
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        const Padding(
+          padding: EdgeInsets.fromLTRB(16, 12, 16, 0),
+          child: Text('الإشعارات', style: TextStyle(fontWeight: FontWeight.bold)),
+        ),
+        const Padding(
+          padding: EdgeInsets.fromLTRB(16, 4, 16, 0),
+          child: Text('التحذيرات الرسمية والإشعارات العاجلة تصل دائماً.', style: TextStyle(fontSize: 12)),
+        ),
+        for (final t in _topics)
+          SwitchListTile(
+            title: Text(t['label'] as String),
+            value: t['muted'] != true,
+            onChanged: _busy ? null : (v) => _toggle(t, v),
+          ),
       ]),
     );
   }

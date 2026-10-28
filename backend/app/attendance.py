@@ -436,19 +436,19 @@ def check_thresholds(db: Session, course: Course) -> int:
                 notifications.notify_users(
                     db, course.university_id, [sid], f"تنبيه غياب: {course.title}",
                     f"بلغت نسبة غيابك {pct}% في مقرر {course.title}. الحد المسموح {limit}%.",
-                    category="system", priority="important", course_id=course.id, link="#/attendance")
+                    category="system", priority="important", course_id=course.id, link="#/attendance", topic="attendance_alert")
             else:
                 notifications.notify_users(
                     db, course.university_id, [sid], f"تجاوز حد الغياب: {course.title}",
                     f"بلغت نسبة غيابك {pct}% في مقرر {course.title} وتجاوزت الحد المعتمد ({limit}%). "
                     "سيتم عرض حالتك على الجهة المختصة للمراجعة.",
-                    category="system", priority="urgent", course_id=course.id, link="#/attendance")
+                    category="system", priority="urgent", course_id=course.id, link="#/attendance", topic="attendance_alert")
                 notifications.notify_users(
                     db, course.university_id, [*instructors, *fac_admins],
                     f"طالب تجاوز حد الغياب: {course.title}",
                     f"الطالب {student.full_name} ({student.code}) بلغت نسبة غيابه {pct}%. "
                     "يحتاج إلى مراجعة واتخاذ الإجراء وفق اللوائح (لا يُتخذ إجراء تلقائي).",
-                    category="system", priority="important", course_id=course.id)
+                    category="system", priority="important", course_id=course.id, topic="attendance_alert")
             sent += 1
             break
     return sent

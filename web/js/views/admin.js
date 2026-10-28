@@ -375,6 +375,8 @@ function LaunchSettings({ data, universityId, onSaved }) {
     </div></form>`;
 }
 
+const MUTE_ROLES = ["student", "teacher", "assistant", "staff", "faculty_admin", "university_admin"];
+
 const RISK_LABELS = {
   outside_geofence: "خارج نطاق القاعة", shared_device: "جهاز مشترك مع حساب آخر في الجلسة",
   device_used_by_other_account: "جهاز استُخدم لحساب آخر خلال أسبوع", new_device: "جهاز جديد للطالب",
@@ -427,6 +429,12 @@ function SettingsForm({ data, acting, onSaved }) {
   const [weights, setWeights] = useState({ ...e.attendance.risk_weights });
   const [levels, setLevels] = useState(JSON.parse(JSON.stringify(e.attendance.levels)));
   const [smsCats, setSmsCats] = useState(e.notifications.sms_categories || []);
+  const topics = useAsync(() => api.get("/api/notifications/topics"), []);
+  const [mutable, setMutable] = useState(JSON.parse(JSON.stringify(e.notifications.mutable_topics || {})));
+  const flipMutable = (role, t) => {
+    const cur = mutable[role] || [];
+    setMutable({ ...mutable, [role]: cur.includes(t) ? cur.filter((x) => x !== t) : [...cur, t] });
+  };
   const [scale, setScale] = useState(e.grading.scale.map((r) => [...r]));
   const setRow = (i, j, val) => setScale(scale.map((r, k) => (k === i ? r.map((c, m) => (m === j ? val : c)) : r)));
   const flip = (list, set, k) => set(list.includes(k) ? list.filter((x) => x !== k) : [...list, k]);
@@ -437,7 +445,9 @@ function SettingsForm({ data, acting, onSaved }) {
         mfa_required_roles: mfaRoles, mfa_required_capabilities: mfaCaps,
         max_login_failures: n("max_login_failures"), lockout_minutes: n("lockout_minutes") },
       notifications: { ...e.notifications, sms_enabled: v.sms_enabled, due_reminder_hours: n("due_reminder_hours"),
-        sms_categories: smsCats, tones: acting ? tones : e.notifications.tones },
+        sms_categories: smsCats, tones: acting ? tones : e.notifications.tones,
+        // every role is sent, so an emptied column really means "nothing may be switched off"
+        mutable_topics: Object.fromEntries(MUTE_ROLES.map((r) => [r, mutable[r] || []])) },
       attendance: { ...e.attendance, late_after_minutes: n("late_after_minutes"), rotation_seconds: n("rotation_seconds"),
         default_duration_minutes: n("default_duration_minutes"), open_before_minutes: n("open_before_minutes"),
         staff_late_after_minutes: n("staff_late_after_minutes"), staff_early_leave_minutes: n("staff_early_leave_minutes"),
@@ -492,6 +502,12 @@ function SettingsForm({ data, acting, onSaved }) {
       ${Object.entries(CATEGORY).map(([k, l]) => html`<label class="check"><input type="checkbox" checked=${smsCats.includes(k)}
         onChange=${() => flip(smsCats, setSmsCats, k)} /> ${l}</label>`)}
       <div class="form-grid">${num("due_reminder_hours", "التذكير قبل موعد التسليم (ساعة)", { min: 1, max: 168 })}</div></div>
+    <div class="card"><h3>إيقاف الإشعارات من المستخدمين</h3>
+      <p class="small muted">علّم ما يسمح لكل فئة بإيقافه لنفسها من صفحة «حسابي». غير المعلَّم يصل دائماً، والتحذيرات الرسمية والإشعارات العاجلة تصل للجميع مهما كان الاختيار.</p>
+      ${topics.data ? html`<div class="table-wrap"><table><thead><tr><th>نوع الإشعار</th>${MUTE_ROLES.map((r) => html`<th>${ROLE[r]}</th>`)}</tr></thead>
+        <tbody>${topics.data.map((t) => html`<tr><td>${t.label}</td>${MUTE_ROLES.map((r) => html`<td>
+          <input type="checkbox" aria-label=${`${ROLE[r]}: ${t.label}`} checked=${(mutable[r] || []).includes(t.topic)} onChange=${() => flipMutable(r, t.topic)} /></td>`)}</tr>`)}</tbody></table></div>`
+        : html`<p class="small muted">جارٍ التحميل…</p>`}</div>
     <div class="card"><h3>الرسائل</h3><div class="form-grid">
       <div class="field"><label>الطالب يراسل</label><select ...${bind("student_can_message")}>
         <option value="course_staff">أساتذة مقرراته ومعيديها فقط</option>

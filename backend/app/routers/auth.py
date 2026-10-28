@@ -593,6 +593,48 @@ def me(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     return user_profile(db, user)
 
 
+class MutesIn(BaseModel):
+    muted: list[str] = Field(default_factory=list, max_length=50)
+
+
+def _mutable_for(db: Session, user: User) -> list[str]:
+    from ..notifications import TOPICS
+
+    allowed = tenant_settings(db, user)["notifications"].get("mutable_topics", {}).get(user.role, [])
+    return [t for t in TOPICS if t in allowed]
+
+
+@router.get("/me/notification-mutes")
+def get_mutes(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """The notification topics this user may switch off (set by the administration), and the ones off."""
+    from ..models import NotificationMute
+    from ..notifications import TOPICS
+
+    allowed = _mutable_for(db, user)
+    muted = set(db.scalars(select(NotificationMute.topic).where(NotificationMute.user_id == user.id)))
+    return {"topics": [{"topic": t, "label": TOPICS[t], "muted": t in muted} for t in allowed]}
+
+
+@router.put("/me/notification-mutes")
+def put_mutes(body: MutesIn, request: Request, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    from ..models import NotificationMute
+
+    allowed = set(_mutable_for(db, user))
+    wanted = set(body.muted)
+    if not wanted <= allowed:
+        raise forbidden("لا تسمح الإدارة بإيقاف بعض هذه الإشعارات")
+    current = {m.topic: m for m in db.scalars(select(NotificationMute).where(NotificationMute.user_id == user.id))}
+    for topic, row in current.items():
+        if topic in allowed and topic not in wanted:
+            db.delete(row)
+    for topic in wanted - set(current):
+        db.add(NotificationMute(user_id=user.id, topic=topic))
+    audit.record(db, "notifications.mutes_changed", actor=user, target_type="user", target_id=user.id,
+                 details={"muted": sorted(wanted)}, ip=client_ip(request))
+    db.commit()
+    return get_mutes(user, db)
+
+
 @router.put("/me/notification-prefs")
 def set_prefs(user: User = Depends(get_current_user)):
     """Retired: what reaches each user is set by the administration from the dashboard."""

@@ -192,7 +192,8 @@ def results_submit(course_id: int, body: WorkflowIn, request: Request, user: Use
     res = _transition(db, user, course, {"draft"}, "submitted", body.note, request)
     admins = db.scalars(select(User.id).where(User.faculty_id == course.faculty_id, User.role == Role.FACULTY_ADMIN))
     notifications.notify_users(db, course.university_id, list(admins), f"نتائج بانتظار الاعتماد: {course.title}",
-                               f"رفع {user.full_name} نتائج المقرر {course.code} للاعتماد.", link="#/results")
+                               f"رفع {user.full_name} نتائج المقرر {course.code} للاعتماد.", link="#/results",
+                               topic="results_pending")
     db.commit()
     return _result_out(res)
 
@@ -219,7 +220,7 @@ def results_publish(course_id: int, body: WorkflowIn, request: Request, user: Us
                          priority="important", title=f"نشر نتائج: {course.title}",
                          body="تم اعتماد نتائج المقرر ونشرها. يمكنك الاطلاع عليها في صفحة الدرجات.",
                          target_type="course", target_ids=[course.id], course_id=course.id, link="#/grades",
-                         channels=["inapp", "push"], automatic=True)
+                         channels=["inapp", "push"], automatic=True, topic="grade_released")
     db.commit()
     return _result_out(res)
 

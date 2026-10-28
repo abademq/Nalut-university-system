@@ -146,7 +146,7 @@ def start_conversation(body: ConversationIn, user: User = Depends(get_current_us
     db.add(Message(conversation_id=conv.id, sender_id=user.id, body=body.body, created_at=now))
     conv.last_message_at = now
     notifications.notify_users(db, user.university_id, [r.id for r in recipients], f"رسالة جديدة من {user.full_name}",
-                               body.subject, category="system", link=f"#/messages/{conv.id}")
+                               body.subject, category="system", link=f"#/messages/{conv.id}", topic="new_message")
     db.commit()
     return {"id": conv.id}
 
@@ -198,7 +198,7 @@ async def post_message(cid: int, body: str = Form("", max_length=5000),
                                                           ConversationParticipant.user_id == user.id))
     part.last_read_at = now
     notifications.notify_users(db, user.university_id, [o.id for o in others], f"رسالة جديدة من {user.full_name}",
-                               conv.subject, category="system", link=f"#/messages/{conv.id}")
+                               conv.subject, category="system", link=f"#/messages/{conv.id}", topic="new_message")
     db.commit()
     return {"ok": True}
 
@@ -223,7 +223,7 @@ def report_message(mid: int, body: ReportIn, request: Request, user: User = Depe
     admins = db.scalars(select(User.id).where(User.university_id == user.university_id, User.role == Role.FACULTY_ADMIN,
                                               User.faculty_id == (sender.faculty_id or user.faculty_id)))
     notifications.notify_users(db, user.university_id, list(admins), "بلاغ عن رسالة",
-                               f"تم الإبلاغ عن رسالة: {body.reason}", priority="important", link="#/reports-abuse")
+                               f"تم الإبلاغ عن رسالة: {body.reason}", priority="important", link="#/abuse", topic="abuse_report")
     audit.record(db, "message.reported", actor=user, target_type="message", target_id=m.id,
                  details={"reason": body.reason}, ip=client_ip(request))
     db.commit()

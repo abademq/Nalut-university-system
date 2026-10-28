@@ -162,7 +162,8 @@ def _notify(db: Session, user: User, p: Publication) -> bool:
         notifications.create(
             db, sender=user, university_id=p.university_id, category="announcement", priority="normal",
             title=f"{KINDS[p.kind]}: {p.title}", body=p.body or "اضغط للعرض", target_type=target, target_ids=ids,
-            audience=p.audience, channels=["inapp", "push"], link=f"#/publications/{p.id}", automatic=True)
+            audience=p.audience, channels=["inapp", "push"], link=f"#/publications/{p.id}", automatic=True,
+            topic="publication")
         return True
     except notifications.NotificationError:
         return False  # the publication stays; only the announcement is outside the sender's scope

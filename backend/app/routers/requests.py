@@ -103,7 +103,7 @@ async def create_request(type: str = Form(...), subject: str = Form(..., min_len
     handlers = db.scalars(select(User.id).where(User.university_id == user.university_id, User.role == Role.STAFF,
                                                 User.office == r.office))
     notifications.notify_users(db, user.university_id, list(handlers), f"طلب جديد: {REQUEST_TYPES[type]['label']}",
-                               subject, link=f"#/requests/{r.id}")
+                               subject, link=f"#/requests/{r.id}", topic="request_new")
     db.commit()
     return _out(db, r)
 
@@ -153,7 +153,7 @@ def act(rid: int, body: ActionIn, request: Request, user: User = Depends(get_cur
         notifications.notify_users(
             db, r.university_id, [r.requester_id], f"تحديث على طلبك: {STATUS_LABELS[r.status]}",
             f"{r.subject}" + (f" — {body.comment}" if body.comment else ""), category="admin_notice",
-            priority="important", link=f"#/requests/{r.id}", sender=user)
+            priority="important", link=f"#/requests/{r.id}", sender=user, topic="request_update")
         audit.record(db, f"request.{body.action}", actor=user, target_type="service_request", target_id=r.id,
                      details={"comment": body.comment}, ip=client_ip(request))
     db.commit()

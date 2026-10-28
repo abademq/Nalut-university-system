@@ -24,6 +24,7 @@ from ..deps import (
 from ..models import (
     Assignment,
     Course,
+    CourseStaff,
     Enrollment,
     Role,
     Submission,
@@ -164,6 +165,7 @@ def _announce(db: Session, sender: User, a: Assignment, course: Course) -> None:
         title=f"مهمة جديدة: {a.title}", body=f"مقرر {course.title} — آخر موعد للتسليم {a.due_at:%Y-%m-%d %H:%M} UTC",
         target_type="course", target_ids=[course.id], course_id=course.id, link=f"#/assignments/{a.id}",
         priority="normal", scheduled_at=a.open_at if a.open_at > utcnow() else None, automatic=True,
+        topic="assignment_new",
     )
 
 
@@ -195,7 +197,7 @@ def patch_assignment(aid: int, body: AssignmentPatch, request: Request, user: Us
             db, sender=user, university_id=course.university_id, category="announcement", priority="important",
             title=f"تغيير موعد التسليم: {a.title}", body=f"الموعد الجديد {a.due_at:%Y-%m-%d %H:%M} UTC",
             target_type="course", target_ids=[course.id], course_id=course.id, link=f"#/assignments/{a.id}",
-            automatic=True)
+            automatic=True, topic="assignment_new")
     audit.record(db, "assignment.updated", actor=user, target_type="assignment", target_id=a.id,
                  details={"fields": sorted(data)}, ip=client_ip(request))
     db.commit()
@@ -260,6 +262,14 @@ async def submit(aid: int, request: Request, final: bool = Form(True), note: str
         s.status, s.submitted_at, s.is_late = "submitted", now, late
     db.add(SubmissionEvent(submission_id=s.id, actor_id=user.id, action="submitted" if final else "saved",
                            details={"version": s.version, "files": stored, "late": late}))
+    if final:
+        # the course's teaching staff hear about it (each may switch this off where allowed)
+        staff = db.scalars(select(CourseStaff.user_id).where(CourseStaff.course_id == course.id)).all()
+        notifications.notify_users(
+            db, course.university_id, staff, f"تسليم جديد: {a.title}",
+            f"سلّم {user.full_name} المهمة في مقرر {course.title}" + (" (متأخر)" if late else ""),
+            category="academic_note", course_id=course.id, link=f"#/assignments/{a.id}",
+            topic="submission_received")
     db.commit()
     return submission_out(db, s, for_student=True)
 
@@ -305,7 +315,7 @@ def _release(db: Session, user: User, a: Assignment, course: Course, subs: list[
     notifications.notify_users(
         db, course.university_id, [s.student_id for s in subs], f"تم تقييم: {a.title}",
         f"صدرت درجة وملاحظات المهمة في مقرر {course.title}.", category="academic_note",
-        course_id=course.id, link=f"#/assignments/{a.id}", sender=user)
+        course_id=course.id, link=f"#/assignments/{a.id}", sender=user, topic="grade_released")
 
 
 @router.post("/assignments/{aid}/release-grades")

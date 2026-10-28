@@ -47,7 +47,8 @@ def send_due_reminders(db) -> int:
         course = db.get(Course, a.course_id)
         notifications.notify_users(db, a.university_id, students, f"اقترب موعد التسليم: {a.title}",
                                    f"مقرر {course.title} — آخر موعد {a.due_at:%Y-%m-%d %H:%M} UTC",
-                                   priority="important", course_id=course.id, link=f"#/assignments/{a.id}")
+                                   priority="important", course_id=course.id, link=f"#/assignments/{a.id}",
+                                   topic="due_reminder")
         a.reminder_sent = True
         count += 1
     return count

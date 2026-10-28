@@ -81,6 +81,9 @@ DEFAULT_SETTINGS: dict = {
         # categories whose urgent messages also go out by SMS when SMS is enabled
         "sms_categories": ["official_warning", "admin_notice"],
         "due_reminder_hours": 24,
+        # per role, the notification topics (notifications.TOPICS) its members may switch off for
+        # themselves; official warnings and urgent notifications always arrive
+        "mutable_topics": {"teacher": ["submission_received"], "assistant": ["submission_received"]},
         # tone each kind of notification plays on phones (names in notifications.TONES)
         "tones": {"normal": "chime", "important": "rising", "urgent": "alarm", "official_warning": "siren"},
     },
@@ -232,6 +235,14 @@ def validate_policies(changes: dict) -> None:
     msg = changes.get("messaging") or {}
     if "student_can_message" in msg and msg["student_can_message"] not in STUDENT_MESSAGING:
         bad("سياسة مراسلة الطلبة غير معروفة")
+    mutable = (changes.get("notifications") or {}).get("mutable_topics")
+    if mutable is not None:
+        from .models import Role
+        from .notifications import TOPICS
+
+        if not isinstance(mutable, dict) or not set(mutable) <= set(Role.ALL) - {Role.PLATFORM_ADMIN} or any(
+                not isinstance(v, list) or not set(v) <= set(TOPICS) for v in mutable.values()):
+            bad("أنواع الإشعارات القابلة للإيقاف غير صحيحة")
     cats = (changes.get("notifications") or {}).get("sms_categories")
     if cats is not None and (not isinstance(cats, list) or not set(cats) <= set(NOTIFICATION_CATEGORIES)):
         bad("نوع إشعار غير معروف في الرسائل النصية")

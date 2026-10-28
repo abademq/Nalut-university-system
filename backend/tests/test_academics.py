@@ -274,3 +274,43 @@ def test_student_messaging_policy_is_configurable(client, as_):
     assert client.put("/api/settings", headers=admin, json={"settings": {"messaging": {
         **cur, "student_can_message": "course_staff"}}}).status_code == 200
     assert client.post("/api/conversations", headers=as_("s.ali@nalut.edu.ly"), json=body).status_code == 200
+
+
+def test_teacher_hears_about_submissions_and_may_mute_only_what_is_allowed(client, as_, db):
+    from app.models import Notification
+
+    s = as_("student2@nalut.edu.ly")
+    t = as_(TEACHER)
+    project = next(a for a in client.get("/api/assignments", headers=s).json() if "آلة حاسبة" in a["title"])
+    pdf = b"%PDF-1.4\n%x\n"
+
+    def submit(headers):
+        return client.post(f"/api/assignments/{project['id']}/submission", headers=headers,
+                           data={"final": "true"}, files={"upload": ("a.pdf", pdf, "application/pdf")})
+
+    def unread_titles():
+        return [n["title"] for n in client.get("/api/notifications?limit=50", headers=t).json()["items"]]
+
+    assert submit(s).status_code == 200
+    assert any(x.startswith("تسليم جديد") for x in unread_titles())
+    # default policy: teachers may switch submission notices off
+    mutes = client.get("/api/me/notification-mutes", headers=t).json()["topics"]
+    assert [m["topic"] for m in mutes] == ["submission_received"]
+    assert client.put("/api/me/notification-mutes", headers=t, json={"muted": ["new_message"]}).status_code == 403
+    assert client.put("/api/me/notification-mutes", headers=t, json={"muted": ["submission_received"]}).status_code == 200
+    before = db.query(Notification).count()
+    assert submit(as_("student3@nalut.edu.ly")).status_code == 200
+    n = db.query(Notification).order_by(Notification.id.desc()).first()
+    assert db.query(Notification).count() == before + 1 and n.recipients_count == 1  # the assistant only
+    # the administration withdraws the choice: the mute no longer applies
+    admin = as_("president@nalut.edu.ly")
+    cur = client.get("/api/settings", headers=admin).json()["effective"]["notifications"]
+    assert client.put("/api/settings", headers=admin, json={"settings": {"notifications": {
+        **cur, "mutable_topics": {"teacher": [], "assistant": []}}}}).status_code == 200
+    assert client.get("/api/me/notification-mutes", headers=t).json()["topics"] == []
+    assert submit(as_("student4@nalut.edu.ly")).status_code == 200
+    n = db.query(Notification).order_by(Notification.id.desc()).first()
+    assert n.recipients_count == 2
+    bad = client.put("/api/settings", headers=admin, json={"settings": {"notifications": {
+        **cur, "mutable_topics": {"teacher": ["official_warning"]}}}})
+    assert bad.status_code == 400

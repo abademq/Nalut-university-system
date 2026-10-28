@@ -196,6 +196,12 @@ def _tones(db: Session, user: User) -> dict:
     return tenant_settings(db, user)["notifications"].get("tones", {}) if user.university_id else {}
 
 
+@router.get("/topics")
+def topics(user: User = Depends(get_current_user)):
+    """The notification topics the administration can let each role switch off."""
+    return [{"topic": k, "label": v} for k, v in notifications.TOPICS.items()]
+
+
 @router.get("/tones")
 def tones(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """The tone library and which tone each kind of notification plays in this university."""

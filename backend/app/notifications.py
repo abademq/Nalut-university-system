@@ -32,6 +32,8 @@ from .models import (
     Faculty,
     Notification,
     NotificationDelivery,
+    NotificationMute,
+    NotificationTopic,
     Role,
     University,
     User,
@@ -467,11 +469,54 @@ def resolve_recipients(db: Session, n: Notification) -> list[int]:
 # --------------------------------------------------------------------------- dispatch
 
 
+# What a notification is about. The administration decides, per role, which of these its members
+# may switch off (settings: notifications.mutable_topics). Official warnings and urgent
+# notifications are never held back.
+TOPICS = {
+    "announcement": "الإعلانات العامة",
+    "academic_note": "الملاحظات الأكاديمية",
+    "admin_notice": "الإشعارات الإدارية",
+    "publication": "الجداول والإعلانات المصورة",
+    "assignment_new": "المهام الجديدة وتغيير مواعيدها",
+    "due_reminder": "التذكير قبل موعد التسليم",
+    "submission_received": "تسليم جديد من طالب",
+    "grade_released": "صدور الدرجات والنتائج",
+    "new_message": "الرسائل الجديدة",
+    "request_new": "طلب جديد وارد",
+    "request_update": "تحديث على طلباتي",
+    "results_pending": "نتائج بانتظار الاعتماد",
+    "attendance_alert": "تنبيهات الغياب",
+    "abuse_report": "بلاغات الرسائل",
+}
+
+
+def topic_of(db: Session, n: Notification) -> str:
+    row = db.scalar(select(NotificationTopic.topic).where(NotificationTopic.notification_id == n.id))
+    return row or n.category
+
+
+def muted_users(db: Session, n: Notification, user_ids: list[int], cfg: dict) -> set[int]:
+    """Recipients who switched this topic off, where their role is (still) allowed to."""
+    if n.priority == "urgent" or n.category == "official_warning" or not user_ids:
+        return set()
+    topic = topic_of(db, n)
+    allowed_roles = {r for r, topics in (cfg.get("mutable_topics") or {}).items() if topic in topics}
+    if not allowed_roles:
+        return set()
+    muted = set(db.scalars(select(NotificationMute.user_id).where(
+        NotificationMute.topic == topic, NotificationMute.user_id.in_(user_ids))))
+    if not muted:
+        return set()
+    return set(db.scalars(select(User.id).where(User.id.in_(muted), User.role.in_(allowed_roles))))
+
+
 def dispatch(db: Session, n: Notification) -> int:
     """Deliver a notification now. Returns the number of recipients."""
     uni = db.get(University, n.university_id)
     cfg = effective_settings(uni)["notifications"]
     recipients = resolve_recipients(db, n)
+    skip = muted_users(db, n, list(recipients), cfg)
+    recipients = [u for u in recipients if u not in skip]
     push = "push" in n.channels
     sms_allowed = (
         "sms" in n.channels
@@ -557,7 +602,7 @@ def send_pending_pushes(db: Session, provider=None, limit: int = 500) -> int:
 def create(db: Session, *, sender: User | None, university_id: int, category: str, title: str, body: str,
            target_type: str, target_ids: Iterable, priority: str = "normal", audience: str = "students",
            channels: Iterable[str] = ("inapp", "push"), course_id: int | None = None, link: str | None = None,
-           scheduled_at=None, validate: bool = True, automatic: bool = False) -> Notification:
+           scheduled_at=None, validate: bool = True, automatic: bool = False, topic: str | None = None) -> Notification:
     n = Notification(
         university_id=university_id, sender_id=sender.id if sender else None, category=category,
         priority=priority, title=title.strip(), body=body.strip(), target_type=target_type,
@@ -570,6 +615,9 @@ def create(db: Session, *, sender: User | None, university_id: int, category: st
         validate_new(db, sender, n, automatic=automatic)
     db.add(n)
     db.flush()
+    if topic and topic != category:
+        db.add(NotificationTopic(notification_id=n.id, topic=topic))
+        db.flush()
     if scheduled_at is None or scheduled_at <= utcnow():
         dispatch(db, n)
     return n
@@ -577,7 +625,8 @@ def create(db: Session, *, sender: User | None, university_id: int, category: st
 
 def notify_users(db: Session, university_id: int, user_ids: Iterable[int], title: str, body: str, *,
                  category: str = "system", priority: str = "normal", link: str | None = None,
-                 course_id: int | None = None, sender: User | None = None) -> Notification | None:
+                 course_id: int | None = None, sender: User | None = None,
+                 topic: str | None = None) -> Notification | None:
     """Automated notification raised by the platform itself (no authority check)."""
     ids = sorted(set(user_ids))
     if not ids:
@@ -585,7 +634,7 @@ def notify_users(db: Session, university_id: int, user_ids: Iterable[int], title
     return create(
         db, sender=sender, university_id=university_id, category=category, title=title, body=body,
         target_type="users", target_ids=ids, priority=priority, course_id=course_id, link=link,
-        validate=False,
+        validate=False, topic=topic,
     )
 
 

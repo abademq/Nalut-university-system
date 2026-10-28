@@ -68,6 +68,22 @@ function EditDetails({ user }) {
     <button disabled=${busy}>حفظ</button></form>`;
 }
 
+function NotificationChoices() {
+  const state = useAsync(() => api.get("/api/me/notification-mutes"), []);
+  const [saving, setSaving] = useState(false);
+  const toggle = async (t) => {
+    const muted = state.data.topics.filter((x) => (x.topic === t.topic ? !x.muted : x.muted)).map((x) => x.topic);
+    setSaving(true);
+    try { await api.put("/api/me/notification-mutes", { muted }); state.reload(); toast(t.muted ? "سيصلك هذا النوع" : "أُوقف هذا النوع"); }
+    catch (e) { toastError(e); } finally { setSaving(false); }
+  };
+  if (!state.data?.topics?.length) return null;
+  return html`<div class="card"><h3>الإشعارات</h3>
+    <p class="small muted">الأنواع التي تسمح الإدارة بإيقافها. التحذيرات الرسمية والإشعارات العاجلة تصل دائماً.</p>
+    ${state.data.topics.map((t) => html`<label class="check"><input type="checkbox" disabled=${saving} checked=${!t.muted}
+      onChange=${() => toggle(t)} /> ${t.label}</label>`)}</div>`;
+}
+
 export function ProfileView({ user }) {
   return html`<div><h1>حسابي</h1>
     <div class="card"><ul class="list">
@@ -77,6 +93,6 @@ export function ProfileView({ user }) {
       ${user.university ? html`<li>${user.university.name}${user.faculty ? ` — ${user.faculty.name}` : ""}</li>` : null}</ul>
       ${selfEdit(user) ? null : html`<p class="small muted">لتعديل البيانات الأساسية تواصل مع إدارة الكلية.</p>`}
       ${["staff", "faculty_admin", "teacher", "assistant"].includes(user.role) ? html`<a class="btn secondary small" href="#/personnel/me">ملفي الوظيفي</a>` : null}</div>
-    <div class="grid cols-2">${selfEdit(user) ? html`<${EditDetails} user=${user} />` : null}<${ChangePassword} /><${Mfa} user=${user} /><${Sessions} /></div>
+    <div class="grid cols-2">${selfEdit(user) ? html`<${EditDetails} user=${user} />` : null}<${ChangePassword} /><${Mfa} user=${user} /><${NotificationChoices} /><${Sessions} /></div>
   </div>`;
 }
