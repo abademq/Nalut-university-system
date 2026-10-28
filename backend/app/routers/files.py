@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import audit, files
+from .. import audit, files, permissions
 from ..db import get_db
 from ..deps import can_teach_course, client_ip, get_current_user, not_found
 from ..models import (
@@ -14,7 +14,6 @@ from ..models import (
     Course,
     Message,
     Publication,
-    Role,
     ServiceRequest,
     ServiceRequestEvent,
     StoredFile,
@@ -41,7 +40,7 @@ def can_read(db: Session, user: User, f: StoredFile) -> bool:
         return can_teach_course(db, user, db.get(Course, a.course_id))
     if f.purpose == "message":
         m = db.scalar(select(Message).where(Message.file_id == f.id))
-        if m and user.role == Role.UNIVERSITY_ADMIN:  # message oversight; every download is audited below
+        if m and permissions.scope(db, user, "messages.oversight") == permissions.ALL:  # message oversight; every download is audited below
             return True
         return bool(m and not m.hidden and db.scalar(select(ConversationParticipant.id).where(
             ConversationParticipant.conversation_id == m.conversation_id, ConversationParticipant.user_id == user.id)))

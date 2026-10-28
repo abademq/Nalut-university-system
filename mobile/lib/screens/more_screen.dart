@@ -61,15 +61,14 @@ class MoreScreen extends StatelessWidget {
               subtitle: 'كلمة المرور والتحقق الثنائي'),
           if (s.isStudent) _tile(context, Icons.grade_outlined, 'درجاتي ونتائجي', const GradesScreen()),
           // what each role sees follows the university's permission matrix (the profile's `can` list)
-          if (s.isAdmin || (s.isInstructor && s.can('grades.enter')))
+          if (!s.isStudent && s.can('grades.enter'))
             _tile(context, Icons.edit_note, 'رصد الدرجات', const GradeEntryScreen(), subtitle: 'إدخال الدرجات ورفعها للاعتماد'),
-          if (s.isAdmin && s.can('results.approve'))
+          if (s.can('results.approve'))
             _tile(context, Icons.fact_check_outlined, 'اعتماد النتائج', const ResultsScreen()),
-          if ((s.isAdmin && s.can('courses.manage')) ||
-              (s.isInstructor && (s.can('courses.schedule') || s.can('courses.components'))))
+          if (s.can('courses.manage') || s.can('courses.schedule') || s.can('courses.components'))
             _tile(context, Icons.event_note_outlined, 'المقررات والمحاضرات', const CoursesScreen(),
-                subtitle: s.isAdmin ? 'إضافة مقررات، مواعيد المحاضرات، عناصر التقييم' : 'مواعيد محاضراتك وعناصر التقييم'),
-          if ((s.isInstructor || s.isAdmin) && s.can('reports.view'))
+                subtitle: s.can('courses.manage') ? 'إضافة مقررات، مواعيد المحاضرات، عناصر التقييم' : 'مواعيد محاضراتك وعناصر التقييم'),
+          if (s.can('reports.view'))
             _tile(context, Icons.insights_outlined, 'التقارير والإحصاءات', const ReportsScreen(),
                 subtitle: 'تقرير مبسط لكل طالب أو أستاذ أو موظف'),
           if (u['id'] != null && s.role != 'platform_admin')
@@ -80,13 +79,13 @@ class MoreScreen extends StatelessWidget {
               subtitle: 'جداول المحاضرات المنشورة والإعلانات بالصور'),
           _tile(context, Icons.description_outlined, 'الطلبات والمعاملات', const RequestsScreen(),
               subtitle: s.role == 'staff' || s.isAdmin ? 'طلباتي والوارد إليّ' : 'إفادة قيد، كشف درجات، عذر غياب…'),
-          if (s.can('banners.manage') && (s.isAdmin || s.role == 'staff'))
+          if (s.can('banners.manage'))
             _tile(context, Icons.push_pin_outlined, 'الإعلانات المثبتة', const ManageBannersScreen()),
-          if (s.can('publications.manage') && (s.isAdmin || s.role == 'staff'))
+          if (s.can('publications.manage'))
             _tile(context, Icons.add_photo_alternate_outlined, 'نشر الجداول والإعلانات', const ManagePublicationsScreen(),
                 subtitle: 'جدول محاضرات أو إعلان مصور من الكاميرا أو المعرض أو PDF'),
-          if (s.isAdmin && s.can('audit.view')) _tile(context, Icons.policy_outlined, 'سجل التدقيق', const AuditScreen()),
-          if (s.isAdmin && s.can('messages.moderate'))
+          if (s.can('audit.view')) _tile(context, Icons.policy_outlined, 'سجل التدقيق', const AuditScreen()),
+          if (s.can('messages.moderate'))
             _tile(context, Icons.flag_outlined, 'بلاغات الرسائل', const AbuseReportsScreen()),
           if (canSendNotifications(s.user))
             _tile(context, Icons.campaign_outlined, 'إرسال إشعار', const SendNotificationScreen()),

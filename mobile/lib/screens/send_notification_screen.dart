@@ -16,7 +16,6 @@ const _senders = {
 /// list) decides; the role table is only a fallback for an older server.
 List<String> sendableCategories(Map<String, dynamic>? user) {
   final role = user?['role'] as String? ?? '';
-  if (role == 'university_admin') return _senders.keys.toList();
   final can = user?['can'];
   if (can is List) return [for (final k in _senders.keys) if (can.contains('notify.$k')) k];
   return [for (final e in _senders.entries) if (e.value.contains(role)) e.key];

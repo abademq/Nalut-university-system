@@ -18,38 +18,42 @@ import { StudentsList, StudentDetail } from "./views/students.js";
 import { GuideView } from "./views/guide.js";
 import { PublicationsView } from "./views/publications.js";
 
-const isAdmin = (r) => r === "university_admin" || r === "faculty_admin";
 const isInstructor = (r) => r === "teacher" || r === "assistant";
-// a configurable capability (see the permissions page); university admins hold all of them
-const can = (u, key) => u.role === "university_admin" || (u.can || []).includes(key);
+// a configurable capability (see the permissions page): the server lists what this account holds
+// (everything for the platform administrator), so the menu follows the matrix, not the role
+const can = (u, key) => (u.can || []).includes(key);
+
+// rights that open the courses pages to an employee (see deps.course_authority on the server)
+const COURSE_CAPS = ["courses.manage", "results.approve", "courses.schedule", "courses.components", "grades.enter",
+  "results.submit", "assignments.manage", "attendance.manage"];
 
 // [hash, label, icon, roles predicate, mobile tab?]
 const NAV = [
   ["#/", "الرئيسية", "home", () => true, true],
   ["#/universities", "الجامعات", "universities", (r, u) => r === "platform_admin" && !u.single_university, true],
-  ["#/courses", "المقررات", "courses", (r) => r !== "staff" && r !== "platform_admin", false],
+  ["#/courses", "المقررات", "courses", (r, u) => r !== "platform_admin" && (r !== "staff" || COURSE_CAPS.some((k) => can(u, k))), false],
   ["#/assignments", "المهام والواجبات", "assignments", (r) => r === "student" || isInstructor(r), true],
   ["#/grades", "الدرجات", "grades", (r) => r === "student" || isInstructor(r), false],
-  ["#/results", "اعتماد النتائج", "results", (r, u) => isAdmin(r) && can(u, "results.approve"), false],
+  ["#/results", "اعتماد النتائج", "results", (r, u) => can(u, "results.approve"), false],
   ["#/attendance", "الحضور", "attendance", (r) => r !== "platform_admin", true],
   ["#/notifications", "الإشعارات", "notifications", (r) => r !== "platform_admin", true],
   ["#/publications", "الجداول والإعلانات المصورة", "publications", (r) => r !== "platform_admin", false],
   ["#/messages", "الرسائل", "messages", (r) => r !== "platform_admin", false],
   ["#/requests", "الطلبات والمعاملات", "requests", (r) => r !== "platform_admin", false],
-  ["#/reports", "التقارير", "reports", (r, u) => (isAdmin(r) || isInstructor(r)) && can(u, "reports.view"), false],
-  ["#/users", "المستخدمون", "users", (r) => isAdmin(r), false],
-  ["#/structure", "الهيكل التنظيمي", "structure", isAdmin, false],
-  ["#/banners", "الإعلانات المثبتة", "banners", (r, u) => (isAdmin(r) || r === "staff") && can(u, "banners.manage"), false],
-  ["#/students", "الطلبة", "students", (r, u) => ["university_admin", "faculty_admin", "staff", "teacher", "assistant"].includes(r) && can(u, "students.view"), false],
+  ["#/reports", "التقارير", "reports", (r, u) => can(u, "reports.view"), false],
+  ["#/users", "المستخدمون", "users", (r, u) => can(u, "users.manage"), false],
+  ["#/structure", "الهيكل التنظيمي", "structure", (r, u) => ["structure.faculties", "structure.departments", "structure.terms"].some((k) => can(u, k)), false],
+  ["#/banners", "الإعلانات المثبتة", "banners", (r, u) => can(u, "banners.manage"), false],
+  ["#/students", "الطلبة", "students", (r, u) => can(u, "students.view"), false],
   ["#/staff", "الموظفون", "staff", (r, u) => r !== "platform_admin" && (can(u, "staff.view") || can(u, "staff.manage")), false],
   ["#/faculty-members", "أعضاء هيئة التدريس", "faculty", (r, u) => r !== "platform_admin" && (can(u, "faculty.view") || can(u, "faculty.manage")), false],
-  ["#/archive", "أرشيف الطلبة", "archive", (r, u) => (isAdmin(r) || (r === "staff" && u.office)) && can(u, "archive.access")
-    && (r !== "staff" || (u.archive_offices || ["registrar"]).includes(u.office)), false],
-  ["#/oversight", "رقابة الرسائل", "shield", (r) => r === "university_admin", false],
-  ["#/abuse", "بلاغات الرسائل", "abuse", (r, u) => isAdmin(r) && can(u, "messages.moderate"), false],
-  ["#/audit", "سجل التدقيق", "audit", (r, u) => r === "platform_admin" || (isAdmin(r) && can(u, "audit.view")), false],
-  ["#/settings", "إعدادات المؤسسة", "settings", (r) => r === "university_admin", false],
-  ["#/permissions", "الصلاحيات", "permissions", (r) => r === "university_admin", false],
+  ["#/archive", "أرشيف الطلبة", "archive", (r, u) => can(u, "archive.access")
+    && (r !== "staff" || u.acting || (u.archive_offices || ["registrar"]).includes(u.office)), false],
+  ["#/oversight", "رقابة الرسائل", "shield", (r, u) => can(u, "messages.oversight") && (!u.faculty || u.acting), false],
+  ["#/abuse", "بلاغات الرسائل", "abuse", (r, u) => can(u, "messages.moderate"), false],
+  ["#/audit", "سجل التدقيق", "audit", (r, u) => r === "platform_admin" || can(u, "audit.view"), false],
+  ["#/settings", "إعدادات المؤسسة", "settings", (r, u) => can(u, "settings.manage") && (!u.faculty || u.acting), false],
+  ["#/permissions", "الصلاحيات", "permissions", (r, u) => r === "university_admin" || !!u.acting, false],
   ["#/launch", "شاشة البداية والنغمات", "launch", (r, u) => !!u.acting, false],
   ["#/profile", "حسابي", "profile", () => true, true],
   ["#/guide", "دليل الاستخدام", "guide", () => true, false],

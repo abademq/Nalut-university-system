@@ -15,7 +15,7 @@ from ..models import Banner, Faculty, Role, User
 
 router = APIRouter(prefix="/api/banners", tags=["banners"])
 
-MANAGERS = (Role.UNIVERSITY_ADMIN, Role.FACULTY_ADMIN, Role.STAFF)
+MANAGERS = (Role.PLATFORM_ADMIN, Role.UNIVERSITY_ADMIN, Role.FACULTY_ADMIN, Role.STAFF, Role.TEACHER, Role.ASSISTANT)
 
 
 def _manager(user: User = Depends(require_roles(*MANAGERS)), db: Session = Depends(get_db)) -> User:

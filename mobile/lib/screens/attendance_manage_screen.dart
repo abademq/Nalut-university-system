@@ -123,7 +123,7 @@ class _NewSessionScreenState extends State<NewSessionScreen> {
     super.dispose();
   }
 
-  bool get _isAdmin => ['faculty_admin', 'university_admin'].contains(context.read<Session>().role);
+  bool get _isAdmin => context.read<Session>().can('attendance.staff'); // may open staff shifts
 
   Future<void> _locate() async {
     try {

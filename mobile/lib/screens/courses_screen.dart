@@ -22,7 +22,7 @@ class _CoursesScreenState extends State<CoursesScreen> {
     final s = context.read<Session>();
     return Scaffold(
       appBar: AppBar(title: const Text('المقررات والمحاضرات')),
-      floatingActionButton: s.isAdmin
+      floatingActionButton: s.can('courses.manage')
           ? FloatingActionButton.extended(
               icon: const Icon(Icons.add),
               label: const Text('مقرر جديد'),
@@ -87,12 +87,12 @@ class _CourseFormScreenState extends State<CourseFormScreen> {
   bool get _isNew => widget.courseId == null;
   bool get _mayEditComponents {
     final s = context.read<Session>();
-    return s.isAdmin || s.can('courses.components');
+    return s.can('courses.components');
   }
 
   bool get _mayEditSchedule {
     final s = context.read<Session>();
-    return s.isAdmin || s.can('courses.schedule');
+    return s.can('courses.schedule');
   }
 
   @override
@@ -112,7 +112,7 @@ class _CourseFormScreenState extends State<CourseFormScreen> {
   Future<void> _load() async {
     final s = context.read<Session>();
     try {
-      if (s.isAdmin) _structure = await s.api.get('/api/org/structure') as Map<String, dynamic>;
+      if (s.can('courses.manage')) _structure = await s.api.get('/api/org/structure') as Map<String, dynamic>;
       if (_isNew) {
         _facultyId = (s.user?['faculty'] as Map?)?['id'] as int?;
         final terms = (_structure?['terms'] as List?) ?? const [];
@@ -158,7 +158,7 @@ class _CourseFormScreenState extends State<CourseFormScreen> {
         });
       } else {
         await s.api.patch('/api/courses/${widget.courseId}', {
-          if (s.isAdmin) ...{
+          if (s.can('courses.manage')) ...{
             'code': _code.text.trim(),
             'title': _title.text.trim(),
             'credits': int.tryParse(_credits.text) ?? 3,
@@ -284,7 +284,7 @@ class _CourseFormScreenState extends State<CourseFormScreen> {
   @override
   Widget build(BuildContext context) {
     final s = context.read<Session>();
-    final admin = s.isAdmin;
+    final admin = s.can('courses.manage');
     if (_loading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
     final total = _components.fold<num>(0, (a, c) => a + (c['max_score'] as num));
     return Scaffold(
@@ -313,7 +313,7 @@ class _CourseFormScreenState extends State<CourseFormScreen> {
               keyboardType: TextInputType.number,
               decoration: const InputDecoration(labelText: 'الوحدات'),
             ),
-            if (admin && _isNew && s.role == 'university_admin') ...[
+            if (admin && _isNew && s.user?['faculty'] == null) ...[
               const SizedBox(height: 8),
               DropdownButtonFormField<int>(
                 initialValue: _facultyId,

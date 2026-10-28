@@ -223,9 +223,8 @@ def report_message(mid: int, body: ReportIn, request: Request, user: User = Depe
     db.add(rep)
     db.flush()
     sender = db.get(User, m.sender_id)
-    admins = db.scalars(select(User.id).where(User.university_id == user.university_id, User.role == Role.FACULTY_ADMIN,
-                                              User.faculty_id == (sender.faculty_id or user.faculty_id)))
-    notifications.notify_users(db, user.university_id, list(admins), "بلاغ عن رسالة",
+    admins = permissions.holders(db, user.university_id, "messages.moderate", sender.faculty_id or user.faculty_id)
+    notifications.notify_users(db, user.university_id, admins, "بلاغ عن رسالة",
                                f"تم الإبلاغ عن رسالة: {body.reason}", priority="important", link="#/abuse", topic="abuse_report")
     audit.record(db, "message.reported", actor=user, target_type="message", target_id=m.id,
                  details={"reason": body.reason}, ip=client_ip(request))
@@ -235,15 +234,13 @@ def report_message(mid: int, body: ReportIn, request: Request, user: User = Depe
 
 @router.get("/message-reports")
 def list_reports(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    if user.role not in (Role.UNIVERSITY_ADMIN, Role.FACULTY_ADMIN):
-        raise forbidden()
-    permissions.require(db, user, "messages.moderate")
+    sc = permissions.require_scope(db, user, "messages.moderate")
     rows = db.execute(select(MessageReport, Message).join(Message, Message.id == MessageReport.message_id).where(
         MessageReport.university_id == user.university_id).order_by(MessageReport.id.desc()).limit(200)).all()
     out = []
     for rep, m in rows:
         sender = db.get(User, m.sender_id)
-        if user.role == Role.FACULTY_ADMIN and sender.faculty_id != user.faculty_id:
+        if not permissions.in_scope(sc, sender.faculty_id):
             continue
         reporter = db.get(User, rep.reporter_id)
         out.append({"id": rep.id, "status": rep.status, "reason": rep.reason, "created_at": rep.created_at,
@@ -260,15 +257,13 @@ class ReportAction(BaseModel):
 @router.post("/message-reports/{rid}")
 def handle_report(rid: int, body: ReportAction, request: Request, user: User = Depends(get_current_user),
                   db: Session = Depends(get_db)):
-    if user.role not in (Role.UNIVERSITY_ADMIN, Role.FACULTY_ADMIN):
-        raise forbidden()
-    permissions.require(db, user, "messages.moderate")
+    sc = permissions.require_scope(db, user, "messages.moderate")
     rep = db.get(MessageReport, rid)
     if not rep or rep.university_id != user.university_id:
         raise not_found()
     m = db.get(Message, rep.message_id)
-    if user.role == Role.FACULTY_ADMIN and db.get(User, m.sender_id).faculty_id != user.faculty_id:
-        raise forbidden()
+    if not permissions.in_scope(sc, db.get(User, m.sender_id).faculty_id):
+        raise forbidden("هذا الإجراء خارج نطاق كليتك")
     rep.status, rep.handled_by = ("actioned" if body.action == "hide" else "dismissed"), user.id
     if body.action == "hide":
         m.hidden = True
@@ -284,15 +279,14 @@ def handle_report(rid: int, body: ReportAction, request: Request, user: User = D
 # conversation of the university. Users are told so on the messages page, and each conversation
 # opened this way is written to the audit log with the reader's name.
 
-def _oversight(user: User) -> None:
-    if user.role != Role.UNIVERSITY_ADMIN:
-        raise forbidden("الاطلاع على كل الرسائل خاص بإدارة الجامعة ومشرف المنصة")
+def _oversight(db: Session, user: User) -> None:
+    permissions.require_scope(db, user, "messages.oversight", whole=True)
 
 
 @router.get("/oversight/conversations")
 def oversight_list(q: str = "", limit: int = 50, offset: int = 0, user: User = Depends(get_current_user),
                    db: Session = Depends(get_db)):
-    _oversight(user)
+    _oversight(db, user)
     limit = max(1, min(limit, 200))
     stmt = select(Conversation).where(Conversation.university_id == user.university_id)
     if q.strip():
@@ -317,7 +311,7 @@ def oversight_list(q: str = "", limit: int = 50, offset: int = 0, user: User = D
 
 @router.get("/oversight/conversations/{cid}")
 def oversight_read(cid: int, request: Request, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    _oversight(user)
+    _oversight(db, user)
     conv = db.get(Conversation, cid)
     if not conv or conv.university_id != user.university_id:
         raise not_found()

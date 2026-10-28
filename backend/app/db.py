@@ -88,6 +88,7 @@ def init_db() -> None:
 
     Base.metadata.create_all(bind=engine)
     _adopt_university_colors()
+    _adopt_open_permissions()
 
 
 # Colors of earlier identities (the green one, a maroon-first one, then bright gold with maroon), replaced
@@ -118,5 +119,33 @@ def _adopt_university_colors() -> None:
             if touched:
                 uni.settings = settings_
                 changed = True
+        if changed:
+            db.commit()
+
+
+def _adopt_open_permissions() -> None:
+    """Permissions version 2: every capability is open to every role, the university administration
+    included. Saved matrices gain the rights that used to be fixed (permissions.IMPLICIT_BEFORE), once."""
+    from sqlalchemy import select
+
+    from .models import University
+    from .permissions import IMPLICIT_BEFORE
+
+    with SessionLocal() as db:
+        changed = False
+        for uni in db.scalars(select(University)):
+            st = dict(uni.settings or {})
+            if st.get("_permissions_v", 1) >= 2:
+                continue
+            matrix = {k: list(v) for k, v in (st.get("permissions") or {}).items() if isinstance(v, list)}
+            for key, roles in matrix.items():
+                for r in IMPLICIT_BEFORE.get(key, []):
+                    if r not in roles:
+                        roles.append(r)
+            if matrix:
+                st["permissions"] = matrix
+            st["_permissions_v"] = 2
+            uni.settings = st
+            changed = True
         if changed:
             db.commit()

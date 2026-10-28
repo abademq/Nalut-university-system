@@ -105,8 +105,7 @@ export function PublicationsView({ user, id }) {
   const [kind, setKind] = useState("schedule");
   const state = useAsync(() => api.get("/api/publications"), []);
   const [open, setOpen] = useState(null);
-  const canPublish = user.role === "university_admin" || ((user.role === "faculty_admin" || user.role === "staff")
-    && (user.can || []).includes("publications.manage"));
+  const canPublish = (user.can || []).includes("publications.manage");
   useEffect(() => {
     if (id && state.data) setOpen(state.data.find((p) => String(p.id) === String(id)) || null);
   }, [id, state.data]);

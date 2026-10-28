@@ -89,7 +89,7 @@ class _AuditScreenState extends State<AuditScreen> {
       appBar: AppBar(
         title: const Text('سجل التدقيق'),
         actions: [
-          if (s.role == 'university_admin')
+          if (s.can('audit.view') && s.user?['faculty'] == null)
             TextButton.icon(onPressed: _verify, icon: const Icon(Icons.verified_outlined), label: const Text('فحص السلامة')),
         ],
       ),

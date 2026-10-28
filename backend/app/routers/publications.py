@@ -27,11 +27,7 @@ MAX_MB = 10
 
 
 def can_publish(db: Session, user: User) -> bool:
-    if user.role == Role.UNIVERSITY_ADMIN:
-        return True
-    if user.role in (Role.FACULTY_ADMIN, Role.STAFF):
-        return permissions.allowed(db, user, "publications.manage")
-    return False
+    return permissions.allowed(db, user, "publications.manage")
 
 
 def visible(user: User, p: Publication, now: datetime | None = None) -> bool:

@@ -72,8 +72,9 @@ def test_permission_matrix_is_enforced(client, as_, db):
     staff = as_("registrar@nalut.edu.ly")
     msg = {"category": "announcement", "title": "تجربة", "body": "نص التجربة", "target_type": "university"}
     assert client.post("/api/notifications", headers=staff, json=msg).status_code == 403
-    matrix = {"banners.manage": [], "users.manage": [], "results.approve": [], "archive.access": [],
-              "notify.announcement": ["faculty_admin", "staff", "teacher", "assistant"]}
+    matrix = {"banners.manage": ["university_admin"], "users.manage": ["university_admin"],
+              "results.approve": ["university_admin"], "archive.access": ["university_admin"],
+              "notify.announcement": ["university_admin", "faculty_admin", "staff", "teacher", "assistant"]}
     r = client.put("/api/settings", headers=act, json={"settings": {"permissions": matrix}})
     assert r.status_code == 200, r.text
     assert client.get("/api/banners/manage", headers=d).status_code == 403
@@ -82,8 +83,13 @@ def test_permission_matrix_is_enforced(client, as_, db):
     r = client.post("/api/users", headers=d, json={"full_name": "طالب جديد", "role": "student",
                                                    "email": "new.s@nalut.edu.ly"})
     assert r.status_code == 403
-    # the university administration keeps every capability
+    # the university administration holds what the matrix gives it ...
     assert client.get("/api/banners/manage", headers=as_(PRES)).status_code == 200
+    # ... and can lose it too; the platform administrator never does
+    r = client.put("/api/settings", headers=act, json={"settings": {"permissions": {**matrix, "banners.manage": []}}})
+    assert r.status_code == 200
+    assert client.get("/api/banners/manage", headers=as_(PRES)).status_code == 403
+    assert client.get("/api/banners/manage", headers=act).status_code == 200
     # newly granted: staff may now send announcements (within their scope)
     r = client.post("/api/notifications", headers=staff, json={**msg, "target_type": "faculty",
                                                                 "target_ids": [me_faculty(client, staff)]})
@@ -108,7 +114,7 @@ def test_teaching_and_admin_actions_are_configurable(client, as_, db):
     catalog = {c["key"] for c in client.get("/api/permissions", headers=act).json()["capabilities"]}
     assert {"courses.schedule", "grades.enter", "attendance.manage", "reports.view", "audit.view"} <= catalog
 
-    revoke = {k: [] for k in ("courses.schedule", "courses.components", "grades.enter", "results.submit",
+    revoke = {k: ["university_admin"] for k in ("courses.schedule", "courses.components", "grades.enter", "results.submit",
                               "assignments.manage", "attendance.manage", "reports.view", "audit.view",
                               "messages.moderate", "courses.manage")}
     assert client.put("/api/settings", headers=act, json={"settings": {"permissions": revoke}}).status_code == 200
@@ -128,7 +134,7 @@ def test_teaching_and_admin_actions_are_configurable(client, as_, db):
     assert client.patch(f"/api/courses/{cid}", headers=d, json={"title": "اسم جديد للمقرر"}).status_code == 403
     me_id = client.get("/api/me", headers=t).json()["id"]
     assert client.get(f"/api/reports/person/{me_id}", headers=t).status_code == 200  # own report always
-    # the university administration is never locked out
+    # the university administration still holds them (it is in each list)
     p = as_(PRES)
     assert client.patch(f"/api/courses/{cid}", headers=p, json=slots).status_code == 200
     assert client.get("/api/audit", headers=p).status_code == 200
@@ -274,3 +280,29 @@ def test_platform_admin_reaches_every_administration_page(client, monkeypatch):
                  "/api/archive/students", "/api/banners/manage", "/api/reports/overview", "/api/students",
                  "/api/settings", "/api/permissions", "/api/users"):
         assert client.get(path, headers=h).status_code == 200, path
+
+
+def test_every_permission_can_be_given_to_any_role(client, as_, db):
+    """Each cell of the matrix works for every role, the university administration included,
+    and whoever holds a right acts within their faculty (or the whole university without one)."""
+    act = {**platform(client), "X-Act-As-University": str(uni_id(db))}
+    cur = client.get("/api/permissions", headers=act).json()["current"]
+    teacher = as_("t.ahmed@nalut.edu.ly")
+    me = client.get("/api/me", headers=teacher).json()
+    assert client.get("/api/results/pending", headers=teacher).status_code == 403
+    assert client.get("/api/audit", headers=teacher).status_code == 403
+    matrix = {**cur, "results.approve": cur["results.approve"] + ["teacher"],
+              "audit.view": cur["audit.view"] + ["teacher"], "settings.manage": []}
+    assert client.put("/api/settings", headers=act, json={"settings": {"permissions": matrix}}).status_code == 200
+    # the teacher now approves results of their faculty's courses, and reads their faculty's log
+    pending = client.get("/api/results/pending", headers=teacher)
+    assert pending.status_code == 200
+    from app.models import Course
+    fac_courses = {c.id for c in db.query(Course).filter_by(faculty_id=me["faculty"]["id"])}
+    assert pending.json() and {r["course"]["id"] for r in pending.json()} <= fac_courses
+    assert client.get("/api/audit", headers=teacher).status_code == 200
+    assert client.get("/api/audit/verify", headers=teacher).status_code == 403  # the whole chain: university-wide
+    # the university administration lost the settings; the platform keeps them
+    p = as_(PRES)
+    assert client.put("/api/settings", headers=p, json={"settings": {"grading": {"pass_mark": 55}}}).status_code == 403
+    assert client.put("/api/settings", headers=act, json={"settings": {"grading": {"pass_mark": 55}}}).status_code == 200

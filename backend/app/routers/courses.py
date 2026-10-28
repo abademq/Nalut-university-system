@@ -9,12 +9,12 @@ from sqlalchemy.orm import Session
 from .. import audit, permissions
 from ..db import get_db
 from ..deps import (
+    can_teach_course,
     client_ip,
+    course_admin,
     forbidden,
     get_course_for,
-    can_teach_course,
     get_current_user,
-    is_course_admin,
     not_found,
     require_roles,
     visible_course_ids,
@@ -88,7 +88,8 @@ class CourseIn(BaseModel):
     components: list[ComponentIn] = Field(default_factory=list)
 
 
-def _course_manager(user: User = Depends(require_roles(Role.UNIVERSITY_ADMIN, Role.FACULTY_ADMIN)),
+def _course_manager(user: User = Depends(require_roles(Role.PLATFORM_ADMIN, Role.UNIVERSITY_ADMIN,
+                                                     Role.FACULTY_ADMIN, Role.STAFF, Role.TEACHER, Role.ASSISTANT)),
                     db: Session = Depends(get_db)) -> User:
     permissions.require(db, user, "courses.manage")
     return user
@@ -98,7 +99,8 @@ def _course_manager(user: User = Depends(require_roles(Role.UNIVERSITY_ADMIN, Ro
 def create_course(body: CourseIn, request: Request,
                   user: User = Depends(_course_manager),
                   db: Session = Depends(get_db)):
-    faculty_id = user.faculty_id if user.role == Role.FACULTY_ADMIN else body.faculty_id
+    sc = permissions.scope(db, user, "courses.manage")
+    faculty_id = body.faculty_id if sc == permissions.ALL else sc
     fac = db.get(Faculty, faculty_id) if faculty_id else None
     if not fac or fac.university_id != user.university_id:
         raise HTTPException(status_code=400, detail="حدد الكلية")
@@ -138,8 +140,8 @@ def patch_course(course_id: int, body: CoursePatch, request: Request, user: User
     c = get_course_for(db, user, course_id)
     data = body.model_dump(exclude_unset=True)
     # the course's teachers may move their own lecture times; everything else is the administration's
-    if is_course_admin(user, c):
-        permissions.require(db, user, "courses.manage")
+    if course_admin(db, user, c):
+        pass
     elif set(data) <= {"schedule"} and can_teach_course(db, user, c):
         permissions.require(db, user, "courses.schedule")
     else:

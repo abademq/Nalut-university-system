@@ -10,7 +10,16 @@ from __future__ import annotations
 
 from datetime import date
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    Request,
+    UploadFile,
+)
 from pydantic import BaseModel, Field
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
@@ -91,11 +100,8 @@ def section_of(user: User) -> str | None:
 
 
 def can(db: Session, user: User, section: str, *, manage: bool = False, target: User | None = None) -> bool:
-    if user.role == Role.UNIVERSITY_ADMIN:
-        ok = True
-    else:
-        ok = permissions.allowed(db, user, f"{section}.manage") or (
-            not manage and permissions.allowed(db, user, f"{section}.view"))
+    ok = permissions.allowed(db, user, f"{section}.manage") or (
+        not manage and permissions.allowed(db, user, f"{section}.view"))
     if not ok or target is None:
         return ok
     if target.university_id != user.university_id or section_of(target) != section:

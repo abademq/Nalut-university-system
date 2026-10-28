@@ -3,7 +3,9 @@ import {
   toast, toastError, Tabs, Modal, Kpi, Bar, ATT_STATUS, RISK_FLAG, fmtDate, pct, useCourses, navigate, Icon } from "../ui.js";
 import { api, deviceId, blobUrl } from "../api.js";
 
-const isAdmin = (u) => u.role === "university_admin" || u.role === "faculty_admin";
+const has = (u, k) => (u.can || []).includes(k);
+// manages sessions: course sessions ("attendance.manage") or staff shifts ("attendance.staff")
+const isAdmin = (u) => u.role !== "student" && (has(u, "attendance.manage") || has(u, "attendance.staff"));
 const isInstructor = (u) => u.role === "teacher" || u.role === "assistant";
 
 function newNonce() {
@@ -333,12 +335,12 @@ function Integrity() {
 function ManagerAttendance({ user }) {
   const [tab, setTab] = useState("sessions");
   const tabs = [["sessions", "جلسات المقررات"], ["review", "المراجعة"], ["anomalies", "الأنماط"]];
-  if (isAdmin(user)) tabs.splice(1, 0, ["staff", "دوام الموظفين"]);
-  if (user.role === "university_admin") tabs.push(["integrity", "السلامة"]);
+  if (has(user, "attendance.staff")) tabs.splice(1, 0, ["staff", "دوام الموظفين"]);
+  if (has(user, "audit.view") && (!user.faculty || user.acting)) tabs.push(["integrity", "السلامة"]);
   const created = (s) => navigate(`#/attendance/display/${s.id}`);
   return html`<div>
     <${Tabs} value=${tab} onChange=${setTab} tabs=${tabs} />
-    ${tab === "sessions" ? html`${isInstructor(user) || isAdmin(user) ? html`<${CreateSession} user=${user} kind="course" onCreated=${created} />` : null}
+    ${tab === "sessions" ? html`${has(user, "attendance.manage") ? html`<${CreateSession} user=${user} kind="course" onCreated=${created} />` : null}
       <${SessionsList} kindFilter="course" />` : null}
     ${tab === "staff" ? html`<${CreateSession} user=${user} kind="staff" onCreated=${created} /><${SessionsList} kindFilter="staff" />` : null}
     ${tab === "review" ? html`<${ReviewQueue} />` : null}

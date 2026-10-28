@@ -29,7 +29,7 @@ export function StudentsList() {
 
 export function StudentDetail({ id, user }) {
   const state = useAsync(() => api.get(`/api/reports/person/${id}`), [id]);
-  const archive = user.role === "university_admin" || (user.can || []).includes("archive.access");
+  const archive = (user.can || []).includes("archive.access");
   return html`<${Async} state=${state}>${(d) => {
     const s = d.summary;
     return html`<div>

@@ -8,8 +8,8 @@ const CREATABLE = {
 // roles this account may create or edit (the platform administrator also manages university admins)
 function creatable(user) {
   if (user.acting) return [...CREATABLE.university_admin, "university_admin"];
-  if (user.role === "faculty_admin" && !(user.can || []).includes("users.manage")) return [];
-  return CREATABLE[user.role] || [];
+  if (!(user.can || []).includes("users.manage")) return [];
+  return CREATABLE[user.role] || CREATABLE.faculty_admin; // others given the right: ordinary accounts only
 }
 const OFFICES = { registrar: "التسجيل", student_affairs: "شؤون الطلبة", exams: "الامتحانات" };
 
@@ -648,7 +648,7 @@ export function UniversitiesView() {
     ${temp ? html`<${TempPassword} value=${temp} onClose=${() => setTemp(null)} />` : null}</div>`;
 }
 
-const PERM_ROLES = ["faculty_admin", "staff", "teacher", "assistant"];
+const PERM_ROLES = ["university_admin", "faculty_admin", "staff", "teacher", "assistant"];
 
 export function PermissionsView() {
   const state = useAsync(() => api.get("/api/permissions"), []);
@@ -670,11 +670,12 @@ export function PermissionsView() {
   };
   const groups = [...new Set(capabilities.map((c) => c.group))];
   return html`<div><h1>الصلاحيات</h1>
-    <p class="muted">من يملك كل صلاحية في هذه الجامعة. إدارة الجامعة تملك كل الصلاحيات دائماً حتى لا تُقفل الإدارة،
-      وتبقى حدود النطاق كما هي (إدارة الكلية لكليتها، الأستاذ لمقرراته). ${editable ? "" : "يعدّلها مشرف المنصة فقط."}</p>
+    <p class="muted">من يملك كل صلاحية في هذه الجامعة. كل خانة قابلة للتعديل لكل الأدوار، بما فيها إدارة الجامعة؛
+      ومشرف المنصة يملك كل الصلاحيات دائماً فلا تُقفل المنصة أبداً. من يملك صلاحية يمارسها في كليته
+      (أو في الجامعة كلها إن لم يكن تابعاً لكلية)، والأستاذ يبقى في مقرراته لصلاحيات التدريس. ${editable ? "" : "يعدّلها مشرف المنصة فقط."}</p>
     ${groups.map((g) => html`<div class="card"><h3>${g}</h3><div class="table-wrap"><table>
-      <thead><tr><th>الصلاحية</th><th>${ROLE.university_admin}</th>${PERM_ROLES.map((r) => html`<th>${ROLE[r]}</th>`)}</tr></thead>
-      <tbody>${capabilities.filter((c) => c.group === g).map((c) => html`<tr><td>${c.label}</td><td>✔</td>
+      <thead><tr><th>الصلاحية</th>${PERM_ROLES.map((r) => html`<th>${ROLE[r]}</th>`)}</tr></thead>
+      <tbody>${capabilities.filter((c) => c.group === g).map((c) => html`<tr><td>${c.label}</td>
         ${PERM_ROLES.map((r) => html`<td>${c.options.includes(r)
           ? html`<input type="checkbox" checked=${has(c.key, r)} disabled=${!editable} onChange=${() => flip(c.key, r)}
               aria-label=${`${c.label} — ${ROLE[r]}`} />`

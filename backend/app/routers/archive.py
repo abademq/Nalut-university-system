@@ -8,7 +8,16 @@ from __future__ import annotations
 
 from datetime import date
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    Request,
+    UploadFile,
+)
 from pydantic import BaseModel, Field
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
@@ -39,15 +48,10 @@ RECORD_FIELDS = ["birth_date", "birth_place", "nationality", "gender", "address"
 
 
 def can_manage(db: Session, user: User, student: User | None = None) -> bool:
-    if user.role == Role.UNIVERSITY_ADMIN:
-        ok = True
-    elif user.role == Role.FACULTY_ADMIN:
-        ok = permissions.allowed(db, user, "archive.access")
-    elif user.role == Role.STAFF:
-        ok = (permissions.allowed(db, user, "archive.access")
-              and user.office in tenant_settings(db, user)["archive"]["offices"])
-    else:
-        ok = False
+    ok = permissions.allowed(db, user, "archive.access")
+    if ok and user.role == Role.STAFF and not permissions.is_platform(user):
+        # employees also need to work in one of the offices the archive settings name
+        ok = user.office in tenant_settings(db, user)["archive"]["offices"]
     if not ok or student is None:
         return ok
     if student.university_id != user.university_id or student.role != Role.STUDENT:

@@ -14,7 +14,6 @@ from sqlalchemy.orm import Session
 from .. import attendance as svc
 from .. import audit, files, permissions
 from ..db import as_utc, get_db, utcnow
-from ..security import limiter
 from ..deps import (
     client_ip,
     forbidden,
@@ -34,6 +33,7 @@ from ..models import (
     User,
     UserDevice,
 )
+from ..security import limiter
 
 router = APIRouter(prefix="/api", tags=["attendance"])
 
@@ -45,8 +45,7 @@ def _session_for(db: Session, user: User, sid: int) -> AttendanceSession:
         raise not_found("جلسة الحضور غير موجودة")
     if s.kind == "course":
         get_course_for(db, user, s.course_id, teach=True)
-    elif not (user.role == Role.UNIVERSITY_ADMIN
-              or (user.role == Role.FACULTY_ADMIN and s.faculty_id == user.faculty_id)):
+    elif not permissions.in_scope(permissions.scope(db, user, "attendance.staff"), s.faculty_id):
         raise forbidden()
     return s
 
@@ -94,9 +93,8 @@ def create_session(body: SessionIn, request: Request, user: User = Depends(get_c
         permissions.require(db, user, "attendance.manage")
         faculty_id = course.faculty_id
     else:
-        if user.role not in (Role.UNIVERSITY_ADMIN, Role.FACULTY_ADMIN):
-            raise forbidden("جلسات دوام الموظفين من صلاحيات الإدارة")
-        faculty_id = user.faculty_id if user.role == Role.FACULTY_ADMIN else None
+        sc = permissions.require_scope(db, user, "attendance.staff")
+        faculty_id = None if sc == permissions.ALL else sc
     policy = svc.policy_for(db, user.university_id)
     level = policy["levels"].get(body.risk_level, {})
     starts = as_utc(body.starts_at) or utcnow()
@@ -126,21 +124,30 @@ def create_session(body: SessionIn, request: Request, user: User = Depends(get_c
     return _session_out(db, s)
 
 
+def _managed_sessions(db: Session, user: User, course_ids: list[int]):
+    """Condition: the course sessions of ``course_ids`` and the staff shifts in the user's scope."""
+    cond = AttendanceSession.course_id.in_(course_ids or [-1])
+    sc = permissions.scope(db, user, "attendance.staff")
+    if sc == permissions.ALL:
+        cond = cond | (AttendanceSession.kind == "staff")
+    elif sc is not None:
+        cond = cond | ((AttendanceSession.kind == "staff") & (AttendanceSession.faculty_id == sc))
+    return cond
+
+
 @router.get("/attendance/sessions")
 def list_sessions(course_id: int | None = None, user: User = Depends(get_current_user),
                   db: Session = Depends(get_db)):
     stmt = select(AttendanceSession).where(AttendanceSession.university_id == user.university_id)
-    if user.role in Role.INSTRUCTORS or (user.role in (Role.FACULTY_ADMIN, Role.UNIVERSITY_ADMIN) and course_id):
-        ids = visible_course_ids(db, user)
-        if course_id:
-            if course_id not in ids:
-                raise forbidden()
-            ids = [course_id]
-        stmt = stmt.where(AttendanceSession.course_id.in_(ids or [-1]))
-    elif user.role == Role.FACULTY_ADMIN:
-        stmt = stmt.where(AttendanceSession.faculty_id == user.faculty_id)
-    elif user.role != Role.UNIVERSITY_ADMIN:
+    if user.role == Role.STUDENT:
         raise forbidden()
+    ids = visible_course_ids(db, user)
+    if course_id:
+        if course_id not in ids:
+            raise forbidden()
+        stmt = stmt.where(AttendanceSession.course_id == course_id)
+    else:
+        stmt = stmt.where(_managed_sessions(db, user, ids))
     rows = db.scalars(stmt.order_by(AttendanceSession.starts_at.desc()).limit(100)).all()
     return [_session_out(db, s) for s in rows]
 
@@ -328,12 +335,9 @@ def review_queue(user: User = Depends(get_current_user), db: Session = Depends(g
     stmt = select(AttendanceRecord, AttendanceSession).join(
         AttendanceSession, AttendanceSession.id == AttendanceRecord.session_id).where(
         AttendanceRecord.university_id == user.university_id, AttendanceRecord.status == "pending_review")
-    if user.role in Role.INSTRUCTORS:
-        stmt = stmt.where(AttendanceSession.course_id.in_(visible_course_ids(db, user) or [-1]))
-    elif user.role == Role.FACULTY_ADMIN:
-        stmt = stmt.where(AttendanceSession.faculty_id == user.faculty_id)
-    elif user.role != Role.UNIVERSITY_ADMIN:
+    if user.role == Role.STUDENT:
         raise forbidden()
+    stmt = stmt.where(_managed_sessions(db, user, visible_course_ids(db, user)))
     rows = db.execute(stmt.order_by(AttendanceRecord.id.desc()).limit(200)).all()
     users = {u.id: u for u in db.scalars(select(User).where(User.id.in_({r.user_id for r, _ in rows} or {-1})))}
     return [{"record": _record_out(r), "session": {"id": s.id, "title": s.title, "starts_at": s.starts_at},
@@ -360,22 +364,20 @@ def my_attendance(user: User = Depends(get_current_user), db: Session = Depends(
 
 @router.get("/attendance/integrity")
 def integrity(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    if user.role != Role.UNIVERSITY_ADMIN:
-        raise forbidden()
+    permissions.require_scope(db, user, "audit.view", whole=True)
     return svc.verify_integrity(db)
 
 
 @router.get("/attendance/anomalies")
 def anomalies(days: int = 30, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Patterns worth a human look. These are signals for review, not verdicts."""
-    if user.role not in (Role.UNIVERSITY_ADMIN, Role.FACULTY_ADMIN, *Role.INSTRUCTORS):
-        raise forbidden()
+    sc = permissions.require_scope(db, user, "reports.view")
     since = utcnow() - timedelta(days=min(days, 180))
     scope = select(User.id).where(User.university_id == user.university_id)
-    if user.role == Role.FACULTY_ADMIN:
-        scope = scope.where(User.faculty_id == user.faculty_id)
-    elif user.role in Role.INSTRUCTORS:
+    if user.role in Role.INSTRUCTORS:
         scope = select(Enrollment.student_id).where(Enrollment.course_id.in_(visible_course_ids(db, user) or [-1]))
+    elif sc != permissions.ALL:
+        scope = scope.where(User.faculty_id == sc)
     shared = db.execute(select(UserDevice.device_id, func.count(func.distinct(UserDevice.user_id))).where(
         UserDevice.user_id.in_(scope), UserDevice.last_seen >= since).group_by(UserDevice.device_id).having(
         func.count(func.distinct(UserDevice.user_id)) > 1)).all()

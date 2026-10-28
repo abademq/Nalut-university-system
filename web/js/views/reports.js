@@ -75,7 +75,7 @@ function StaffAttendance() {
 }
 
 export function ReportsView({ user }) {
-  const admin = user.role === "university_admin" || user.role === "faculty_admin";
+  const admin = (user.can || []).includes("attendance.staff");
   const [tab, setTab] = useState("overview");
   const tabs = [["overview", "نظرة عامة"], ["risk", "متابعة الطلبة"], ["attendance", "الحضور"], ...(admin ? [["staff", "دوام الموظفين"]] : [])];
   return html`<div><h1>التقارير والإحصائيات</h1><${Tabs} value=${tab} onChange=${setTab} tabs=${tabs} />

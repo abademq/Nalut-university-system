@@ -26,13 +26,13 @@ from ..deps import (
 )
 from ..models import (
     AuditLog,
-    MfaPreference,
-    PermissionGroup,
-    PermissionGroupMember,
     CourseStaff,
     Department,
     Enrollment,
     Faculty,
+    MfaPreference,
+    PermissionGroup,
+    PermissionGroupMember,
     Role,
     Term,
     University,
@@ -40,7 +40,16 @@ from ..models import (
 )
 from ..routers.auth import normalize_identifier
 from ..security import hash_password
-from ..tenancy import DEFAULT_SETTINGS, effective_settings, validate_launch, validate_policies
+from ..tenancy import (
+    DEFAULT_SETTINGS,
+    effective_settings,
+    validate_launch,
+    validate_policies,
+)
+
+# any account but a student: what each may do is then decided by the permission matrix
+STAFF_MEMBERS = require_roles(Role.PLATFORM_ADMIN, Role.UNIVERSITY_ADMIN, Role.FACULTY_ADMIN, Role.STAFF,
+                              Role.TEACHER, Role.ASSISTANT)
 
 router = APIRouter(prefix="/api", tags=["admin"])
 
@@ -67,7 +76,7 @@ class MfaAdminIn(BaseModel):
 
 @router.post("/users/{uid}/mfa")
 def admin_mfa(uid: int, body: MfaAdminIn, request: Request,
-              actor: User = Depends(require_roles(Role.PLATFORM_ADMIN, Role.UNIVERSITY_ADMIN, Role.FACULTY_ADMIN)),
+              actor: User = Depends(STAFF_MEMBERS),
               db: Session = Depends(get_db)):
     u = db.get(User, uid)
     if not u or not can_manage_user(actor, u):
@@ -180,8 +189,9 @@ class FacultyIn(BaseModel):
 
 
 @router.post("/org/faculties")
-def create_faculty(body: FacultyIn, request: Request, user: User = Depends(require_roles(Role.UNIVERSITY_ADMIN)),
+def create_faculty(body: FacultyIn, request: Request, user: User = Depends(STAFF_MEMBERS),
                    db: Session = Depends(get_db)):
+    permissions.require_scope(db, user, "structure.faculties", whole=True)
     f = Faculty(university_id=user.university_id, name=body.name, code=body.code, settings={})
     db.add(f)
     db.flush()
@@ -198,14 +208,12 @@ class DepartmentIn(BaseModel):
 
 @router.post("/org/departments")
 def create_department(body: DepartmentIn, request: Request,
-                      user: User = Depends(require_roles(Role.UNIVERSITY_ADMIN, Role.FACULTY_ADMIN)),
+                      user: User = Depends(STAFF_MEMBERS),
                       db: Session = Depends(get_db)):
     fac = db.get(Faculty, body.faculty_id)
     if not fac or fac.university_id != user.university_id:
         raise not_found("الكلية غير موجودة")
-    if user.role == Role.FACULTY_ADMIN and (fac.id != user.faculty_id
-                                            or not permissions.allowed(db, user, "structure.departments")):
-        raise forbidden()
+    permissions.require_scope(db, user, "structure.departments", fac.id)
     d = Department(university_id=user.university_id, faculty_id=fac.id, name=body.name, code=body.code)
     db.add(d)
     db.flush()
@@ -229,8 +237,9 @@ def _faculty(db: Session, user: User, fid: int) -> Faculty:
 
 @router.patch("/org/faculties/{fid}")
 def patch_faculty(fid: int, body: FacultyPatch, request: Request,
-                  user: User = Depends(require_roles(Role.UNIVERSITY_ADMIN)), db: Session = Depends(get_db)):
+                  user: User = Depends(STAFF_MEMBERS), db: Session = Depends(get_db)):
     f = _faculty(db, user, fid)
+    permissions.require_scope(db, user, "structure.faculties", f.id)
     data = body.model_dump(exclude_none=True)
     for k, v in data.items():
         setattr(f, k, v.strip())
@@ -249,9 +258,10 @@ def _ensure_empty(db: Session, column, value, what: str) -> None:
 
 
 @router.delete("/org/faculties/{fid}")
-def delete_faculty(fid: int, request: Request, user: User = Depends(require_roles(Role.UNIVERSITY_ADMIN)),
+def delete_faculty(fid: int, request: Request, user: User = Depends(STAFF_MEMBERS),
                    db: Session = Depends(get_db)):
     f = _faculty(db, user, fid)
+    permissions.require_scope(db, user, "structure.faculties", whole=True)
     _ensure_empty(db, "faculty_id", f.id, "الكلية")
     if db.scalar(select(func.count(Department.id)).where(Department.faculty_id == f.id)):
         raise HTTPException(status_code=400, detail="احذف أقسام الكلية أولاً")
@@ -266,15 +276,13 @@ def _department(db: Session, user: User, did: int) -> Department:
     d = db.get(Department, did)
     if not d or d.university_id != user.university_id:
         raise not_found("القسم غير موجود")
-    if user.role == Role.FACULTY_ADMIN and (d.faculty_id != user.faculty_id
-                                            or not permissions.allowed(db, user, "structure.departments")):
-        raise forbidden()
+    permissions.require_scope(db, user, "structure.departments", d.faculty_id)
     return d
 
 
 @router.patch("/org/departments/{did}")
 def patch_department(did: int, body: FacultyPatch, request: Request,
-                     user: User = Depends(require_roles(Role.UNIVERSITY_ADMIN, Role.FACULTY_ADMIN)),
+                     user: User = Depends(STAFF_MEMBERS),
                      db: Session = Depends(get_db)):
     d = _department(db, user, did)
     data = body.model_dump(exclude_none=True)
@@ -288,7 +296,7 @@ def patch_department(did: int, body: FacultyPatch, request: Request,
 
 @router.delete("/org/departments/{did}")
 def delete_department(did: int, request: Request,
-                      user: User = Depends(require_roles(Role.UNIVERSITY_ADMIN, Role.FACULTY_ADMIN)),
+                      user: User = Depends(STAFF_MEMBERS),
                       db: Session = Depends(get_db)):
     d = _department(db, user, did)
     _ensure_empty(db, "department_id", d.id, "القسم")
@@ -307,8 +315,9 @@ class TermIn(BaseModel):
 
 
 @router.post("/org/terms")
-def create_term(body: TermIn, user: User = Depends(require_roles(Role.UNIVERSITY_ADMIN)),
+def create_term(body: TermIn, user: User = Depends(STAFF_MEMBERS),
                 db: Session = Depends(get_db)):
+    permissions.require_scope(db, user, "structure.terms", whole=True)
     if body.is_current:
         for t in db.scalars(select(Term).where(Term.university_id == user.university_id)):
             t.is_current = False
@@ -328,6 +337,7 @@ class TermPatch(BaseModel):
 
 
 def _term(db: Session, user: User, tid: int) -> Term:
+    permissions.require_scope(db, user, "structure.terms", whole=True)
     t = db.get(Term, tid)
     if not t or t.university_id != user.university_id:
         raise not_found("الفصل غير موجود")
@@ -336,7 +346,7 @@ def _term(db: Session, user: User, tid: int) -> Term:
 
 @router.patch("/org/terms/{tid}")
 def patch_term(tid: int, body: TermPatch, request: Request,
-               user: User = Depends(require_roles(Role.UNIVERSITY_ADMIN)), db: Session = Depends(get_db)):
+               user: User = Depends(STAFF_MEMBERS), db: Session = Depends(get_db)):
     t = _term(db, user, tid)
     data = body.model_dump(exclude_none=True)
     if data.get("is_current"):
@@ -353,7 +363,7 @@ def patch_term(tid: int, body: TermPatch, request: Request,
 
 
 @router.delete("/org/terms/{tid}")
-def delete_term(tid: int, request: Request, user: User = Depends(require_roles(Role.UNIVERSITY_ADMIN)),
+def delete_term(tid: int, request: Request, user: User = Depends(STAFF_MEMBERS),
                 db: Session = Depends(get_db)):
     from ..models import Course
 
@@ -432,7 +442,8 @@ def _check_placement(db: Session, actor: User, faculty_id: int | None, departmen
         fac = db.get(Faculty, faculty_id)
         if not fac or fac.university_id != actor.university_id:
             raise HTTPException(status_code=400, detail="الكلية غير صحيحة")
-    if actor.role == Role.FACULTY_ADMIN and faculty_id != actor.faculty_id:
+    if actor.role != Role.UNIVERSITY_ADMIN and not permissions.is_platform(actor) \
+            and actor.faculty_id is not None and faculty_id != actor.faculty_id:
         raise forbidden("يمكنك إدارة مستخدمي كليتك فقط")
     if department_id is not None:
         dep = db.get(Department, department_id)
@@ -486,18 +497,23 @@ def _normalize_contacts(db: Session, email: str | None, phone: str | None, exclu
 
 
 def _require_user_admin(db: Session, actor: User) -> None:
-    if actor.role == Role.FACULTY_ADMIN and not permissions.allowed(db, actor, "users.manage"):
-        raise forbidden("إدارة الحسابات غير مفعلة لإدارة الكلية في هذه الجامعة")
+    if actor.role == Role.PLATFORM_ADMIN:
+        return  # the platform manages university administrators (no university of its own)
+    if not permissions.allowed(db, actor, "users.manage"):
+        raise forbidden("صلاحية «إنشاء وتعديل حسابات المستخدمين» غير مفعلة لحسابك")
 
 
 @router.post("/users")
 def create_user(body: UserIn, request: Request,
-                actor: User = Depends(require_roles(Role.UNIVERSITY_ADMIN, Role.FACULTY_ADMIN)),
+                actor: User = Depends(STAFF_MEMBERS),
                 db: Session = Depends(get_db)):
+    if actor.role == Role.PLATFORM_ADMIN:
+        raise forbidden()
     _require_user_admin(db, actor)
     if body.role not in manageable_roles(actor):
         raise forbidden("لا يمكنك إنشاء حساب بهذا الدور")
-    faculty_id = actor.faculty_id if actor.role == Role.FACULTY_ADMIN else body.faculty_id
+    sc = permissions.scope(db, actor, "users.manage")
+    faculty_id = body.faculty_id if sc == permissions.ALL else sc
     _check_placement(db, actor, faculty_id, body.department_id)
     email, phone = _normalize_contacts(db, body.email, body.phone, actor=actor)
     if body.code and db.scalar(select(User.id).where(User.university_id == actor.university_id, User.code == body.code)):
@@ -543,7 +559,7 @@ class UserPatch(BaseModel):
 
 @router.patch("/users/{uid}")
 def patch_user(uid: int, body: UserPatch, request: Request,
-               actor: User = Depends(require_roles(Role.PLATFORM_ADMIN, Role.UNIVERSITY_ADMIN, Role.FACULTY_ADMIN)),
+               actor: User = Depends(STAFF_MEMBERS),
                db: Session = Depends(get_db)):
     u = db.get(User, uid)
     if not u or (actor.role != Role.PLATFORM_ADMIN and u.university_id != actor.university_id):
@@ -570,8 +586,7 @@ def patch_user(uid: int, body: UserPatch, request: Request,
 
 @router.post("/users/{uid}/reset-password")
 def admin_reset_password(uid: int, request: Request,
-                         actor: User = Depends(require_roles(Role.PLATFORM_ADMIN, Role.UNIVERSITY_ADMIN,
-                                                             Role.FACULTY_ADMIN)),
+                         actor: User = Depends(STAFF_MEMBERS),
                          db: Session = Depends(get_db)):
     u = db.get(User, uid)
     if not u or not can_manage_user(actor, u):
@@ -597,8 +612,9 @@ ALLOWED_SETTING_KEYS = set(DEFAULT_SETTINGS)
 
 
 @router.get("/settings")
-def get_settings(user: User = Depends(require_roles(Role.UNIVERSITY_ADMIN, Role.FACULTY_ADMIN)),
-                 db: Session = Depends(get_db)):
+def get_settings(user: User = Depends(STAFF_MEMBERS), db: Session = Depends(get_db)):
+    if user.role != Role.FACULTY_ADMIN:  # faculty administrations read the settings they work under
+        permissions.require(db, user, "settings.manage")
     uni = db.get(University, user.university_id)
     return {"university": {"id": uni.id, "name": uni.name, "code": uni.code},
             "effective": effective_settings(uni), "overrides": uni.settings or {}}
@@ -718,8 +734,9 @@ def set_members(gid: int, body: MembersIn, request: Request, user: User = Depend
 
 
 @router.put("/settings")
-def put_settings(body: SettingsIn, request: Request, user: User = Depends(require_roles(Role.UNIVERSITY_ADMIN)),
+def put_settings(body: SettingsIn, request: Request, user: User = Depends(STAFF_MEMBERS),
                  db: Session = Depends(get_db)):
+    permissions.require_scope(db, user, "settings.manage", whole=True)
     unknown = set(body.settings) - ALLOWED_SETTING_KEYS
     if unknown:
         raise HTTPException(status_code=400, detail=f"مفاتيح غير معروفة: {', '.join(sorted(unknown))}")
@@ -757,6 +774,8 @@ def put_settings(body: SettingsIn, request: Request, user: User = Depends(requir
     uni = db.get(University, user.university_id)
     merged = dict(uni.settings or {})
     merged.update(body.settings)
+    if "permissions" in body.settings:
+        merged["_permissions_v"] = 2  # saved by the platform: never re-adjusted at start-up (db.py)
     uni.settings = merged
     audit.record(db, "settings.updated", actor=user, target_type="university", target_id=uni.id,
                  details={"keys": sorted(body.settings)}, ip=client_ip(request))
@@ -768,9 +787,11 @@ def put_settings(body: SettingsIn, request: Request, user: User = Depends(requir
 
 
 @router.get("/audit/meta")
-def audit_meta(user: User = Depends(require_roles(Role.PLATFORM_ADMIN, Role.UNIVERSITY_ADMIN, Role.FACULTY_ADMIN))):
+def audit_meta(user: User = Depends(STAFF_MEMBERS), db: Session = Depends(get_db)):
     from .. import audit_labels as L
 
+    if user.role != Role.PLATFORM_ADMIN:
+        permissions.require(db, user, "audit.view")
     return {"categories": L.CATEGORIES}
 
 
@@ -799,17 +820,15 @@ def _target_names(db: Session, rows: list) -> dict[tuple[str, str], str]:
 @router.get("/audit")
 def audit_log(action: str | None = None, category: str | None = None, limit: int = Query(default=100, le=500),
               offset: int = 0,
-              user: User = Depends(require_roles(Role.PLATFORM_ADMIN, Role.UNIVERSITY_ADMIN, Role.FACULTY_ADMIN)),
-              db: Session = Depends(get_db)):
+              user: User = Depends(STAFF_MEMBERS), db: Session = Depends(get_db)):
     from .. import audit_labels as L
 
-    if user.role == Role.FACULTY_ADMIN:
-        permissions.require(db, user, "audit.view")
+    sc = permissions.ALL if user.role == Role.PLATFORM_ADMIN else permissions.require_scope(db, user, "audit.view")
     stmt = select(AuditLog)
     if user.role != Role.PLATFORM_ADMIN:
         stmt = stmt.where(AuditLog.university_id == user.university_id)
-    if user.role == Role.FACULTY_ADMIN:
-        faculty_users = select(User.id).where(User.faculty_id == user.faculty_id)
+    if sc != permissions.ALL:  # a faculty-wide holder sees the operations of their faculty's people
+        faculty_users = select(User.id).where(User.faculty_id == sc)
         stmt = stmt.where(AuditLog.actor_id.in_(faculty_users))
     if action:
         stmt = stmt.where(AuditLog.action.like(f"{action}%"))
@@ -836,6 +855,7 @@ def audit_log(action: str | None = None, category: str | None = None, limit: int
 
 
 @router.get("/audit/verify")
-def audit_verify(user: User = Depends(require_roles(Role.PLATFORM_ADMIN, Role.UNIVERSITY_ADMIN)),
-                 db: Session = Depends(get_db)):
+def audit_verify(user: User = Depends(STAFF_MEMBERS), db: Session = Depends(get_db)):
+    if user.role != Role.PLATFORM_ADMIN:
+        permissions.require_scope(db, user, "audit.view", whole=True)
     return audit.verify_chain(db)

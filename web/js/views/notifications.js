@@ -13,7 +13,6 @@ const SENDERS = {
 // Categories this account may send: the university's permission matrix decides (user.can);
 // the role table is only a fallback for older servers.
 export function sendable(user) {
-  if (user.role === "university_admin") return Object.keys(SENDERS);
   if (user.can) return Object.keys(SENDERS).filter((k) => user.can.includes(`notify.${k}`));
   return Object.entries(SENDERS).filter(([, roles]) => roles.includes(user.role)).map(([k]) => k);
 }

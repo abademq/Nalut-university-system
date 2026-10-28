@@ -1,7 +1,8 @@
 import { html, useState, useAsync, Async, Empty, Chip, Tabs, ErrorBox, useForm, useSubmit, toast, DAYS, ROLE, fmtDate } from "../ui.js";
 import { api } from "../api.js";
 
-const isAdmin = (u) => u.role === "university_admin" || u.role === "faculty_admin";
+// administers courses: whoever the permission matrix gives "courses.manage"
+const isAdmin = (u) => (u.can || []).includes("courses.manage");
 
 function CreateCourse({ user, onCreated }) {
   const structure = useAsync(() => api.get("/api/org/structure"), []);

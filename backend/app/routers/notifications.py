@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from .. import audit, notifications
+from .. import audit, notifications, permissions
 from ..db import as_utc, get_db, utcnow
 from ..deps import client_ip, get_current_user, not_found
 from ..models import Notification, NotificationDelivery, Role, User
@@ -163,8 +163,8 @@ def test_push(body: TestPushIn, user: User = Depends(get_current_user), db: Sess
     from ..models import DeviceToken
     from ..security import limiter
 
-    if user.role not in (Role.UNIVERSITY_ADMIN, Role.FACULTY_ADMIN, Role.PLATFORM_ADMIN):
-        raise HTTPException(status_code=403, detail="تجربة الإشعارات متاحة للإدارة من لوحة التحكم")
+    if user.role != Role.FACULTY_ADMIN and not permissions.allowed(db, user, "settings.manage"):
+        raise HTTPException(status_code=403, detail="تجربة الإشعارات متاحة لمن يدير إعدادات المؤسسة")
 
     if not limiter.hit(f"test-push:{user.id}", 6, 300):
         raise HTTPException(status_code=429, detail="محاولات كثيرة، حاول بعد دقائق")
@@ -219,8 +219,8 @@ def health(user: User = Depends(get_current_user), db: Session = Depends(get_db)
     from ..config import settings
     from ..models import DeviceToken
 
-    if user.role not in (Role.UNIVERSITY_ADMIN, Role.PLATFORM_ADMIN):
-        raise HTTPException(status_code=403, detail="غير مصرح لك بهذا الإجراء")
+    if user.role != Role.PLATFORM_ADMIN:
+        permissions.require_scope(db, user, "settings.manage", whole=True)
     since = utcnow() - timedelta(hours=24)
     scope = select(Notification.id).where(Notification.sent_at >= since)
     if user.university_id is not None:
@@ -257,11 +257,17 @@ class TestSmsIn(BaseModel):
 def test_sms(body: TestSmsIn, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Sends one SMS to the administrator's own phone: a clear summary first, the provider's answer after."""
     from ..config import settings
-    from ..resala import ResalaClient, ResalaError, TemplateRecord, explain, libyan_mobile
+    from ..resala import (
+        ResalaClient,
+        ResalaError,
+        TemplateRecord,
+        explain,
+        libyan_mobile,
+    )
     from ..security import limiter
 
-    if user.role not in (Role.UNIVERSITY_ADMIN, Role.PLATFORM_ADMIN):
-        raise HTTPException(status_code=403, detail="غير مصرح لك بهذا الإجراء")
+    if user.role != Role.PLATFORM_ADMIN:
+        permissions.require_scope(db, user, "settings.manage", whole=True)
     if not user.phone:
         raise HTTPException(status_code=400, detail="أضف رقم هاتف لحسابك أولاً")
     if not limiter.hit(f"test-sms:{user.id}", 5, 600):

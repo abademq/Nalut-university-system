@@ -15,7 +15,13 @@ from .. import attendance as att
 from .. import grades as grade_svc
 from .. import permissions
 from ..db import get_db, utcnow
-from ..deps import forbidden, get_course_for, get_current_user, tenant_settings, visible_course_ids
+from ..deps import (
+    forbidden,
+    get_course_for,
+    get_current_user,
+    tenant_settings,
+    visible_course_ids,
+)
 from ..models import (
     Assignment,
     AttendanceRecord,
@@ -32,7 +38,16 @@ from ..models import (
 
 router = APIRouter(prefix="/api", tags=["reports"])
 
-REPORT_ROLES = (Role.UNIVERSITY_ADMIN, Role.FACULTY_ADMIN, Role.TEACHER, Role.ASSISTANT)
+REPORT_ROLES = (Role.PLATFORM_ADMIN, Role.UNIVERSITY_ADMIN, Role.FACULTY_ADMIN, Role.STAFF, Role.TEACHER,
+                Role.ASSISTANT)
+
+
+def _report_scope(db: Session, user: User):
+    """Where the user's reports reach: ALL, a faculty id, or "own" (a teacher's own courses)."""
+    if user.role not in REPORT_ROLES:
+        raise forbidden()
+    sc = permissions.require_scope(db, user, "reports.view")
+    return "own" if user.role in Role.INSTRUCTORS else sc
 
 
 def _pct(a: float, b: float) -> float | None:
@@ -90,22 +105,25 @@ def _student_risk(db: Session, course: Course, student_id: int, att_policy: dict
 
 
 def _scoped_courses(db: Session, user: User) -> list[Course]:
-    if user.role not in REPORT_ROLES:
-        raise forbidden()
-    permissions.require(db, user, "reports.view")
-    ids = visible_course_ids(db, user)
+    sc = _report_scope(db, user)
+    if sc == "own":
+        ids = visible_course_ids(db, user)
+    else:
+        q = select(Course.id).where(Course.university_id == user.university_id)
+        ids = list(db.scalars(q if sc == permissions.ALL else q.where(Course.faculty_id == sc)))
     return list(db.scalars(select(Course).where(Course.id.in_(ids)).order_by(Course.code))) if ids else []
 
 
 @router.get("/reports/overview")
 def overview(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     courses = _scoped_courses(db, user)
+    sc = _report_scope(db, user)
     since = utcnow() - timedelta(days=30)
     stats = [course_stats(db, c, since) for c in courses]
     people = select(User.role, func.count()).where(User.university_id == user.university_id, User.is_active.is_(True))
-    if user.role == Role.FACULTY_ADMIN:
-        people = people.where(User.faculty_id == user.faculty_id)
-    counts = dict(db.execute(people.group_by(User.role)).all()) if user.role in Role.ADMINS else {}
+    if sc not in (permissions.ALL, "own"):
+        people = people.where(User.faculty_id == sc)
+    counts = dict(db.execute(people.group_by(User.role)).all()) if sc != "own" else {}
 
     def agg(items: list[dict]) -> dict:
         def wavg(key, weight):
@@ -118,13 +136,13 @@ def overview(user: User = Depends(get_current_user), db: Session = Depends(get_d
                 "avg_score_percent": wavg("avg_score_percent", "enrolled")}
 
     breakdown = []
-    if user.role == Role.UNIVERSITY_ADMIN:
+    if sc == permissions.ALL:
         for f in db.scalars(select(Faculty).where(Faculty.university_id == user.university_id)):
             items = [s for s in stats if s["course"]["faculty_id"] == f.id]
             students = db.scalar(select(func.count(User.id)).where(User.faculty_id == f.id, User.role == Role.STUDENT))
             breakdown.append({"id": f.id, "name": f.name, "students": students, **agg(items)})
-    elif user.role == Role.FACULTY_ADMIN:
-        for d in db.scalars(select(Department).where(Department.faculty_id == user.faculty_id)):
+    elif sc != "own":
+        for d in db.scalars(select(Department).where(Department.faculty_id == sc)):
             items = [s for s in stats if s["course"]["department_id"] == d.id]
             students = db.scalar(select(func.count(User.id)).where(User.department_id == d.id,
                                                                    User.role == Role.STUDENT))
@@ -135,8 +153,8 @@ def overview(user: User = Depends(get_current_user), db: Session = Depends(get_d
         AttendanceSession.course_id.in_([c.id for c in courses] or [-1]), AttendanceRecord.status == "pending_review"))
     req_q = select(func.count(ServiceRequest.id)).where(ServiceRequest.university_id == user.university_id,
                                                         ServiceRequest.status.not_in(["approved", "rejected"]))
-    if user.role == Role.FACULTY_ADMIN:
-        req_q = req_q.where(ServiceRequest.faculty_id == user.faculty_id)
+    if sc not in (permissions.ALL, "own"):
+        req_q = req_q.where(ServiceRequest.faculty_id == sc)
     return {
         "people": {"students": counts.get(Role.STUDENT, 0),
                    "teaching": counts.get(Role.TEACHER, 0) + counts.get(Role.ASSISTANT, 0),
@@ -147,7 +165,7 @@ def overview(user: User = Depends(get_current_user), db: Session = Depends(get_d
         "courses": stats,
         "pending_attendance_reviews": pending_review,
         "results_awaiting_approval": sum(1 for s in stats if s["result_status"] == "submitted"),
-        "open_requests": db.scalar(req_q) if user.role in Role.ADMINS else None,
+        "open_requests": db.scalar(req_q) if sc != "own" else None,
     }
 
 
@@ -213,15 +231,14 @@ def attendance_report(course_id: int | None = None, period: str = Query(default=
 @router.get("/reports/staff-attendance")
 def staff_attendance(days: int = Query(default=30, ge=1, le=366), user: User = Depends(get_current_user),
                      db: Session = Depends(get_db)):
-    if user.role not in (Role.UNIVERSITY_ADMIN, Role.FACULTY_ADMIN):
-        raise forbidden()
+    sc = permissions.require_scope(db, user, "attendance.staff")
     since = utcnow() - timedelta(days=days)
     stmt = select(AttendanceRecord, AttendanceSession).join(
         AttendanceSession, AttendanceSession.id == AttendanceRecord.session_id).where(
         AttendanceSession.university_id == user.university_id, AttendanceSession.kind == "staff",
         AttendanceSession.starts_at >= since)
-    if user.role == Role.FACULTY_ADMIN:
-        stmt = stmt.where(AttendanceSession.faculty_id == user.faculty_id)
+    if sc != permissions.ALL:
+        stmt = stmt.where(AttendanceSession.faculty_id == sc)
     per: dict[int, dict] = {}
     for r, s in db.execute(stmt).all():
         p = per.setdefault(r.user_id, {"days": 0, "late": 0, "hours": 0.0, "pending": 0})
@@ -267,12 +284,12 @@ def _can_see_person(db: Session, viewer: User, target: User) -> bool:
         return True
     if viewer.university_id != target.university_id:
         return False
-    if viewer.role == Role.UNIVERSITY_ADMIN:
+    if viewer.role not in Role.INSTRUCTORS and permissions.in_scope(
+            permissions.scope(db, viewer, "reports.view"), target.faculty_id):
         return True
-    if viewer.role == Role.FACULTY_ADMIN:
-        return target.faculty_id == viewer.faculty_id
-    if target.role == Role.STUDENT and viewer.role == Role.STAFF and permissions.allowed(db, viewer, "students.view"):
-        return viewer.faculty_id is None or target.faculty_id == viewer.faculty_id
+    if target.role == Role.STUDENT and viewer.role not in Role.INSTRUCTORS and permissions.in_scope(
+            permissions.scope(db, viewer, "students.view"), target.faculty_id):
+        return True
     if viewer.role in Role.INSTRUCTORS and target.role == Role.STUDENT:
         return bool(set(visible_course_ids(db, viewer)) & _enrolled_ids(db, target.id))
     return False
@@ -395,8 +412,7 @@ def students(q: str | None = Query(default=None, max_length=100), faculty_id: in
 
     from ..models import CourseStaff, Department, Faculty
 
-    if user.role not in (Role.UNIVERSITY_ADMIN, Role.FACULTY_ADMIN, Role.STAFF, *Role.INSTRUCTORS) \
-            or not permissions.allowed(db, user, "students.view"):
+    if not permissions.allowed(db, user, "students.view"):
         raise forbidden("قسم الطلبة غير متاح لحسابك")
     stmt = select(User).where(User.university_id == user.university_id, User.role == Role.STUDENT)
     if user.role in Role.INSTRUCTORS:  # the students of their own courses

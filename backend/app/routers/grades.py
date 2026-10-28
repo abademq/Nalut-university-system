@@ -10,10 +10,10 @@ from .. import audit, files, grades, notifications, permissions
 from ..db import get_db, utcnow
 from ..deps import (
     client_ip,
+    course_admin,
     forbidden,
     get_course_for,
     get_current_user,
-    is_course_admin,
     not_found,
     tenant_settings,
     visible_course_ids,
@@ -162,7 +162,7 @@ class WorkflowIn(BaseModel):
 
 
 def _approver(db: Session, user: User, course: Course) -> bool:
-    return is_course_admin(user, course) and permissions.allowed(db, user, "results.approve")
+    return course_admin(db, user, course, "results.approve")
 
 
 def _transition(db: Session, user: User, course: Course, frm: set[str], to: str, note: str, request: Request):
@@ -190,8 +190,8 @@ def results_submit(course_id: int, body: WorkflowIn, request: Request, user: Use
     course = get_course_for(db, user, course_id, teach=True)
     permissions.require(db, user, "results.submit")
     res = _transition(db, user, course, {"draft"}, "submitted", body.note, request)
-    admins = db.scalars(select(User.id).where(User.faculty_id == course.faculty_id, User.role == Role.FACULTY_ADMIN))
-    notifications.notify_users(db, course.university_id, list(admins), f"نتائج بانتظار الاعتماد: {course.title}",
+    admins = permissions.holders(db, course.university_id, "results.approve", course.faculty_id)
+    notifications.notify_users(db, course.university_id, admins, f"نتائج بانتظار الاعتماد: {course.title}",
                                f"رفع {user.full_name} نتائج المقرر {course.code} للاعتماد.", link="#/results",
                                topic="results_pending")
     db.commit()
@@ -241,9 +241,9 @@ def results_return(course_id: int, body: WorkflowIn, request: Request, user: Use
 
 @router.get("/results/pending")
 def results_pending(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    if user.role not in (Role.FACULTY_ADMIN, Role.UNIVERSITY_ADMIN) or not permissions.allowed(db, user, "results.approve"):
-        raise forbidden()
-    ids = visible_course_ids(db, user)
+    sc = permissions.require_scope(db, user, "results.approve")
+    q = select(Course.id).where(Course.university_id == user.university_id)
+    ids = list(db.scalars(q if sc == permissions.ALL else q.where(Course.faculty_id == sc)))
     out = []
     for c in db.scalars(select(Course).where(Course.id.in_(ids)).order_by(Course.code)) if ids else []:
         out.append({"course": {"id": c.id, "code": c.code, "title": c.title},

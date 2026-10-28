@@ -153,10 +153,39 @@ def is_course_admin(user: User, course: Course) -> bool:
     return user.role == Role.FACULTY_ADMIN and user.faculty_id == course.faculty_id
 
 
+# Course rights that, given to someone who is not one of the course's teachers, reach every
+# course in their scope (their faculty, or the university when they have none).
+_COURSE_WIDE = ("courses.manage", "results.approve")
+_TEACHING = ("courses.schedule", "courses.components", "grades.enter", "results.submit",
+             "assignments.manage", "attendance.manage")
+
+
+def course_authority(db: Session, user: User, course: Course) -> bool:
+    """Course access granted by the permission matrix rather than by teaching the course.
+
+    Employees given any course right act on their scope's courses; teachers and assistants keep
+    their own courses for the teaching rights and reach others only through the course-wide ones,
+    so a teacher's grade-entry right never opens a colleague's course."""
+    from . import permissions
+
+    if user.role == Role.STUDENT or user.university_id != course.university_id:
+        return False
+    keys = _COURSE_WIDE if user.role in Role.INSTRUCTORS else _COURSE_WIDE + _TEACHING
+    return any(permissions.in_scope(permissions.scope(db, user, k), course.faculty_id) for k in keys)
+
+
+def course_admin(db: Session, user: User, course: Course, key: str = "courses.manage") -> bool:
+    """May administer this course for ``key`` (edit it, approve its results ...)."""
+    from . import permissions
+
+    return user.university_id == course.university_id and \
+        permissions.in_scope(permissions.scope(db, user, key), course.faculty_id)
+
+
 def can_view_course(db: Session, user: User, course: Course) -> bool:
     if user.university_id != course.university_id:
         return False
-    if is_course_admin(user, course):
+    if is_course_admin(user, course) or course_authority(db, user, course):
         return True
     if user.role in Role.INSTRUCTORS:
         return is_course_staff(db, user, course.id)
@@ -169,7 +198,7 @@ def can_teach_course(db: Session, user: User, course: Course) -> bool:
     """Instructors of the course (and its faculty/university admins)."""
     if user.university_id != course.university_id:
         return False
-    if is_course_admin(user, course):
+    if is_course_admin(user, course) or course_authority(db, user, course):
         return True
     return user.role in Role.INSTRUCTORS and is_course_staff(db, user, course.id)
 
@@ -186,13 +215,24 @@ def get_course_for(db: Session, user: User, course_id: int, *, teach: bool = Fal
 
 
 def visible_course_ids(db: Session, user: User) -> list[int]:
+    from . import permissions
+
     q = select(Course.id).where(Course.university_id == user.university_id)
     if user.role == Role.UNIVERSITY_ADMIN:
         pass
     elif user.role == Role.FACULTY_ADMIN:
         q = q.where(Course.faculty_id == user.faculty_id)
-    elif user.role in Role.INSTRUCTORS:
-        q = q.join(CourseStaff, CourseStaff.course_id == Course.id).where(CourseStaff.user_id == user.id)
+    elif user.role in (Role.STAFF, *Role.INSTRUCTORS):
+        own = set()
+        if user.role in Role.INSTRUCTORS:
+            own = set(db.scalars(select(CourseStaff.course_id).where(CourseStaff.user_id == user.id)))
+        keys = _COURSE_WIDE if user.role in Role.INSTRUCTORS else _COURSE_WIDE + _TEACHING
+        scopes = {permissions.scope(db, user, k) for k in keys} - {None}
+        if permissions.ALL in scopes:
+            return sorted(own | set(db.scalars(q)))
+        if scopes:
+            own |= set(db.scalars(q.where(Course.faculty_id.in_(scopes))))
+        return sorted(own)
     elif user.role == Role.STUDENT:
         q = q.join(Enrollment, Enrollment.course_id == Course.id).where(
             Enrollment.student_id == user.id, Enrollment.status == "active"
@@ -213,8 +253,14 @@ MANAGEABLE_ROLES = {
 
 
 def manageable_roles(actor: User) -> set[str]:
+    """Roles whose accounts this actor may create or edit (when they hold users.manage).
+
+    Whoever is given that right without being the university administration manages the
+    ordinary accounts only, never administrators: a right cannot be used to grant more rights."""
     if getattr(actor, "acting_platform_admin", False):
         return set(Role.ALL) - {Role.PLATFORM_ADMIN}  # every role inside the university, incl. its admins
+    if actor.role in (Role.STAFF, Role.TEACHER, Role.ASSISTANT):
+        return MANAGEABLE_ROLES[Role.FACULTY_ADMIN]
     return MANAGEABLE_ROLES.get(actor.role, set())
 
 
@@ -227,7 +273,7 @@ def can_manage_user(actor: User, target: User) -> bool:
         return True
     if actor.university_id != target.university_id:
         return False
-    if actor.role == Role.FACULTY_ADMIN:
+    if actor.role != Role.UNIVERSITY_ADMIN and actor.faculty_id is not None:
         return target.faculty_id == actor.faculty_id
     return True
 
