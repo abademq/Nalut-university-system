@@ -30,3 +30,32 @@ jobs:
           name: nalut-university-apk
           path: mobile/build/app/outputs/flutter-apk/app-release.apk
           retention-days: 30
+
+  # Every new build of the default branch goes straight to https://<domain>/download,
+  # through the same restricted deploy key (deploy/nus-update checks it is a real APK).
+  publish:
+    needs: android
+    if: github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/download-artifact@v4
+        with: {name: nalut-university-apk, path: apk}
+      - name: Publish at /download
+        env:
+          KEY: ${{ secrets.DEPLOY_KEY }}
+          KNOWN: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          PORT: ${{ secrets.DEPLOY_PORT }}
+        run: |
+          if [ -z "$KEY" ] || [ -z "$HOST" ] || [ -z "$KNOWN" ]; then
+            echo "::warning::DEPLOY_* secrets missing: the app was built but not published"; exit 0
+          fi
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$KEY" | tr -d '\r' > ~/.ssh/deploy && chmod 600 ~/.ssh/deploy
+          HOSTKEY=$(printf '%s' "$KNOWN" | tr -d '\r' | grep -oE 'ssh-ed25519 [A-Za-z0-9+/=]+' | head -1)
+          HOST=$(printf '%s' "$HOST" | tr -d '[:space:]')
+          PORT=$(printf '%s' "${PORT:-22}" | tr -d '[:space:]')
+          if [ "$PORT" = "22" ]; then echo "$HOST $HOSTKEY" > ~/.ssh/known_hosts; else echo "[$HOST]:$PORT $HOSTKEY" > ~/.ssh/known_hosts; fi
+          ssh -i ~/.ssh/deploy -p "$PORT" -o StrictHostKeyChecking=yes -o BatchMode=yes -o ConnectTimeout=20 \
+            "nus-deploy@$HOST" "apk $GITHUB_SHA" < apk/app-release.apk
