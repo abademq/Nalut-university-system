@@ -131,7 +131,8 @@ def health():
     # demo: the sign-in page lists the demo accounts and their password (never in production,
     # and not once hidden with sudo nus-demo off)
     demo = not settings.is_production and not settings.demo_hidden_file.exists()
-    return {"ok": True, "demo": demo, "version": VERSION, "closed": closed.message() is not None}
+    return {"ok": True, "demo": demo, "version": VERSION, "build": globals().get("WEB_BUILD"),
+            "closed": closed.message() is not None}
 
 
 # --------------------------------------------------------------------------- web client (PWA)

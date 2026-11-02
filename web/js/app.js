@@ -223,6 +223,25 @@ function PlatformShell({ user, onLogout }) {
   return html`<${Shell} key=${acting} user=${eff} onLogout=${logout} />`;
 }
 
+// The build this page was loaded from (its code is served under /b/<build>/). When the server
+// is updated a banner offers to reload, so an open tab never keeps showing the old version.
+const LOADED_BUILD = (import.meta.url.match(/\/b\/([\w-]+)\//) || [])[1] || null;
+
+function UpdateBanner() {
+  const [fresh, setFresh] = useState(false);
+  useEffect(() => {
+    if (!LOADED_BUILD) return undefined;
+    const check = () => !document.hidden && api.get("/api/health")
+      .then((h) => { if (h.build && h.build !== LOADED_BUILD) setFresh(true); }).catch(() => {});
+    const t = setInterval(check, 120000);
+    document.addEventListener("visibilitychange", check);
+    return () => { clearInterval(t); document.removeEventListener("visibilitychange", check); };
+  }, []);
+  if (!fresh) return null;
+  return html`<div class="alert info" style="position:fixed;bottom:1rem;inset-inline:1rem;z-index:50;display:flex;gap:.6rem;align-items:center;justify-content:space-between">
+    <span>نسخة جديدة من المنصة متوفرة.</span><button class="small" onClick=${() => location.reload()}>تحديث الصفحة</button></div>`;
+}
+
 function App() {
   const [user, setUser] = useState(undefined);
 
@@ -255,7 +274,7 @@ function App() {
   return html`<${Shell} user=${user} onLogout=${logout} />`;
 }
 
-render(html`<${App} />`, document.getElementById("app"));
+render(html`<${App} /><${UpdateBanner} />`, document.getElementById("app"));
 
 if ("serviceWorker" in navigator && location.protocol === "https:") {
   navigator.serviceWorker.register("/sw.js").catch(() => {});
