@@ -20,11 +20,28 @@ function TempPassword({ value, onClose }) {
     <button onClick=${onClose}>تم</button><//>`;
 }
 
+// The position (صفة) of a staff member: what it allows is set on the permissions page.
+const POSITION_ROLES = ["faculty_admin", "staff", "teacher", "assistant"];
+let positionsPromise = null;
+function PositionField({ role, value, onChange }) {
+  const [list, setList] = useState(null);
+  useEffect(() => {
+    positionsPromise = positionsPromise || api.get("/api/positions").catch(() => []);
+    positionsPromise.then(setList);
+  }, []);
+  if (!POSITION_ROLES.includes(role)) return null;
+  const chosen = (list || []).find((p) => String(p.id) === String(value));
+  return html`<div class="field"><label>الصفة</label><select value=${value || ""} onChange=${(e) => onChange(e.target.value)}>
+      <option value="">بدون صفة</option>${(list || []).map((p) => html`<option value=${p.id}>${p.name}</option>`)}</select>
+    ${chosen?.description ? html`<div class="small muted">${chosen.description}</div>` : null}</div>`;
+}
+
 function CreateUser({ user, structure, onCreated }) {
-  const [v, bind] = useForm({ full_name: "", role: "student", email: "", phone: "", code: "", cohort: "", office: "",
-    faculty_id: user.faculty?.id || "", department_id: "" });
+  const [v, bind, setV] = useForm({ full_name: "", role: "student", email: "", phone: "", code: "", cohort: "", office: "",
+    faculty_id: user.faculty?.id || "", department_id: "", position_id: "" });
   const [submit, busy, error] = useSubmit(async () => {
-    const body = { ...v, faculty_id: v.faculty_id ? Number(v.faculty_id) : null, department_id: v.department_id ? Number(v.department_id) : null };
+    const body = { ...v, faculty_id: v.faculty_id ? Number(v.faculty_id) : null, department_id: v.department_id ? Number(v.department_id) : null,
+      position_id: v.position_id && POSITION_ROLES.includes(v.role) ? Number(v.position_id) : null };
     for (const k of ["email", "phone", "code", "cohort", "office"]) if (!body[k]) body[k] = null;
     const r = await api.post("/api/users", body);
     onCreated(r.temporary_password);
@@ -44,6 +61,7 @@ function CreateUser({ user, structure, onCreated }) {
       ${v.role === "student" ? html`<div class="field"><label>الدفعة</label><input ...${bind("cohort")} /></div>` : null}
       ${v.role === "staff" ? html`<div class="field"><label>المكتب</label><select ...${bind("office")}><option value="">—</option>
         ${Object.entries(OFFICES).map(([k, l]) => html`<option value=${k}>${l}</option>`)}</select></div>` : null}
+      <${PositionField} role=${v.role} value=${v.position_id} onChange=${(x) => setV((o) => ({ ...o, position_id: x }))} />
     </div>
     <p class="small muted">تُجمع البيانات الضرورية فقط. يُشترط البريد أو الهاتف لتسجيل الدخول.</p>
     <button disabled=${busy}>إنشاء الحساب</button></form>`;
@@ -76,7 +94,7 @@ export function UsersView({ user }) {
         <option value="">كل الأدوار</option>${Object.entries(ROLE).filter(([k]) => k !== "platform_admin").map(([k, l]) => html`<option value=${k}>${l}</option>`)}</select></div>
     <${Async} state=${state}>${(d) => html`<div class="card"><p class="small muted">${d.total} مستخدم</p><div class="table-wrap"><table>
       <thead><tr><th>الاسم</th><th>الدور</th><th>الرقم</th><th>الكلية</th><th>التواصل</th><th>الحالة</th><th></th></tr></thead>
-      <tbody>${d.items.map((u) => html`<tr><td>${u.full_name}</td><td>${ROLE[u.role]}</td><td class="mono">${u.code || ""}</td>
+      <tbody>${d.items.map((u) => html`<tr><td>${u.full_name}</td><td>${ROLE[u.role]}${u.position ? html`<div class="small muted">${u.position.name}</div>` : null}</td><td class="mono">${u.code || ""}</td>
         <td class="small">${facName(u.faculty_id)}</td><td class="small ltr">${u.email || u.phone || ""}</td>
         <td>${u.is_active ? html`<${Chip} kind="success">نشط<//>` : html`<${Chip} kind="danger">موقوف<//>`} ${u.mfa_enabled ? html`<${Chip} kind="info">2FA<//>` : null}</td>
         <td>${u.id !== user.id && creatable(user).includes(u.role) ? html`<div class="row">
@@ -90,11 +108,13 @@ export function UsersView({ user }) {
 }
 
 function EditUser({ user, target, structure, onClose, onSaved }) {
-  const [v, bind] = useForm({ full_name: target.full_name, role: target.role, email: target.email || "", phone: target.phone || "",
+  const [v, bind, setV] = useForm({ full_name: target.full_name, role: target.role, email: target.email || "", phone: target.phone || "",
     code: target.code || "", cohort: target.cohort || "", office: target.office || "", faculty_id: target.faculty_id || "",
-    department_id: target.department_id || "" });
+    department_id: target.department_id || "", position_id: target.position?.id || "" });
   const [submit, busy, error] = useSubmit(async () => {
-    const body = { ...v, faculty_id: v.faculty_id ? Number(v.faculty_id) : null, department_id: v.department_id ? Number(v.department_id) : null };
+    const body = { ...v, faculty_id: v.faculty_id ? Number(v.faculty_id) : null, department_id: v.department_id ? Number(v.department_id) : null,
+      position_id: v.position_id && POSITION_ROLES.includes(v.role) ? Number(v.position_id) : null };
+    if (String(v.position_id || "") === String(target.position?.id || "")) delete body.position_id;
     for (const k of ["email", "phone", "code", "cohort", "office"]) if (!body[k]) body[k] = null;
     if (user.role !== "university_admin") delete body.faculty_id;
     await api.patch(`/api/users/${target.id}`, body);
@@ -116,6 +136,7 @@ function EditUser({ user, target, structure, onClose, onSaved }) {
       ${v.role === "student" ? html`<div class="field"><label>الدفعة</label><input ...${bind("cohort")} /></div>` : null}
       ${v.role === "staff" ? html`<div class="field"><label>المكتب</label><select ...${bind("office")}><option value="">—</option>
         ${Object.entries(OFFICES).map(([k, l]) => html`<option value=${k}>${l}</option>`)}</select></div>` : null}
+      <${PositionField} role=${v.role} value=${v.position_id} onChange=${(x) => setV((o) => ({ ...o, position_id: x }))} />
     </div>
     <${UserMfa} target=${target} />
     <button disabled=${busy}>حفظ</button></form><//>`;
@@ -754,22 +775,22 @@ function PermissionGroups({ capabilities, editable }) {
   const [edit, setEdit] = useState(null);
   const label = Object.fromEntries(capabilities.map((c) => [c.key, c.label]));
   const remove = async (g) => {
-    if (!confirm(`حذف مجموعة «${g.name}»؟ يفقد أعضاؤها صلاحياتها.`)) return;
+    if (!confirm(`حذف صفة «${g.name}»؟ يفقد حاملوها صلاحياتها.`)) return;
     await api.del(`/api/permission-groups/${g.id}`).catch(toastError);
     state.reload();
   };
-  return html`<div class="card"><div class="row between"><h3>مجموعات الصلاحيات</h3>
-      ${editable ? html`<button class="small" onClick=${() => setEdit({ name: "", description: "", capabilities: [], members: [] })}>+ مجموعة</button>` : null}</div>
-    <p class="small muted">مجموعة = اسم + صلاحيات تُعطى لأشخاص بعينهم فوق صلاحيات أدوارهم، مثل «شؤون الموظفين» أو «الإعلام الجامعي».
-      تعمل الصلاحية لعضو المجموعة إذا كان دوره من الأدوار التي تقبلها (الظاهرة بجانب كل صلاحية).</p>
+  return html`<div class="card"><div class="row between"><h3>الصفات الوظيفية وصلاحياتها</h3>
+      ${editable ? html`<button class="small" onClick=${() => setEdit({ name: "", description: "", capabilities: [], members: [] })}>+ صفة</button>` : null}</div>
+    <p class="small muted">لكل موظف صفة واحدة (وكيل الشؤون العلمية، مسجل الكلية، وكيل الشؤون الإدارية…) تُختار عند إنشاء حسابه أو تعديله
+      في «المستخدمون». صلاحيات الصفة تُضاف لصلاحيات دوره في الجدول أعلاه، ويمارسها في كليته (أو في الجامعة إن لم يتبع كلية).</p>
     <${Async} state=${state}>${(rows) => rows.length ? html`<div class="table-wrap"><table>
-      <thead><tr><th>المجموعة</th><th>الصلاحيات</th><th>الأعضاء</th><th></th></tr></thead>
+      <thead><tr><th>الصفة</th><th>الصلاحيات</th><th>من يحملها</th><th></th></tr></thead>
       <tbody>${rows.map((g) => html`<tr><td><strong>${g.name}</strong><div class="small muted">${g.description}</div></td>
         <td class="small">${g.capabilities.map((k) => label[k] || k).join("، ") || "—"}</td>
         <td class="small">${g.members.map((m) => m.full_name).join("، ") || "—"}</td>
         <td>${editable ? html`<div class="row"><button class="small secondary" onClick=${() => setEdit(g)}>تعديل</button>
           <button class="small danger" onClick=${() => remove(g)}>حذف</button></div>` : null}</td></tr>`)}</tbody></table></div>`
-      : html`<p class="muted">لا توجد مجموعات بعد.</p>`}<//>
+      : html`<p class="muted">لا توجد صفات بعد.</p>`}<//>
     ${edit ? html`<${GroupEditor} group=${edit} capabilities=${capabilities}
       onClose=${() => setEdit(null)} onSaved=${() => { setEdit(null); state.reload(); }} />` : null}
   </div>`;
@@ -791,12 +812,12 @@ function GroupEditor({ group, capabilities, onClose, onSaved }) {
     const g = group.id ? await api.patch(`/api/permission-groups/${group.id}`, body)
       : await api.post("/api/permission-groups", body);
     await api.put(`/api/permission-groups/${g.id}/members`, { user_ids: members.map((m) => m.id) });
-    toast("حُفظت المجموعة", "success");
+    toast("حُفظت الصفة", "success");
     onSaved();
   });
   const groups = [...new Set(capabilities.map((c) => c.group))];
   const flip = (k) => setCaps(caps.includes(k) ? caps.filter((x) => x !== k) : [...caps, k]);
-  return html`<${Modal} title=${group.id ? `تعديل «${group.name}»` : "مجموعة صلاحيات جديدة"} onClose=${onClose}>
+  return html`<${Modal} title=${group.id ? `تعديل «${group.name}»` : "صفة جديدة"} onClose=${onClose}>
     <form onSubmit=${submit}><${ErrorBox} error=${error} />
       <div class="form-grid"><div class="field"><label>الاسم</label><input ...${bind("name")} required minlength="2" /></div>
         <div class="field"><label>الوصف</label><input ...${bind("description")} /></div></div>
@@ -805,11 +826,11 @@ function GroupEditor({ group, capabilities, onClose, onSaved }) {
         ${capabilities.filter((c) => c.group === gname).map((c) => html`<label class="check"><input type="checkbox"
           checked=${caps.includes(c.key)} onChange=${() => flip(c.key)} /> ${c.label}
           <span class="small muted">(${c.options.map((r) => ROLE[r]).join("، ")})</span></label>`)}</div>`)}
-      <h4>الأعضاء</h4>
+      <h4>من يحملها</h4> <span class="small muted">(إضافة شخص هنا تنقله من صفته السابقة)</span>
       ${members.length ? html`<ul class="list">${members.map((m) => html`<li class="row between"><span>${m.full_name}
         <span class="small muted">${ROLE[m.role] || m.role}${m.code ? ` · ${m.code}` : ""}</span></span>
         <button type="button" class="small ghost" onClick=${() => setMembers(members.filter((x) => x.id !== m.id))}>إزالة</button></li>`)}</ul>`
-        : html`<p class="small muted">لا يوجد أعضاء.</p>`}
+        : html`<p class="small muted">لا أحد بعد.</p>`}
       <div class="row"><input style="max-width:260px" placeholder="ابحث عن موظف أو أستاذ" value=${q}
         onInput=${(e) => setQ(e.target.value)} onKeyDown=${(e) => { if (e.key === "Enter") { e.preventDefault(); search(); } }} />
         <button type="button" class="secondary small" onClick=${search}>بحث</button></div>

@@ -38,10 +38,10 @@ ACTIONS: dict[str, tuple[str, str]] = {
     "settings.updated": ("تعديل إعدادات المؤسسة", "settings"),
     "launch.image_set": ("تغيير صورة شاشة البداية", "settings"),
     "launch.image_removed": ("إرجاع صورة شاشة البداية الافتراضية", "settings"),
-    "permissions.group_created": ("إنشاء مجموعة صلاحيات", "settings"),
-    "permissions.group_updated": ("تعديل مجموعة صلاحيات", "settings"),
-    "permissions.group_deleted": ("حذف مجموعة صلاحيات", "settings"),
-    "permissions.group_members": ("تعديل أعضاء مجموعة صلاحيات", "settings"),
+    "permissions.group_created": ("إنشاء صفة وظيفية", "settings"),
+    "permissions.group_updated": ("تعديل صفة وظيفية وصلاحياتها", "settings"),
+    "permissions.group_deleted": ("حذف صفة وظيفية", "settings"),
+    "permissions.group_members": ("تعديل حاملي صفة وظيفية", "settings"),
     "system.seeded": ("تهيئة البيانات التجريبية", "settings"),
     # courses and grades
     "course.created": ("إنشاء مقرر", "course"),
@@ -127,7 +127,7 @@ TARGETS = {
     "term": "فصل دراسي", "university": "الجامعة", "assignment": "مهمة", "submission": "تسليم", "grade": "درجة",
     "attendance_session": "جلسة حضور", "attendance_record": "سجل حضور", "banner": "إعلان مثبت",
     "publication": "منشور", "message": "رسالة", "conversation": "محادثة", "notification": "إشعار", "service_request": "طلب",
-    "permission_group": "مجموعة صلاحيات", "program": "تخصص", "regulation": "لائحة", "file": "ملف",
+    "permission_group": "صفة وظيفية", "program": "تخصص", "regulation": "لائحة", "file": "ملف",
 }
 
 # names of the keys found in details (values that are codes are translated with VALUES)
@@ -157,7 +157,7 @@ VALUES = {
     "pending_review": "بانتظار المراجعة", "rejected": "مرفوض", "draft": "مسودة", "submitted": "مرفوعة",
     "approved": "معتمدة", "published": "منشورة", "hide": "إخفاء الرسالة", "dismiss": "لا مخالفة",
     "schedule": "جدول محاضرات", "poster": "إعلان مصور", "cv": "السيرة الذاتية", "degree": "شهادة المؤهل",
-    "national_id": "الرقم الوطني", "high_school": "شهادة الثانوية", "photo": "صورة شخصية", "otp": "رمز تحقق",
+    "national_id": "الرقم الوطني", "position_id": "الصفة", "high_school": "شهادة الثانوية", "photo": "صورة شخصية", "otp": "رمز تحقق",
     "template": "رسالة إشعار", "high": "مرتفع",
     True: "نعم", False: "لا",
 }

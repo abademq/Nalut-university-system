@@ -107,6 +107,29 @@ def group_capabilities(db: Session, user: User) -> set[str]:
     return caps
 
 
+# The positions (صفات) a university starts with: each is a permission group, and a person holds
+# one of them; what a position may do is edited on the permissions page (platform administrator).
+DEFAULT_POSITIONS = [
+    ("وكيل الشؤون العلمية", "المقررات والجداول والنتائج والخطط الدراسية في الكلية",
+     ["courses.manage", "courses.schedule", "results.approve", "programs.manage", "reports.view", "students.view",
+      "faculty.view", "notify.announcement", "notify.academic_note"]),
+    ("وكيل الشؤون الإدارية", "الموظفون ودوامهم والتعاميم الإدارية والإعلانات",
+     ["staff.view", "staff.manage", "attendance.staff", "notify.admin_notice", "notify.announcement",
+      "banners.manage", "publications.manage", "reports.view"]),
+    ("مسجل الكلية", "قيد الطلبة وحساباتهم وملفاتهم وربطهم بالتخصصات",
+     ["users.manage", "students.view", "archive.access", "programs.manage", "notify.admin_notice"]),
+    ("رئيس قسم", "متابعة مقررات القسم وطلبته وأعضاء هيئة التدريس فيه",
+     ["courses.schedule", "reports.view", "students.view", "faculty.view", "notify.announcement", "notify.academic_note"]),
+    ("مكتب الامتحانات", "الجداول والنتائج ومتابعة الطلبة",
+     ["students.view", "reports.view", "archive.access", "publications.manage", "notify.announcement"]),
+    ("شؤون الطلبة", "ملفات الطلبة وطلباتهم والتواصل معهم",
+     ["students.view", "archive.access", "notify.admin_notice", "notify.announcement"]),
+    ("شؤون الموظفين", "ملفات الموظفين وأعضاء هيئة التدريس ودوامهم",
+     ["staff.view", "staff.manage", "faculty.view", "faculty.manage", "attendance.staff"]),
+    ("الإعلام والعلاقات العامة", "الإعلانات المثبتة والمنشورات واللوائح",
+     ["banners.manage", "publications.manage", "regulations.manage", "notify.announcement"]),
+]
+
 # who can be put in a permission group (students never: their rights are fixed)
 GROUP_ROLES = (UA, FA, STAFF, TEACHER, ASSISTANT)
 ALL = "all"

@@ -94,8 +94,16 @@ def user_profile(db: Session, user: User) -> dict:
         # configurable capabilities this account holds, so clients show only what will work
         "archive_offices": cfg["archive"]["offices"] if cfg else [],
         "ai_assistant": ai.available(cfg, "assistant") if cfg else False,
+        "position": _position_name(db, user),
         "can": [k for k in permissions.CAPABILITIES if permissions.allowed(db, user, k)] if uni else [],
     }
+
+
+def _position_name(db: Session, user: User) -> str | None:
+    from ..models import PermissionGroup, PermissionGroupMember
+
+    return db.scalar(select(PermissionGroup.name).join(PermissionGroupMember, PermissionGroupMember.group_id == PermissionGroup.id)
+                     .where(PermissionGroupMember.user_id == user.id).limit(1)) if user.id else None
 
 
 def _issue_session(db: Session, user: User, request: Request, response: Response, *,

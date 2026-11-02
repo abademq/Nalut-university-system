@@ -240,7 +240,8 @@ def test_permission_groups_grant_capabilities_to_chosen_people(client, as_, db):
     assert client.post("/api/banners", headers=staff, json={"title": "إعلان من الإعلام"}).status_code == 200
     other = as_("affairs@nalut.edu.ly")
     assert client.get("/api/banners/manage", headers=other).status_code == 403
-    assert len(client.get("/api/permission-groups", headers=as_(PRES)).json()) == 1  # visible to the university
+    from app.permissions import DEFAULT_POSITIONS  # the usual positions, plus this one
+    assert len(client.get("/api/permission-groups", headers=as_(PRES)).json()) == len(DEFAULT_POSITIONS) + 1
     # removing the member (or the group) takes it back
     client.put(f"/api/permission-groups/{g['id']}/members", headers=act, json={"user_ids": []})
     assert client.get("/api/banners/manage", headers=staff).status_code == 403
@@ -306,3 +307,29 @@ def test_every_permission_can_be_given_to_any_role(client, as_, db):
     p = as_(PRES)
     assert client.put("/api/settings", headers=p, json={"settings": {"grading": {"pass_mark": 55}}}).status_code == 403
     assert client.put("/api/settings", headers=act, json={"settings": {"grading": {"pass_mark": 55}}}).status_code == 200
+
+
+def test_each_staff_member_holds_one_position(client, as_, db):
+    p = as_(PRES)
+    pos = {x["name"]: x for x in client.get("/api/positions", headers=p).json()}
+    assert {"وكيل الشؤون العلمية", "مسجل الكلية", "وكيل الشؤون الإدارية"} <= set(pos)
+    r = client.post("/api/users", headers=p, json={"full_name": "سالم المسجل", "role": "staff", "email": "salem.reg@nalut.edu.ly",
+                                                   "faculty_id": db.query(User).filter_by(email=DEAN).one().faculty_id,
+                                                   "position_id": pos["مسجل الكلية"]["id"]})
+    assert r.status_code == 200, r.text
+    assert r.json()["user"]["position"]["name"] == "مسجل الكلية"
+    uid = r.json()["user"]["id"]
+    u = db.get(User, uid)
+    from app import permissions
+    assert permissions.allowed(db, u, "users.manage") and not permissions.allowed(db, u, "staff.manage")
+    # a new position replaces the old one
+    r = client.patch(f"/api/users/{uid}", headers=p, json={"position_id": pos["وكيل الشؤون الإدارية"]["id"]})
+    assert r.json()["position"]["name"] == "وكيل الشؤون الإدارية"
+    u = db.get(User, uid)
+    u.__dict__.pop("_group_caps", None)  # the capabilities are cached on the object for one request
+    assert permissions.allowed(db, u, "staff.manage") and not permissions.allowed(db, u, "users.manage")
+    # a faculty administration cannot give a position with rights it does not hold itself
+    d = as_(DEAN)
+    give = client.patch(f"/api/users/{uid}", headers=d, json={"position_id": pos["شؤون الموظفين"]["id"]})
+    assert give.status_code == 403 and "لا تملكها" in give.json()["detail"]
+    assert client.patch(f"/api/users/{uid}", headers=p, json={"position_id": None}).json()["position"] is None

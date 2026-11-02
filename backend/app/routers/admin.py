@@ -420,14 +420,56 @@ def list_users(role: str | None = None, q: str | None = Query(default=None, max_
     if user.role == Role.PLATFORM_ADMIN:
         names = {x.id: x.name for x in db.scalars(select(University))}
         return {"total": total, "items": [{**user_out(u), "university": names.get(u.university_id)} for u in rows]}
-    return {"total": total, "items": [user_out(u) if full else
+    pos = positions_of(db, [u.id for u in rows]) if full else {}
+    return {"total": total, "items": [{**user_out(u), "position": pos.get(u.id)} if full else
                                       {"id": u.id, "full_name": u.full_name, "role": u.role, "code": u.code}
                                       for u in rows]}
+
+
+def positions_of(db: Session, ids: list[int]) -> dict[int, dict]:
+    """user id -> its position {id, name}."""
+    rows = db.execute(select(PermissionGroupMember.user_id, PermissionGroup.id, PermissionGroup.name).join(
+        PermissionGroup, PermissionGroup.id == PermissionGroupMember.group_id).where(
+        PermissionGroupMember.user_id.in_(ids or [-1]))).all()
+    return {uid: {"id": gid, "name": name} for uid, gid, name in rows}
+
+
+def set_position(db: Session, actor: User, u: User, position_id: int | None) -> None:
+    """A person holds one position at most; whoever assigns it must hold what it gives
+    (the platform administrator excepted), so a position can never be used to gain rights."""
+    for m in db.scalars(select(PermissionGroupMember).where(PermissionGroupMember.user_id == u.id)):
+        db.delete(m)
+    db.flush()
+    if not position_id:
+        return
+    g = db.get(PermissionGroup, position_id)
+    if not g or g.university_id != u.university_id:
+        raise HTTPException(status_code=400, detail="الصفة غير موجودة")
+    if u.role not in permissions.GROUP_ROLES:
+        raise HTTPException(status_code=400, detail="الصفة للموظفين وأعضاء هيئة التدريس وإدارات الكليات")
+    if not permissions.is_platform(actor):
+        missing = [permissions.CAPABILITIES[c][1] for c in g.capabilities or []
+                   if c in permissions.CAPABILITIES and not permissions.allowed(db, actor, c)]
+        if missing:
+            raise forbidden(f"لا يمكنك منح صفة «{g.name}»: تعطي صلاحيات لا تملكها ({'، '.join(missing[:3])})")
+    db.add(PermissionGroupMember(group_id=g.id, user_id=u.id))
+
+
+@router.get("/positions")
+def list_positions(user: User = Depends(STAFF_MEMBERS), db: Session = Depends(get_db)):
+    """The positions to choose from when creating or editing an account."""
+    if not permissions.is_platform(user):
+        permissions.require(db, user, "users.manage")
+    rows = db.scalars(select(PermissionGroup).where(PermissionGroup.university_id == user.university_id)
+                      .order_by(PermissionGroup.name))
+    return [{"id": g.id, "name": g.name, "description": g.description, "capabilities": g.capabilities or []}
+            for g in rows]
 
 
 class UserIn(BaseModel):
     full_name: str = Field(min_length=2, max_length=200)
     role: str
+    position_id: int | None = None
     email: str | None = Field(default=None, max_length=200)
     phone: str | None = Field(default=None, max_length=30)
     code: str | None = Field(default=None, max_length=40)
@@ -524,11 +566,13 @@ def create_user(body: UserIn, request: Request,
              cohort=body.cohort, office=body.office, password_hash=hash_password(pw), must_change_password=True)
     db.add(u)
     db.flush()
+    if body.position_id:
+        set_position(db, actor, u, body.position_id)
     audit.record(db, "user.created", actor=actor, target_type="user", target_id=u.id,
                  details={"role": u.role, "faculty_id": faculty_id}, ip=client_ip(request))
     db.commit()
     # the temporary password is shown once to the administrator and never stored in clear
-    return {"user": user_out(u), "temporary_password": pw}
+    return {"user": {**user_out(u), "position": positions_of(db, [u.id]).get(u.id)}, "temporary_password": pw}
 
 
 @router.get("/users/{uid}")
@@ -538,7 +582,7 @@ def get_user(uid: int, actor: User = Depends(get_current_user), db: Session = De
         raise not_found("المستخدم غير موجود")
     if actor.role in Role.ADMINS and actor.id != uid:
         pref = mfa.preference(db, u)
-        return {**user_out(u), "mfa_required": mfa.required_for(db, u), "mfa_forced": bool(pref and pref.forced),
+        return {**user_out(u), "position": positions_of(db, [u.id]).get(u.id), "mfa_required": mfa.required_for(db, u), "mfa_forced": bool(pref and pref.forced),
                 "mfa_method": mfa.method_of(db, u) if u.mfa_enabled else None}
     return user_out(u) if actor.role in Role.ADMINS or actor.id == uid else \
         {"id": u.id, "full_name": u.full_name, "role": u.role, "code": u.code}
@@ -555,6 +599,7 @@ class UserPatch(BaseModel):
     faculty_id: int | None = None
     department_id: int | None = None
     is_active: bool | None = None
+    position_id: int | None = None  # 0 or null with the field sent: no position
 
 
 @router.patch("/users/{uid}")
@@ -568,6 +613,7 @@ def patch_user(uid: int, body: UserPatch, request: Request,
         raise forbidden("لا تملك صلاحية تعديل هذا الحساب")
     _require_user_admin(db, actor)
     changes = body.model_dump(exclude_unset=True)
+    position = changes.pop("position_id", "unchanged")
     if "role" in changes and changes["role"] not in manageable_roles(actor):
         raise forbidden("لا يمكنك منح هذا الدور")
     if "email" in changes or "phone" in changes:
@@ -578,10 +624,14 @@ def patch_user(uid: int, body: UserPatch, request: Request,
         _check_placement(db, actor, fid, changes.get("department_id", u.department_id))
     for k, v in changes.items():
         setattr(u, k, v)
+    if position != "unchanged" or (u.role not in permissions.GROUP_ROLES):
+        set_position(db, actor, u, None if position == "unchanged" else position)
+        if position != "unchanged":
+            changes["position_id"] = position
     audit.record(db, "user.updated", actor=actor, target_type="user", target_id=u.id,
                  details={k: v for k, v in changes.items() if k not in ("email", "phone")}, ip=client_ip(request))
     db.commit()
-    return user_out(u)
+    return {**user_out(u), "position": positions_of(db, [u.id]).get(u.id)}
 
 
 @router.post("/users/{uid}/reset-password")
@@ -632,7 +682,7 @@ def permission_catalog(user: User = Depends(require_roles(Role.UNIVERSITY_ADMIN)
 
 def _platform_actor(user: User = Depends(require_roles(Role.UNIVERSITY_ADMIN))) -> User:
     if not getattr(user, "acting_platform_admin", False):
-        raise forbidden("مجموعات الصلاحيات يعدّلها مشرف المنصة فقط")
+        raise forbidden("الصفات الوظيفية وصلاحياتها يعدّلها مشرف المنصة فقط")
     return user
 
 
@@ -723,6 +773,8 @@ def set_members(gid: int, body: MembersIn, request: Request, user: User = Depend
                             + (f": {', '.join(bad[:3])}" if bad else ""))
     current = {m.user_id: m for m in db.scalars(select(PermissionGroupMember).where(PermissionGroupMember.group_id == g.id))}
     for uid in wanted - set(current):
+        for other in db.scalars(select(PermissionGroupMember).where(PermissionGroupMember.user_id == uid)):
+            db.delete(other)  # a person holds one position: moving them here leaves the previous one
         db.add(PermissionGroupMember(group_id=g.id, user_id=uid))
     for uid in set(current) - wanted:
         db.delete(current[uid])

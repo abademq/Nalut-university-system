@@ -73,6 +73,7 @@ def reset(*, keep_structure: bool = True) -> dict:
         ids = [a["id"] for a in admins] or [-1]
         keep.append((m.MfaPreference, _rows(db, m.MfaPreference, m.MfaPreference.user_id.in_(ids))))
         keep.append((m.AppAsset, _rows(db, m.AppAsset)))
+        keep.append((m.PermissionGroup, _rows(db, m.PermissionGroup)))  # the positions, without holders
         if keep_structure:
             keep += [(model, _rows(db, model)) for model in STRUCTURE]
     finally:
