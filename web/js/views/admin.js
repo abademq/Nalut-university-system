@@ -486,6 +486,7 @@ function SettingsForm({ data, acting, onSaved }) {
     enforce_prerequisites: e.registration.enforce_prerequisites, block_passed_repeat: e.registration.block_passed_repeat,
     block_schedule_clash: e.registration.block_schedule_clash,
     deletion_approver: e.accounts?.deletion_approver || "faculty",
+    mat_students: e.materials?.student_uploads !== false, mat_pending: e.materials?.max_pending_per_student ?? 5,
     doc_self: !!e.documents?.student_self_enrollment, doc_valid_days: e.documents?.valid_days ?? 90,
     ai_enabled: e.ai.enabled, ai_students: e.ai.students, ai_staff: e.ai.staff, ai_assistant: e.ai.assistant,
     warning_absence_percent: e.attendance.warning_absence_percent, limit_absence_percent: e.attendance.limit_absence_percent,
@@ -534,6 +535,7 @@ function SettingsForm({ data, acting, onSaved }) {
         enforce_prerequisites: !!v.enforce_prerequisites, block_passed_repeat: !!v.block_passed_repeat,
         block_schedule_clash: !!v.block_schedule_clash },
       accounts: { ...(e.accounts || {}), deletion_approver: v.deletion_approver },
+      materials: { ...(e.materials || {}), student_uploads: v.mat_students, max_pending_per_student: n("mat_pending") },
       documents: { ...(e.documents || {}), student_self_enrollment: v.doc_self, valid_days: n("doc_valid_days") },
       ai: { ...e.ai, enabled: !!v.ai_enabled, students: !!v.ai_students, staff: !!v.ai_staff, assistant: !!v.ai_assistant },
       grading: { ...e.grading, pass_mark: n("pass_mark"), low_performance_percent: n("low_performance_percent"),
@@ -603,6 +605,10 @@ function SettingsForm({ data, acting, onSaved }) {
         <option value="faculty">إدارة كلية الحساب (ومن يملك صلاحية الحذف في الكلية)، وإدارة الجامعة</option>
         <option value="university">إدارة الجامعة فقط</option></select></div>
       <p class="small muted">رئيس القسم والموظف يرسلان طلب حذف، ويصل إشعار لمن يبتّ فيه. الحذف نهائي ويُسجَّل في سجل التدقيق.</p></div>
+    <div class="card"><h3>مستودع المواد</h3>
+      <label class="check"><input type="checkbox" ...${bind("mat_students", "checkbox")} /> يشارك الطلبة ملفات (ملخصات وحلول) في مقرراتهم بعد مراجعتها</label>
+      <div class="form-grid">${num("mat_pending", "أقصى عدد لملفات الطالب قيد المراجعة", { min: 1, max: 50 })}</div>
+      <p class="small muted">أساتذة المقرر ومن يملك «إدارة مستودع المواد» ينشرون مباشرة ويراجعون ملفات الطلبة.</p></div>
     <div class="card"><h3>الوثائق الرسمية</h3>
       <label class="check"><input type="checkbox" ...${bind("doc_self", "checkbox")} /> يُصدر الطالب إفادة قيد إلكترونية لنفسه (تُكتب عليها «بطلب الطالب»)</label>
       <div class="form-grid">${num("doc_valid_days", "صلاحية الوثيقة عند التحقق (يوم، 0 = دائمة)", { min: 0, max: 3650 })}</div>

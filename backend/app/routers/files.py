@@ -58,6 +58,12 @@ def can_read(db: Session, user: User, f: StoredFile) -> bool:
         ev = db.scalar(select(ServiceRequestEvent).where(ServiceRequestEvent.file_id == f.id))
         r = db.get(ServiceRequest, ev.request_id) if ev else None
         return bool(r and (r.requester_id == user.id or can_handle(user, r)))
+    if f.purpose == "material":
+        from ..models import Material
+        from .materials import can_read as material_readable
+
+        mat = db.scalar(select(Material).where(Material.file_id == f.id))
+        return bool(mat and material_readable(db, user, mat))
     if f.purpose == "complaint":
         from ..models import Complaint
         from .complaints import handles

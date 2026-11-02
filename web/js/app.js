@@ -25,6 +25,7 @@ import { ImportView } from "./views/imports.js";
 import { ServerCommandsView } from "./views/servercmds.js";
 import { DeletionsView } from "./views/deletions.js";
 import { ComplaintsView, ComplaintDetail } from "./views/complaints.js";
+import { MaterialsView } from "./views/materials.js";
 
 const isInstructor = (r) => r === "teacher" || r === "assistant";
 // a configurable capability (see the permissions page): the server lists what this account holds
@@ -47,6 +48,7 @@ const NAV = [
   ["#/results", "اعتماد النتائج", "results", (r, u) => can(u, "results.approve"), false],
   ["#/attendance", "الحضور", "attendance", (r) => r !== "platform_admin", true],
   ["#/notifications", "الإشعارات", "notifications", (r) => r !== "platform_admin", true],
+  ["#/materials", "مستودع المواد", "file", (r, u) => r !== "platform_admin" && (!!u.faculty || can(u, "materials.manage")), false],
   ["#/publications", "الجداول والإعلانات المصورة", "publications", (r) => r !== "platform_admin", false],
   ["#/messages", "الرسائل", "messages", (r) => r !== "platform_admin", false],
   ["#/requests", "الطلبات والمعاملات", "requests", (r) => r !== "platform_admin", false],
@@ -94,6 +96,7 @@ function route(hash, user) {
     case "regulations": return html`<${RegulationsView} user=${user} />`;
     case "import": return html`<${ImportView} user=${user} />`;
     case "deletions": return html`<${DeletionsView} />`;
+    case "materials": return html`<${MaterialsView} user=${user} params=${params} />`;
     case "complaints": return b ? html`<${ComplaintDetail} id=${b} />` : html`<${ComplaintsView} user=${user} />`;
     case "server": return user.acting || user.role === "platform_admin" ? html`<${ServerCommandsView} />` : null;
     case "programs": return b ? html`<${ProgramDetail} id=${b} />` : html`<${ProgramsView} user=${user} />`;

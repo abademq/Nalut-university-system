@@ -1,7 +1,7 @@
 // The complaints and suggestions box: anyone sends (optionally anonymous), the faculty or the
 // university administration answers ("complaints.manage").
-import { html, useState, useAsync, Async, Empty, Chip, ErrorBox, useForm, useSubmit, toast, Tabs, fmtDate, navigate } from "../ui.js";
-import { api } from "../api.js";
+import { html, useState, useAsync, Async, Empty, Chip, ErrorBox, useForm, useSubmit, toast, toastError, Tabs, fmtDate, navigate } from "../ui.js";
+import { api, downloadFile } from "../api.js";
 
 const KIND = { new: "info", in_review: "warning", resolved: "success", rejected: "" };
 const STATUS_LABEL = { new: "جديدة", in_review: "قيد المعالجة", resolved: "تمت المعالجة", rejected: "مرفوضة" };
@@ -83,7 +83,7 @@ export function ComplaintDetail({ id }) {
       · <${Chip} kind=${KIND[c.status]}>${c.status_label}<//></p>
     <div class="card"><div class="small muted">${c.author ? `${c.author.full_name}${c.author.code ? ` (${c.author.code})` : ""}` : "مرسل مجهول"}</div>
       <p style="white-space:pre-wrap">${c.body}</p>
-      ${c.file ? html`<a href=${`/api/files/${c.file.id}`} target="_blank" rel="noopener">${c.file.name}</a>` : null}</div>
+      ${c.file ? html`<button class="secondary small" onClick=${() => downloadFile(c.file.id, c.file.name).catch(toastError)}>${c.file.name}</button>` : null}</div>
     ${c.replies.map((r) => html`<div class="card" style=${r.from_handler ? "" : "border-inline-start:4px solid var(--accent, #888)"}>
       <div class="small muted">${r.author} · ${fmtDate(r.created_at)}${r.status ? ` · ${STATUS_LABEL[r.status]}` : ""}</div>
       <p style="white-space:pre-wrap">${r.body}</p></div>`)}

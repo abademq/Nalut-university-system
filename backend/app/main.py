@@ -20,6 +20,7 @@ from .routers import (
     checkpoints,
     complaints,
     documents,
+    materials,
     ai,
     archive,
     assignments,
@@ -121,7 +122,7 @@ async def unhandled(request: Request, exc: Exception):  # pragma: no cover - saf
     return JSONResponse({"detail": "حدث خطأ غير متوقع"}, status_code=500)
 
 
-for r in (auth, admin, accounts, complaints, documents, ai, courses, assignments, grades, notifications, attendance, messages, requests, files, reports,
+for r in (auth, admin, accounts, complaints, documents, materials, ai, courses, assignments, grades, notifications, attendance, messages, requests, files, reports,
           banners, archive, publications, launch, personnel, programs, regulations, imports, download):
     app.include_router(r.router)
 app.include_router(checkpoints.router)

@@ -807,6 +807,31 @@ class IssuedDocument(Base):
     revoked_reason: Mapped[str | None] = mapped_column(String(300))
 
 
+class Material(Base):
+    """A file of the course materials repository, kept by course code so it outlives each term's
+    offering. Staff publish directly; a student's file waits for review before others see it."""
+
+    __tablename__ = "materials"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    university_id: Mapped[int] = mapped_column(ForeignKey("universities.id"), index=True)
+    faculty_id: Mapped[int] = mapped_column(ForeignKey("faculties.id"), index=True)
+    course_code: Mapped[str] = mapped_column(String(40), index=True)
+    course_title: Mapped[str] = mapped_column(String(200))
+    term_id: Mapped[int | None] = mapped_column(ForeignKey("terms.id"))
+    category: Mapped[str] = mapped_column(String(20))
+    title: Mapped[str] = mapped_column(String(200))
+    description: Mapped[str] = mapped_column(String(1000), default="")
+    file_id: Mapped[int] = mapped_column(ForeignKey("stored_files.id"))
+    uploader_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    by_student: Mapped[bool] = mapped_column(Boolean, default=False)
+    status: Mapped[str] = mapped_column(String(20), default="published")  # published | pending | rejected
+    reviewed_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime)
+    reject_reason: Mapped[str | None] = mapped_column(String(300))
+    downloads: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
 class Complaint(Base):
     """The complaints and suggestions box. An anonymous complaint keeps its author only so they can
     follow it; the name is never shown to those who handle it, nor written to the audit log."""

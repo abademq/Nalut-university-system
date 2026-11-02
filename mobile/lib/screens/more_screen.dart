@@ -7,6 +7,7 @@ import '../widgets/common.dart';
 import 'account_screen.dart';
 import 'complaints_screen.dart';
 import 'documents_screen.dart';
+import 'materials_screen.dart';
 import 'ai_screens.dart';
 import 'people_screens.dart';
 import 'courses_screen.dart';
@@ -87,6 +88,9 @@ class MoreScreen extends StatelessWidget {
               subtitle: 'جداول المحاضرات المنشورة والإعلانات بالصور'),
           _tile(context, Icons.description_outlined, 'الطلبات والمعاملات', const RequestsScreen(),
               subtitle: s.role == 'staff' || s.isAdmin ? 'طلباتي والوارد إليّ' : 'إفادة قيد، كشف درجات، عذر غياب…'),
+          if (s.role != 'platform_admin' && u['faculty'] != null)
+            _tile(context, Icons.folder_copy_outlined, 'مستودع المواد', const MaterialsScreen(),
+                subtitle: 'محاضرات وملخصات وامتحانات سابقة لكل مقرر'),
           if (s.isStudent)
             _tile(context, Icons.verified_outlined, 'وثائقي الرسمية', const DocumentsScreen(),
                 subtitle: 'إفادة القيد وكشف الدرجات برمز تحقق QR'),

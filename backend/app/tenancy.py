@@ -41,6 +41,11 @@ DEFAULT_SETTINGS: dict = {
         ],
         "low_performance_percent": 50,
     },
+    "materials": {
+        # students may share files (summaries…) in the courses they study; reviewed before they appear
+        "student_uploads": True,
+        "max_pending_per_student": 5,
+    },
     "documents": {
         # students may issue their own enrolment certificate (marked as issued at the student's request)
         "student_self_enrollment": False,
@@ -212,6 +217,7 @@ NUMBER_LIMITS = {
     ("notifications", "due_reminder_hours"): (1, 168), ("messaging", "max_attachment_mb"): (1, 25),
     ("notifications", "sms_price"): (0, 100),
     ("documents", "valid_days"): (0, 3650),
+    ("materials", "max_pending_per_student"): (1, 50),
     ("registration", "max_credits_per_term"): (0, 60), ("registration", "min_credits_per_term"): (0, 60),
 }
 NUMBER_LABELS = {
@@ -224,7 +230,7 @@ NUMBER_LABELS = {
     "limit_absence_percent": "حد الغياب", "review_threshold": "درجة المراجعة", "default_radius_m": "نطاق القاعة",
     "selfie_retention_days": "مدة الاحتفاظ بالصور", "pass_mark": "درجة النجاح",
     "low_performance_percent": "حد الأداء الضعيف", "due_reminder_hours": "التذكير قبل التسليم",
-    "max_attachment_mb": "حجم المرفق", "sms_price": "سعر الرسالة النصية", "valid_days": "مدة صلاحية الوثيقة",
+    "max_attachment_mb": "حجم المرفق", "sms_price": "سعر الرسالة النصية", "valid_days": "مدة صلاحية الوثيقة", "max_pending_per_student": "ملفات الطالب قيد المراجعة",
     "max_credits_per_term": "الحد الأعلى للوحدات في الفصل", "min_credits_per_term": "الحد الأدنى للوحدات في الفصل",
 }
 RISK_SIGNALS = ("outside_geofence", "no_device_id", "shared_device", "device_used_by_other_account",
