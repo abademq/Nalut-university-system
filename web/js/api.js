@@ -101,7 +101,12 @@ export const api = {
 };
 
 export async function downloadFile(fileId, name) {
-  const res = await request("GET", `/api/files/${fileId}`, { raw: true });
+  return downloadPath(`/api/files/${fileId}`, name);
+}
+
+// Saves what an authenticated GET returns (e.g. an Excel template) as a file.
+export async function downloadPath(path, name) {
+  const res = await request("GET", path, { raw: true });
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");

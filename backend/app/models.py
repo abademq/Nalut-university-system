@@ -674,6 +674,21 @@ class Message(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
+class ImportJob(Base):
+    """An uploaded Excel file waiting to be applied: its rows checked, and the problems found."""
+
+    __tablename__ = "import_jobs"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    university_id: Mapped[int] = mapped_column(ForeignKey("universities.id"), index=True)
+    kind: Mapped[str] = mapped_column(String(20))  # students | results
+    uploaded_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    filename: Mapped[str] = mapped_column(String(255))
+    rows: Mapped[list] = mapped_column(JSON, default=list)
+    errors: Mapped[list] = mapped_column(JSON, default=list)
+    status: Mapped[str] = mapped_column(String(20), default="preview")  # preview | committed
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
 class NotificationSms(Base):
     """Which approved SMS template a notification uses, and its variables (see sms_templates.py)."""
 

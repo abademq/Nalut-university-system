@@ -55,6 +55,8 @@ ACTIONS: dict[str, tuple[str, str]] = {
     "program.created": ("إنشاء تخصص", "structure"), "program.updated": ("تعديل تخصص", "structure"),
     "program.deleted": ("حذف تخصص", "structure"), "program.plan_saved": ("حفظ الخطة الدراسية لتخصص", "structure"),
     "program.students_placed": ("ربط طلبة بتخصص", "structure"),
+    "import.students": ("استيراد الطلبة من ملف", "user"), "import.results": ("استيراد نتائج سابقة من ملف", "archive"),
+    "system.reset": ("مسح كل البيانات والبدء من جديد", "settings"),
     "regulation.published": ("نشر لائحة", "communication"), "regulation.updated": ("تعديل لائحة", "communication"),
     "regulation.deleted": ("حذف لائحة", "communication"),
     "student.semester_set": ("تحديد الفصل الدراسي لطالب", "archive"),

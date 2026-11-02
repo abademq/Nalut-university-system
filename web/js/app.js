@@ -21,6 +21,7 @@ import { TranscriptView } from "./views/transcript.js";
 import { MyPlanView, ProgramsView, ProgramDetail } from "./views/plan.js";
 import { AssistantView } from "./views/ai.js";
 import { RegulationsView } from "./views/regulations.js";
+import { ImportView } from "./views/imports.js";
 
 const isInstructor = (r) => r === "teacher" || r === "assistant";
 // a configurable capability (see the permissions page): the server lists what this account holds
@@ -49,6 +50,7 @@ const NAV = [
   ["#/reports", "التقارير", "reports", (r, u) => can(u, "reports.view"), false],
   ["#/users", "المستخدمون", "users", (r, u) => can(u, "users.manage"), false],
   ["#/programs", "التخصصات والخطط", "courses", (r, u) => can(u, "programs.manage"), false],
+  ["#/import", "استيراد البيانات", "download", (r, u) => can(u, "users.manage") || can(u, "programs.manage"), false],
   ["#/structure", "الهيكل التنظيمي", "structure", (r, u) => ["structure.faculties", "structure.departments", "structure.terms"].some((k) => can(u, k)), false],
   ["#/banners", "الإعلانات المثبتة", "banners", (r, u) => can(u, "banners.manage"), false],
   ["#/students", "الطلبة", "students", (r, u) => can(u, "students.view"), false],
@@ -83,6 +85,7 @@ function route(hash, user) {
     case "plan": return html`<${MyPlanView} />`;
     case "assistant": return html`<${AssistantView} />`;
     case "regulations": return html`<${RegulationsView} user=${user} />`;
+    case "import": return html`<${ImportView} user=${user} />`;
     case "programs": return b ? html`<${ProgramDetail} id=${b} />` : html`<${ProgramsView} user=${user} />`;
     case "attendance":
       if (b === "scan") return html`<${ScanView} user=${user} />`;

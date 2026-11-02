@@ -216,6 +216,20 @@ esac
 DEMO
 chmod 755 /usr/local/sbin/nus-demo
 
+say "Installing the reset command (sudo nus-reset [--all])"
+cat > /usr/local/sbin/nus-reset <<RESET
+#!/usr/bin/env bash
+# Deletes everything entered in the platform and starts again, after a backup in $DATA_DIR/backups.
+# Keeps the university, its settings and the platform administrator; --all also deletes faculties,
+# departments, terms and programmes. Asks for a typed confirmation.
+set -euo pipefail
+[ "\$(id -u)" = 0 ] || { echo "run with sudo" >&2; exit 1; }
+systemctl stop nus
+trap 'systemctl start nus' EXIT
+sudo -u nus bash -c 'set -a; . $ENV_FILE; set +a; cd $APP_DIR/backend; exec $APP_DIR/.venv/bin/python -m app.reset "\$@"' nus-reset "\$@"
+RESET
+chmod 755 /usr/local/sbin/nus-reset
+
 # Keep the deploy command current (only where the deploy button was set up). Written to a new
 # file and renamed: this script may be running from inside nus-update right now.
 if [ -f /usr/local/sbin/nus-update ]; then
