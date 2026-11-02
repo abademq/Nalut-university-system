@@ -364,3 +364,31 @@ def test_one_approved_template_per_kind_of_message(client, as_, db, monkeypatch)
     # a template without an id entered falls back to the general one
     client.post("/api/notifications", headers=d, json={**msg, "sms_template": "summon", "sms_vars": {"office": "شؤون الطلبة"}})
     assert seen[-1] == ("T-URG", [["تقنية المعلومات"]])
+
+
+def test_free_text_template_carries_the_title(client, as_, db, monkeypatch):
+    from app import notifications, resala
+    from app.config import settings
+
+    seen = []
+
+    class Fake:
+        def send_template(self, tid, records, **kw):
+            seen.append((tid, [r.params for r in records]))
+            return resala.TemplateSendResult(True, len(records), 0, 0, 0, len(records), 0, [], [], {}, None)
+
+    monkeypatch.setattr(settings, "sms_provider", "resala")
+    monkeypatch.setattr(notifications, "sms_provider", lambda: notifications.ResalaSmsProvider(client=Fake()))
+    p = as_(PRES)
+    cur = client.get("/api/settings", headers=p).json()["effective"]["notifications"]
+    client.put("/api/settings", headers=p, json={"settings": {"notifications": {
+        **cur, "sms_enabled": True, "sms_templates": {"free": {"id": "T-FREE", "id_university": "T-FREE-U"},
+                                                      "urgent": {"id": "T-URG"}}}}})
+    student = db.query(User).filter_by(email="s.ali@nalut.edu.ly").one()
+    msg = {"category": "announcement", "priority": "urgent", "title": "لا دراسة غداً", "body": "بسبب الأحوال الجوية",
+           "target_type": "user", "target_ids": [student.id], "channels": ["inapp", "sms"]}
+    client.post("/api/notifications", headers=as_(DEAN), json=msg)
+    assert seen[-1] == ("T-FREE", [["لا دراسة غداً", "تقنية المعلومات"]])
+    client.post("/api/notifications", headers=p, json={**msg, "sms_template": "free",
+                                                       "sms_vars": {"message": "الامتحانات تبدأ الأحد"}})
+    assert seen[-1] == ("T-FREE-U", [["الامتحانات تبدأ الأحد"]])

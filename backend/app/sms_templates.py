@@ -29,6 +29,8 @@ CATALOG: dict[str, tuple[str, str, str | None, list[tuple[str, str, int]]]] = {
                "راجع مكتب $1 في أقرب وقت - جامعة نالوت", [("office", "المكتب", 12)]),
     "warning": ("إنذار رسمي", "صدر لك إنذار رسمي في $1 - كلية $2 بجامعة نالوت", None, [("course", "المقرر", 13)]),
     "request": ("تحديث على طلب", "طلبك $1، التفاصيل في المنصة - جامعة نالوت", None, [("status", "الحالة", 31)]),
+    "free": ("نص حر (لأي إشعار)", "$1 - كلية $2 بجامعة نالوت", "$1 - جامعة نالوت",
+             [("message", "نص الرسالة", 150)]),
     "urgent": ("إشعار عاجل (لأي موضوع آخر)", "لديك إشعار عاجل في المنصة - كلية $1 بجامعة نالوت",
                "لديك إشعار عاجل في المنصة - جامعة نالوت", []),
 }
@@ -74,9 +76,11 @@ def clean_vars(key: str, values: dict) -> dict:
 
 
 def choose(key: str | None, ids: dict, faculty_name: str | None) -> tuple[str | None, str, bool]:
-    """(template id, key used, faculty version?) for a send. A template without the version needed
-    (the sender's faculty, or the university alone) falls back to "urgent"; id None: none configured."""
-    key = key if key in CATALOG else "urgent"
+    """(template id, key used, faculty version?) for a send. A notification naming no template uses
+    the free-text one when it is entered, else "urgent"; a template without the version needed (the
+    sender's faculty, or the university alone) falls back the same way; id None: none configured."""
+    if key not in CATALOG:
+        key = "free" if ((ids or {}).get("free") or {}) else "urgent"
     conf = (ids or {}).get(key) or {}
     if key in NO_FACULTY:
         tid, with_faculty = conf.get("id"), False
@@ -84,7 +88,9 @@ def choose(key: str | None, ids: dict, faculty_name: str | None) -> tuple[str | 
         tid, with_faculty = conf.get("id"), True
     else:
         tid, with_faculty = conf.get("id_university"), False
-    if not tid and key != "urgent":
+    if not tid and key not in ("urgent", "free"):
+        return choose(None, ids, faculty_name)
+    if not tid and key == "free":
         return choose("urgent", ids, faculty_name)
     return tid or None, key, with_faculty
 

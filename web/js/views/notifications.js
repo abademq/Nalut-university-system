@@ -92,6 +92,8 @@ function SmsTemplatePicker({ value, vars, onKey, onVars }) {
     <div class="small muted"><${TemplateText} text=${t.text} /></div>
     <div class="form-grid">${t.variables.map((x) => html`<div class="field"><label>${x.label} (${(vars[x.name] || "").length}/${x.max})</label>
       <input maxlength=${x.max} value=${vars[x.name] || ""} onInput=${(e) => onVars({ ...vars, [x.name]: e.target.value })} required /></div>`)}</div>
+    ${t.key === "free" ? html`<p class="small ${(vars.message || "").length > 35 ? "" : "muted"}">رسالة واحدة حتى 35 حرفاً تقريباً مع التوقيع؛
+      الأطول تُرسل في أكثر من رسالة وتُخصم من الرصيد أكثر.</p>` : null}
     <p class="small muted">تُضاف الكلية تلقائياً. تفاصيل الإشعار كاملة تصل في المنصة والتطبيق.</p></div>`;
 }
 

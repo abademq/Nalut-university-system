@@ -528,6 +528,8 @@ def _send_by_template(db: Session, provider: "ResalaSmsProvider", n: Notificatio
         record_sms_error("template", Exception(f"لم يُدخل رقم قالب «{sms_templates.CATALOG[key][0]}» في إعدادات المؤسسة"))
         return result
     values = row.params if row and row.template == key else {}
+    if key == "free" and not values:  # no template chosen: the notification's title, within the limit
+        values = {"message": n.title}
     params_ = sms_templates.params(key, values, fac.name if fac else None, with_faculty)
     records, by_number = [], {}
     for phone in phones:
