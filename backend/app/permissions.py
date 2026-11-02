@@ -31,6 +31,7 @@ CAPABILITIES: dict[str, tuple[str, str, list[str], list[str]]] = {
     "structure.departments": ("الإدارة", "إضافة الأقسام وتعديلها وحذفها", ROLES, [UA, FA]),
     "structure.terms": ("الإدارة", "إدارة الفصول الدراسية", ROLES, [UA]),
     "settings.manage": ("الإدارة", "تعديل إعدادات المؤسسة", ROLES, [UA]),
+    "regulations.manage": ("الإدارة", "نشر اللوائح والقواعد وتعديلها", ROLES, [UA, FA]),
     "banners.manage": ("الإدارة", "نشر الإعلانات المثبتة", ROLES, [UA, FA]),
     "publications.manage": ("الإدارة", "نشر جداول المحاضرات والإعلانات المصورة", ROLES, [UA, FA]),
     "results.approve": ("الإدارة", "اعتماد النتائج ونشرها وإرجاعها", ROLES, [UA, FA]),

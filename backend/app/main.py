@@ -32,6 +32,7 @@ from .routers import (
     personnel,
     programs,
     publications,
+    regulations,
     reports,
     requests,
 )
@@ -116,7 +117,7 @@ async def unhandled(request: Request, exc: Exception):  # pragma: no cover - saf
 
 
 for r in (auth, admin, ai, courses, assignments, grades, notifications, attendance, messages, requests, files, reports,
-          banners, archive, publications, launch, personnel, programs, download):
+          banners, archive, publications, launch, personnel, programs, regulations, download):
     app.include_router(r.router)
 
 

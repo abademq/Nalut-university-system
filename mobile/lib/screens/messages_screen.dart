@@ -71,14 +71,16 @@ class _MessagesScreenState extends State<MessagesScreen> {
 }
 
 class NewConversationScreen extends StatefulWidget {
-  const NewConversationScreen({super.key});
+  /// [to]: write to this person directly (e.g. from a student's page), without the contacts list.
+  const NewConversationScreen({super.key, this.to});
+  final Map<String, dynamic>? to;
 
   @override
   State<NewConversationScreen> createState() => _NewConversationScreenState();
 }
 
 class _NewConversationScreenState extends State<NewConversationScreen> {
-  Map<String, dynamic>? _to;
+  late Map<String, dynamic>? _to = widget.to;
   final _subject = TextEditingController();
   final _body = TextEditingController();
   bool _busy = false;
@@ -98,7 +100,7 @@ class _NewConversationScreenState extends State<NewConversationScreen> {
     final s = context.read<Session>();
     setState(() => _busy = true);
     try {
-      final courses = _to!['course_ids'] as List<dynamic>;
+      final courses = (_to!['course_ids'] as List<dynamic>?) ?? const [];
       final r = await s.api.post('/api/conversations', {
         'recipient_ids': [_to!['id']],
         'subject': _subject.text.trim(),
@@ -119,8 +121,15 @@ class _NewConversationScreenState extends State<NewConversationScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('محادثة جديدة')),
       body: AsyncView<List<dynamic>>(
-        load: () async => await s.api.get('/api/contacts') as List<dynamic>,
+        load: () async => widget.to != null ? const [] : await s.api.get('/api/contacts') as List<dynamic>,
         builder: (context, contacts, _) => ListView(padding: const EdgeInsets.all(16), children: [
+          if (widget.to != null)
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.person_outline),
+              title: Text('إلى: ${widget.to!['full_name']}'),
+            )
+          else
           DropdownButtonFormField<int>(
             initialValue: _to?['id'] as int?,
             isExpanded: true,

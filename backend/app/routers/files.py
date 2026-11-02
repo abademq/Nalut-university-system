@@ -48,6 +48,12 @@ def can_read(db: Session, user: User, f: StoredFile) -> bool:
             return True
         return bool(m and not m.hidden and db.scalar(select(ConversationParticipant.id).where(
             ConversationParticipant.conversation_id == m.conversation_id, ConversationParticipant.user_id == user.id)))
+    if f.purpose == "regulation":  # published for the university, or for the reader's faculty
+        from ..models import Regulation
+        from .regulations import _visible
+
+        r = db.scalar(select(Regulation).where(Regulation.file_id == f.id))
+        return bool(r and _visible(user, r))
     if f.purpose == "request":
         ev = db.scalar(select(ServiceRequestEvent).where(ServiceRequestEvent.file_id == f.id))
         r = db.get(ServiceRequest, ev.request_id) if ev else None

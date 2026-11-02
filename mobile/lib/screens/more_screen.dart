@@ -6,6 +6,7 @@ import '../state/session.dart';
 import '../widgets/common.dart';
 import 'account_screen.dart';
 import 'ai_screens.dart';
+import 'people_screens.dart';
 import 'courses_screen.dart';
 import 'grade_entry_screen.dart';
 import 'grades_screen.dart';
@@ -98,6 +99,11 @@ class MoreScreen extends StatelessWidget {
           if (u['ai_assistant'] == true)
             _tile(context, Icons.auto_awesome_outlined, 'المساعد الذكي', const AssistantScreen(),
                 subtitle: 'أسئلة عن المنصة واللوائح'),
+          if (!s.isStudent && s.can('students.view'))
+            _tile(context, Icons.school_outlined, 'الطلبة', const StudentsScreen(),
+                subtitle: 'بيانات الطالب ونتائجه وخطته، والتواصل معه'),
+          if (s.role != 'platform_admin')
+            _tile(context, Icons.gavel_outlined, 'اللوائح والقواعد', const RegulationsScreen()),
           _tile(context, Icons.help_outline, 'دليل الاستخدام', const GuideScreen()),
           if (s.isAdmin || s.role == 'staff' || s.isInstructor)
             ListTile(

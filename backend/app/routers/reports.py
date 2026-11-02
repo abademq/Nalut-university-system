@@ -442,6 +442,28 @@ def _staff_report(db: Session, u: User) -> dict:
         "requests_handled_30d": handled, "open_requests": db.scalar(open_q) or 0}}
 
 
+def _contact(db: Session, viewer: User, s: User) -> dict | None:
+    """How the administration reaches a student: their details and whether a platform message is
+    allowed. Teachers write through the platform only (they see no phone or e-mail)."""
+    from ..models import Department, Faculty, StudentRecord
+    from .messages import can_message
+
+    if viewer.id == s.id:
+        return None
+    out = {"can_message": can_message(db, viewer, s)}
+    if viewer.role in Role.INSTRUCTORS:
+        return out
+    fac = db.get(Faculty, s.faculty_id) if s.faculty_id else None
+    dep = db.get(Department, s.department_id) if s.department_id else None
+    rec = db.scalar(select(StudentRecord).where(StudentRecord.student_id == s.id))
+    out.update({"phone": s.phone, "email": s.email, "faculty": fac.name if fac else None,
+                "department": dep.name if dep else None, "cohort": s.cohort, "is_active": s.is_active})
+    if rec and permissions.allowed(db, viewer, "archive.access"):
+        out.update({"guardian_name": rec.guardian_name, "guardian_relation": rec.guardian_relation,
+                    "guardian_phone": rec.guardian_phone, "status": rec.status})
+    return out
+
+
 @router.get("/reports/person/{uid}")
 def person_report(uid: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """A short, readable summary of one student, teacher or staff member (or yourself)."""
@@ -452,7 +474,7 @@ def person_report(uid: int, user: User = Depends(get_current_user), db: Session 
         permissions.require(db, user, "reports.view")
     who = {"id": target.id, "full_name": target.full_name, "role": target.role, "code": target.code}
     if target.role == Role.STUDENT:
-        return {"user": who, **_student_report(db, user, target)}
+        return {"user": who, "contact": _contact(db, user, target), **_student_report(db, user, target)}
     if target.role in Role.INSTRUCTORS:
         return {"user": who, **_teacher_report(db, target)}
     return {"user": who, **_staff_report(db, target)}

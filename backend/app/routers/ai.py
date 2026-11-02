@@ -39,6 +39,7 @@ from ..models import (
     SubmissionFile,
     User,
 )
+from . import regulations
 
 router = APIRouter(prefix="/api/ai", tags=["ai"])
 KNOWLEDGE = (Path(__file__).resolve().parent.parent / "ai_knowledge.md").read_text(encoding="utf-8")
@@ -196,7 +197,8 @@ def ask(body: AskIn, user: User = Depends(get_current_user), db: Session = Depen
                   "rules, using only the guide and the rules below. If the answer is not there, say you "
                   "do not know and suggest the office to ask (شؤون الطلبة، إدارة الكلية). Name the page in "
                   "the platform where they can do it. Keep it under 120 words.\n\n# الدليل\n" + KNOWLEDGE
-                  + "\n\n# قواعد المؤسسة الحالية\n" + str(rules))
+                  + "\n\n# قواعد المؤسسة الحالية\n" + str(rules)
+                  + "\n\n# اللوائح المنشورة\n" + (regulations.knowledge(db, user) if user.university_id else ""))
         r = ai.run(db, user, kind="ask", subject=f"role:{user.role}", system=system,
                    data={"role": user.role, "question": body.question.strip()},
                    schema=obj({"answer": STR}), effort="low", max_tokens=4000)

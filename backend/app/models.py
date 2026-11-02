@@ -674,6 +674,22 @@ class Message(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
+class Regulation(Base):
+    """A regulation or rule published for the university, or for one faculty."""
+
+    __tablename__ = "regulations"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    university_id: Mapped[int] = mapped_column(ForeignKey("universities.id"), index=True)
+    faculty_id: Mapped[int | None] = mapped_column(ForeignKey("faculties.id"), index=True)
+    category: Mapped[str] = mapped_column(String(40), default="general")
+    title: Mapped[str] = mapped_column(String(200))
+    body: Mapped[str] = mapped_column(Text, default="")
+    file_id: Mapped[int | None] = mapped_column(ForeignKey("stored_files.id"))  # e.g. the official PDF
+    position: Mapped[int] = mapped_column(Integer, default=0)
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+
+
 class MessageAttachment(Base):
     """Further files of a message (the first one stays in Message.file_id)."""
 
