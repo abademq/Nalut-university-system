@@ -17,6 +17,7 @@ import { PersonnelList, PersonnelDetail } from "./views/personnel.js";
 import { StudentsList, StudentDetail } from "./views/students.js";
 import { GuideView } from "./views/guide.js";
 import { PublicationsView } from "./views/publications.js";
+import { TranscriptView } from "./views/transcript.js";
 
 const isInstructor = (r) => r === "teacher" || r === "assistant";
 // a configurable capability (see the permissions page): the server lists what this account holds
@@ -34,6 +35,7 @@ const NAV = [
   ["#/courses", "المقررات", "courses", (r, u) => r !== "platform_admin" && (r !== "staff" || COURSE_CAPS.some((k) => can(u, k))), false],
   ["#/assignments", "المهام والواجبات", "assignments", (r) => r === "student" || isInstructor(r), true],
   ["#/grades", "الدرجات", "grades", (r) => r === "student" || isInstructor(r), false],
+  ["#/transcript", "نتيجتي والمعدل", "results", (r) => r === "student", false],
   ["#/results", "اعتماد النتائج", "results", (r, u) => can(u, "results.approve"), false],
   ["#/attendance", "الحضور", "attendance", (r) => r !== "platform_admin", true],
   ["#/notifications", "الإشعارات", "notifications", (r) => r !== "platform_admin", true],
@@ -70,6 +72,7 @@ function route(hash, user) {
     case "assignments": return b ? html`<${AssignmentDetail} id=${b} user=${user} />` : html`<${AssignmentsView} user=${user} />`;
     case "grades": return html`<${GradesView} user=${user} courseId=${b} />`;
     case "results": return html`<${ResultsApproval} user=${user} />`;
+    case "transcript": return html`<${TranscriptView} />`;
     case "attendance":
       if (b === "scan") return html`<${ScanView} user=${user} />`;
       if (b === "session") return html`<${SessionView} id=${c} user=${user} />`;

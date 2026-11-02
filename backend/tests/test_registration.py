@@ -85,3 +85,23 @@ def test_students_see_their_courses_and_credits(client, as_):
     rep = client.get(f"/api/reports/person/{sid}", headers=as_(DEAN)).json()
     assert rep["academic"]["current_credits"] == 6
     assert client.get("/api/me/academic", headers=as_(DEAN)).status_code == 403
+
+
+def test_transcript_term_and_cumulative_average_with_advice(client, as_, db):
+    uni = db.query(University).filter_by(code="nalut").one()
+    grading = effective_settings(uni)["grading"]
+    is110 = db.get(Course, course_id(db, "IS110"))
+    ids = [e.student_id for e in db.query(Enrollment).filter_by(course_id=is110.id)]
+    failed = next(db.get(User, i) for i in ids if grades.student_summary(db, is110, i, grading)["passed"] is False)
+    pct = grades.student_summary(db, is110, failed.id, grading)["percent"]
+    from conftest import login
+    h = login(client, failed.email)
+    tr = client.get("/api/me/transcript", headers=h).json()
+    assert len(tr["terms"]) == 1 and tr["terms"][0]["courses"][0]["code"] == "IS110"
+    assert tr["terms"][0]["average"] == pct == tr["cumulative_average"] and tr["earned_credits"] == 0
+    assert any("IS110" in a["text"] and a["level"] == "danger" for a in tr["advice"])  # retake it
+    # results not yet published do not count
+    ali = client.get("/api/me/transcript", headers=as_("s.ali@nalut.edu.ly")).json()
+    assert ali["terms"] == [] and ali["cumulative_average"] is None
+    rep = client.get(f"/api/reports/person/{failed.id}", headers=as_(DEAN)).json()
+    assert rep["transcript"]["cumulative_average"] == pct

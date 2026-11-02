@@ -39,14 +39,14 @@ def history(db: Session, student: User, grading: dict) -> list[dict]:
     terms = {t.id: t for t in db.scalars(select(Term).where(Term.id.in_({c.term_id for c, _ in rows if c.term_id} or {-1})))}
     out = []
     for c, _ in rows:
-        state, letter = "in_progress", None
+        state, letter, percent = "in_progress", None, None
         if c.id in published:
             s = grades.student_summary(db, c, student.id, grading)
             state = "passed" if s["passed"] else "failed"
-            letter = s["letter"]
+            letter, percent = s["letter"], s["percent"]
         t = terms.get(c.term_id)
         out.append({"id": c.id, "code": c.code, "title": c.title, "credits": c.credits, "state": state,
-                    "letter": letter, "term_id": c.term_id, "term": t.name if t else None,
+                    "letter": letter, "percent": percent, "term_id": c.term_id, "term": t.name if t else None,
                     "current": bool(t and t.is_current) or (c.term_id is None and state == "in_progress")})
     return out
 
@@ -136,3 +136,53 @@ def would_cycle(db: Session, faculty_id: int, course_code: str, required: list[s
                 seen.add(x)
                 stack.extend(edges.get(x, ()))
     return None
+
+
+def _weighted(items: list[dict]) -> float | None:
+    credits = sum(i["credits"] for i in items)
+    if not credits:
+        return None
+    return round(sum(i["percent"] * i["credits"] for i in items) / credits, 2)
+
+
+def transcript(db: Session, student: User, cfg: dict) -> dict:
+    """Published results by term, each term's average and the cumulative average.
+
+    Averages are weighted by credits. For the cumulative one a course taken again counts once,
+    with its latest published result."""
+    from .tenancy import letter_for
+
+    grading = cfg["grading"]
+    hist = [h for h in history(db, student, grading) if h["state"] != "in_progress" and h["percent"] is not None]
+    term_rows = {t.id: t for t in db.scalars(select(Term).where(Term.id.in_({h["term_id"] for h in hist if h["term_id"]} or {-1})))}
+    by_term: dict = {}
+    for h in hist:
+        by_term.setdefault(h["term_id"], []).append(h)
+    order = sorted(by_term, key=lambda tid: (term_rows[tid].start_date.isoformat() if tid in term_rows else "", tid or 0))
+    terms, latest = [], {}
+    for tid in order:
+        items = sorted(by_term[tid], key=lambda h: h["code"])
+        avg = _weighted(items)
+        t = term_rows.get(tid)
+        terms.append({"term_id": tid, "term": t.name if t else "دون فصل", "courses": items,
+                      "credits": sum(i["credits"] for i in items),
+                      "earned_credits": sum(i["credits"] for i in items if i["state"] == "passed"),
+                      "average": avg, "letter": letter_for(avg, grading)[0] if avg is not None else None,
+                      "label": letter_for(avg, grading)[1] if avg is not None else None})
+        for i in items:
+            latest[i["code"]] = i
+    cum = _weighted(list(latest.values()))
+    return {"terms": terms, "cumulative_average": cum,
+            "cumulative_letter": letter_for(cum, grading)[0] if cum is not None else None,
+            "cumulative_label": letter_for(cum, grading)[1] if cum is not None else None,
+            "earned_credits": sum(i["credits"] for i in latest.values() if i["state"] == "passed"),
+            "pass_mark": grading["pass_mark"]}
+
+
+def blocked_by(db: Session, student: User, failed_codes: list[str]) -> dict[str, list[str]]:
+    """For each failed code, the courses (codes) that require it."""
+    out: dict[str, list[str]] = {}
+    for a, b in db.execute(select(CoursePrerequisite.course_code, CoursePrerequisite.required_code).where(
+            CoursePrerequisite.faculty_id == student.faculty_id, CoursePrerequisite.required_code.in_(failed_codes or ["-"]))):
+        out.setdefault(b, []).append(a)
+    return out

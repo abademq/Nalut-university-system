@@ -276,6 +276,58 @@ def my_insights(user: User = Depends(get_current_user), db: Session = Depends(ge
     return {"attention": tips, "due_soon": pending}
 
 
+def study_advice(db: Session, student: User, cfg: dict, tr: dict) -> list[dict]:
+    """Plain, rule-based study advice from the record (never a decision about the student)."""
+    out = []
+    pass_mark = cfg["grading"]["pass_mark"]
+    cum = tr["cumulative_average"]
+    if cum is not None and cum < pass_mark:
+        out.append({"level": "danger", "text": f"معدلك التراكمي {cum}% أقل من درجة النجاح ({pass_mark}%). "
+                    "راجع المرشد الأكاديمي لوضع خطة لرفعه."})
+    last = tr["terms"][-1] if tr["terms"] else None
+    failed = sorted({c["code"]: c for t in tr["terms"] for c in t["courses"] if c["state"] == "failed"}.values(),
+                    key=lambda c: c["code"])
+    passed_later = {c["code"] for t in tr["terms"] for c in t["courses"] if c["state"] == "passed"}
+    failed = [c for c in failed if c["code"] not in passed_later]
+    blocks = registration.blocked_by(db, student, [c["code"] for c in failed])
+    for c in failed:
+        nxt = blocks.get(c["code"])
+        out.append({"level": "danger", "course": c["code"],
+                    "text": f"أعد تسجيل {c['title']} ({c['code']})"
+                    + (f"؛ هو متطلب سابق لـ {', '.join(nxt)} ولن تُسجَّل فيها قبل النجاح فيه." if nxt else ".")})
+    if last and len(last["courses"]) > 1:
+        weakest = min(last["courses"], key=lambda c: c["percent"])
+        if weakest["state"] == "passed" and weakest["percent"] < (last["average"] or 0) - 10:
+            out.append({"level": "warning", "course": weakest["code"],
+                        "text": f"أضعف نتائجك في {last['term']}: {weakest['title']} ({weakest['percent']}%). "
+                                "ركّز على المقررات التي تبنى عليه."})
+    for cid in visible_course_ids(db, student):
+        c = db.get(Course, cid)
+        reasons = _student_risk(db, c, student.id, cfg["attendance"], cfg["grading"])
+        if reasons:
+            out.append({"level": "warning", "course": c.code,
+                        "text": f"في {c.title} هذا الفصل: {'، '.join(reasons)}. تدارك ذلك قبل الامتحانات."})
+    if len(tr["terms"]) >= 2:
+        a, b = tr["terms"][-2]["average"], tr["terms"][-1]["average"]
+        if a is not None and b is not None and b - a >= 5:
+            out.append({"level": "success", "text": f"تحسّن معدلك الفصلي من {a}% إلى {b}%. استمر على هذا النسق."})
+        elif a is not None and b is not None and a - b >= 5:
+            out.append({"level": "warning", "text": f"انخفض معدلك الفصلي من {a}% إلى {b}%. راجع ما تغيّر في طريقة دراستك."})
+    return out
+
+
+@router.get("/me/transcript")
+def my_transcript(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """The student's published results by term, term averages, the cumulative average and advice."""
+    if user.role != Role.STUDENT:
+        raise forbidden()
+    cfg = tenant_settings(db, user)
+    tr = registration.transcript(db, user, cfg)
+    out = {**tr, "advice": study_advice(db, user, cfg, tr)}
+    db.commit()
+    return out
+
+
 # --------------------------------------------------------------------------- one person, simplified
 
 
@@ -333,9 +385,13 @@ def _student_report(db: Session, viewer: User, s: User) -> dict:
     due_total = sum(c["due"] for c in courses)
     scores = [c["avg_score_percent"] for c in courses if c["avg_score_percent"] is not None]
     academic = registration.summary(db, s, cfg)
+    transcript = None
     if viewer.role in Role.INSTRUCTORS:  # a teacher sees the load, not the whole record
         academic = {k: v for k, v in academic.items() if k != "courses"}
-    return {"kind": "student", "academic": academic, "summary": {
+    else:
+        transcript = registration.transcript(db, s, cfg)
+        transcript["advice"] = study_advice(db, s, cfg, transcript)
+    return {"kind": "student", "academic": academic, "transcript": transcript, "summary": {
         "courses": len(courses),
         "absence_percent": round(sum(c["absence_percent"] for c in courses) / len(courses), 1) if courses else None,
         "submission_rate": _pct(sum(c["submitted"] for c in courses), due_total),

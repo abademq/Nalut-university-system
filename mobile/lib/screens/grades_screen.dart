@@ -13,15 +13,17 @@ class GradesScreen extends StatelessWidget {
     final s = context.read<Session>();
     return Scaffold(
       appBar: AppBar(title: const Text('درجاتي ونتائجي')),
-      body: AsyncView<(List<dynamic>, Map<String, dynamic>)>(
+      body: AsyncView<(List<dynamic>, Map<String, dynamic>, Map<String, dynamic>)>(
         load: () async {
-          final r = await Future.wait([s.api.get('/api/me/grades'), s.api.get('/api/me/academic')]);
-          return (r[0] as List<dynamic>, r[1] as Map<String, dynamic>);
+          final r = await Future.wait(
+              [s.api.get('/api/me/grades'), s.api.get('/api/me/academic'), s.api.get('/api/me/transcript')]);
+          return (r[0] as List<dynamic>, r[1] as Map<String, dynamic>, r[2] as Map<String, dynamic>);
         },
         builder: (context, data, _) {
-          final (list, a) = data;
+          final (list, a, t) = data;
           if (list.isEmpty) return ListView(children: const [EmptyView('لا توجد مقررات')]);
           return ListView(padding: const EdgeInsets.all(12), children: [
+            _TranscriptCard(t),
             _AcademicCard(a),
             for (final g in list)
               SectionCard(
@@ -90,4 +92,56 @@ class _AcademicCard extends StatelessWidget {
       ]),
     );
   }
+}
+
+
+/// The cumulative average, the latest term's average and the study advice.
+class _TranscriptCard extends StatelessWidget {
+  const _TranscriptCard(this.t);
+  final Map<String, dynamic> t;
+
+  @override
+  Widget build(BuildContext context) {
+    final terms = (t['terms'] as List?) ?? const [];
+    final last = terms.isEmpty ? null : terms.last as Map;
+    final advice = (t['advice'] as List?) ?? const [];
+    String pct(Object? v) => v == null ? '—' : '$v%';
+    Color color(String? level) => switch (level) {
+          'danger' => AppColors.danger,
+          'success' => AppColors.success,
+          _ => AppColors.warning,
+        };
+    return SectionCard(
+      title: 'نتيجتي والمعدل',
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Row(children: [
+          Expanded(child: _Figure('المعدل التراكمي', pct(t['cumulative_average']), t['cumulative_label'] as String?)),
+          Expanded(child: _Figure('آخر معدل فصلي', pct(last?['average']), last?['term'] as String?)),
+          Expanded(child: _Figure('الوحدات المنجزة', '${t['earned_credits'] ?? 0}', null)),
+        ]),
+        if (terms.isEmpty)
+          const Padding(padding: EdgeInsets.only(top: 8), child: Text('يظهر المعدل بعد نشر أول نتيجة.',
+              style: TextStyle(color: Colors.grey))),
+        for (final a in advice)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text('• ${a['text']}', style: TextStyle(color: color(a['level'] as String?))),
+          ),
+      ]),
+    );
+  }
+}
+
+class _Figure extends StatelessWidget {
+  const _Figure(this.label, this.value, this.hint);
+  final String label;
+  final String value;
+  final String? hint;
+
+  @override
+  Widget build(BuildContext context) => Column(children: [
+        Text(value, style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold)),
+        Text(label, textAlign: TextAlign.center, style: const TextStyle(fontSize: 12)),
+        if (hint != null) Text(hint!, style: const TextStyle(fontSize: 11, color: Colors.grey)),
+      ]);
 }
