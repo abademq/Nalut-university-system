@@ -70,6 +70,13 @@ DEFAULT_SETTINGS: dict = {
             "high": {"require_location": True, "require_selfie": True},
         },
     },
+    # AI features (Claude). Off for everyone while the server has no ANTHROPIC_API_KEY.
+    "ai": {
+        "enabled": True,
+        "students": True,     # study advisor, outcome prediction, draft review
+        "staff": True,        # course summaries, feedback drafts, questions, reports, wording
+        "assistant": True,    # questions about the platform and the regulations, for everyone
+    },
     # registration rules, checked whenever students are registered in a course
     "registration": {
         "enforce_prerequisites": True,   # a course's prerequisites must have been passed

@@ -1,5 +1,6 @@
 import { html, useState, useAsync, Async, Empty, Chip, Tabs, ErrorBox, useForm, useSubmit, toast, DAYS, ROLE, fmtDate, Kpi } from "../ui.js";
 import { api } from "../api.js";
+import { CourseAi } from "./ai.js";
 
 // administers courses: whoever the permission matrix gives "courses.manage"
 const isAdmin = (u) => (u.can || []).includes("courses.manage");
@@ -212,7 +213,8 @@ export function CourseDetail({ id, user }) {
   return html`<${Async} state=${state}>${(c) => html`<div>
     <h1>${c.code} — ${c.title}</h1>
     <${Tabs} value=${tab} onChange=${setTab} tabs=${[["info", "نظرة عامة"], ["assignments", "المهام"],
-      ...(teaches ? [["students", `الطلبة (${c.students_count})`]] : []), ...(isAdmin(user) ? [["manage", "الإدارة"]] : teaches ? [["components", "عناصر التقييم"]] : [])]} />
+      ...(teaches ? [["students", `الطلبة (${c.students_count})`]] : []), ...(isAdmin(user) ? [["manage", "الإدارة"]] : teaches ? [["components", "عناصر التقييم"]] : []),
+      ...(teaches ? [["ai", "تحليل ذكي"]] : [])]} />
     ${tab === "info" ? html`<div class="grid cols-2">
       <div class="card"><h3>معلومات المقرر</h3><ul class="list">
         <li>الوحدات: <strong>${c.credits}</strong></li>
@@ -236,6 +238,7 @@ export function CourseDetail({ id, user }) {
           await api.del(`/api/courses/${c.id}/enrollments/${s.id}`); students.reload(); }}>سحب</button></td>` : null}</tr>`)}</tbody>
       </table></div>`}<//></div>` : null}
     ${tab === "components" ? html`<${Components} course=${c} onChange=${state.reload} />` : null}
+    ${tab === "ai" ? html`<${CourseAi} course=${c} />` : null}
     ${tab === "manage" ? html`<div class="grid cols-2"><${EditCourse} course=${c} onChange=${state.reload} /><${Components} course=${c} onChange=${state.reload} />
       <${Prerequisites} course=${c} onChange=${state.reload} /></div>
       <${StaffManager} course=${c} onChange=${() => { state.reload(); students.reload(); }} />` : null}

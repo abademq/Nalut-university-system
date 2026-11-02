@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
-from .. import audit, mfa, permissions
+from .. import ai, audit, mfa, permissions
 from ..config import settings
 from ..db import as_utc, get_db, utcnow
 from ..deps import OTHER_UNIVERSITY, belongs_here, client_ip, forbidden, get_current_user, tenant_settings
@@ -93,6 +93,7 @@ def user_profile(db: Session, user: User) -> dict:
         "single_university": settings.single_university,
         # configurable capabilities this account holds, so clients show only what will work
         "archive_offices": cfg["archive"]["offices"] if cfg else [],
+        "ai_assistant": ai.available(cfg, "assistant") if cfg else False,
         "can": [k for k in permissions.CAPABILITIES if permissions.allowed(db, user, k)] if uni else [],
     }
 

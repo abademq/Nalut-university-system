@@ -2,6 +2,7 @@ import {
   html, useState, useEffect, useRef, useAsync, Async, Empty, Chip, StatusChip, ErrorBox, useForm, useSubmit,
   toast, toastError, Tabs, Modal, Kpi, Bar, ATT_STATUS, RISK_FLAG, fmtDate, pct, useCourses, navigate, Icon } from "../ui.js";
 import { api, deviceId, blobUrl } from "../api.js";
+import { PatternsReading } from "./ai.js";
 
 const has = (u, k) => (u.can || []).includes(k);
 // manages sessions: course sessions ("attendance.manage") or staff shifts ("attendance.staff")
@@ -344,7 +345,7 @@ function ManagerAttendance({ user }) {
       <${SessionsList} kindFilter="course" />` : null}
     ${tab === "staff" ? html`<${CreateSession} user=${user} kind="staff" onCreated=${created} /><${SessionsList} kindFilter="staff" />` : null}
     ${tab === "review" ? html`<${ReviewQueue} />` : null}
-    ${tab === "anomalies" ? html`<${Anomalies} />` : null}
+    ${tab === "anomalies" ? html`<${PatternsReading} /><${Anomalies} />` : null}
     ${tab === "integrity" ? html`<${Integrity} />` : null}
   </div>`;
 }

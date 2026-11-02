@@ -420,6 +420,7 @@ function SettingsForm({ data, acting, onSaved }) {
     max_credits_per_term: e.registration.max_credits_per_term, min_credits_per_term: e.registration.min_credits_per_term,
     enforce_prerequisites: e.registration.enforce_prerequisites, block_passed_repeat: e.registration.block_passed_repeat,
     block_schedule_clash: e.registration.block_schedule_clash,
+    ai_enabled: e.ai.enabled, ai_students: e.ai.students, ai_staff: e.ai.staff, ai_assistant: e.ai.assistant,
     warning_absence_percent: e.attendance.warning_absence_percent, limit_absence_percent: e.attendance.limit_absence_percent,
     review_threshold: e.attendance.review_threshold, selfie_retention_days: e.attendance.selfie_retention_days,
     pass_mark: e.grading.pass_mark, low_performance_percent: e.grading.low_performance_percent,
@@ -464,6 +465,7 @@ function SettingsForm({ data, acting, onSaved }) {
       registration: { ...e.registration, max_credits_per_term: n("max_credits_per_term"), min_credits_per_term: n("min_credits_per_term"),
         enforce_prerequisites: !!v.enforce_prerequisites, block_passed_repeat: !!v.block_passed_repeat,
         block_schedule_clash: !!v.block_schedule_clash },
+      ai: { ...e.ai, enabled: !!v.ai_enabled, students: !!v.ai_students, staff: !!v.ai_staff, assistant: !!v.ai_assistant },
       grading: { ...e.grading, pass_mark: n("pass_mark"), low_performance_percent: n("low_performance_percent"),
         scale: scale.map(([m, l, a]) => [Number(m), String(l).trim(), String(a).trim()]) },
     } });
@@ -522,6 +524,13 @@ function SettingsForm({ data, acting, onSaved }) {
         <option value="faculty">أساتذة مقرراته، وموظفي كليته وإدارتها</option>
         <option value="none">لا يبدأ محادثات (يرد فقط)</option></select></div>
       ${num("max_attachment_mb", "أكبر حجم للمرفق (ميغابايت)", { min: 1, max: 25 })}</div></div>
+    <div class="card"><h3>الذكاء الاصطناعي</h3>
+      <p class="small muted">تحليلات ونصائح بخدمة Claude من Anthropic. لا تُرسل الأسماء ولا أرقام القيد، ويوافق الطالب بنفسه قبل تحليل بياناته.
+        تعمل فقط إذا أُضيف مفتاح الخدمة على الخادم.</p>
+      <label class="check"><input type="checkbox" ...${bind("ai_enabled", "checkbox")} /> تفعيل ميزات الذكاء الاصطناعي</label>
+      <label class="check"><input type="checkbox" ...${bind("ai_students", "checkbox")} /> للطلبة: المرشد الدراسي، وتوقع وضع المقررات، ومراجعة المسودات</label>
+      <label class="check"><input type="checkbox" ...${bind("ai_staff", "checkbox")} /> للأساتذة والإدارة: ملخص المقرر، ومسودات التعليق، وأسئلة المراجعة، والتقارير المكتوبة، وقراءة أنماط الحضور، وتحسين الصياغة</label>
+      <label class="check"><input type="checkbox" ...${bind("ai_assistant", "checkbox")} /> المساعد الذكي للأسئلة (للجميع)</label></div>
     <div class="card"><h3>قواعد التسجيل في المقررات</h3>
       <p class="small muted">تُفحص عند كل تسجيل طالب في مقرر. لمن يسجّل الطلبة أن يستثني طالباً بسبب مكتوب، ويُحفظ الاستثناء في سجل التدقيق.</p>
       <label class="check"><input type="checkbox" ...${bind("enforce_prerequisites", "checkbox")} /> المتطلبات السابقة: لا يُسجَّل حتى ينجح فيها</label>

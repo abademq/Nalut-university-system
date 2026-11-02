@@ -90,6 +90,11 @@ class Settings:
     # test mode: Resala accepts the request without sending or charging
     resala_test: bool = field(default_factory=lambda: _env("RESALA_TEST", "false").lower() == "true")
 
+    # Claude (Anthropic) for the AI features. The key is read by the SDK from ANTHROPIC_API_KEY
+    # (kept in /etc/nus/nus.env only); without it every AI feature is off.
+    ai_model: str = field(default_factory=lambda: _env("AI_MODEL", "claude-opus-5-5"))
+    ai_key_present: bool = field(default_factory=lambda: bool(_env("ANTHROPIC_API_KEY")))
+
     # One university per installation: the platform administrator works directly in it and accounts
     # of any other university cannot sign in. MAIN_UNIVERSITY is its code (default: the first one).
     single_university: bool = field(default_factory=lambda: _bool("SINGLE_UNIVERSITY", True))

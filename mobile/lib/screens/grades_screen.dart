@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../config.dart';
 import '../state/session.dart';
 import '../widgets/common.dart';
+import 'ai_screens.dart';
 
 class GradesScreen extends StatelessWidget {
   const GradesScreen({super.key});
@@ -23,6 +24,7 @@ class GradesScreen extends StatelessWidget {
           final (list, a, t) = data;
           if (list.isEmpty) return ListView(children: const [EmptyView('لا توجد مقررات')]);
           return ListView(padding: const EdgeInsets.all(12), children: [
+            const AdvisorCard(),
             _TranscriptCard(t),
             _AcademicCard(a),
             for (final g in list)

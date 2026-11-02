@@ -8,3 +8,4 @@ python-multipart==0.0.32
 openpyxl==3.1.5
 qrcode==8.2
 cryptography==50.0.2
+anthropic==2.3.0

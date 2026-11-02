@@ -2,6 +2,7 @@ import {
   html, useState, useAsync, Async, Empty, Chip, StatusChip, ErrorBox, useForm, useSubmit, toast, toastError, Modal,
   ASSIGNMENT_STATUS, KIND, fmtDate, fmtRelative, fmtSize, toLocalInput, useCourses, Icon } from "../ui.js";
 import { api, downloadFile } from "../api.js";
+import { DraftReview, FeedbackDraftButton } from "./ai.js";
 
 const isStudent = (u) => u.role === "student";
 
@@ -99,7 +100,7 @@ function SubmitForm({ a, onDone }) {
 
 function GradeModal({ a, row, onClose, onSaved }) {
   const s = row.submission;
-  const [v, bind] = useForm({ score: s.score ?? "", feedback: s.feedback || "", release: false, reason: "" });
+  const [v, bind, setV] = useForm({ score: s.score ?? "", feedback: s.feedback || "", release: false, reason: "" });
   const [submit, busy, error] = useSubmit(async () => {
     await api.post(`/api/submissions/${s.id}/grade`, { score: Number(v.score), feedback: v.feedback, release: v.release, reason: v.reason });
     toast("تم حفظ التقييم");
@@ -110,7 +111,8 @@ function GradeModal({ a, row, onClose, onSaved }) {
     ${s.note ? html`<div class="alert info">ملاحظة الطالب: ${s.note}</div>` : null}
     <form onSubmit=${submit}><${ErrorBox} error=${error} />
       <div class="field"><label>الدرجة (من ${a.max_score})</label><input type="number" min="0" max=${a.max_score} step="0.25" ...${bind("score")} required /></div>
-      <div class="field"><label>الملاحظات والتغذية الراجعة</label><textarea ...${bind("feedback")}></textarea></div>
+      <div class="field"><label>الملاحظات والتغذية الراجعة</label><textarea ...${bind("feedback")}></textarea>
+        <${FeedbackDraftButton} submissionId=${s.id} onDraft=${(t) => setV((x) => ({ ...x, feedback: t }))} /></div>
       ${s.score !== null ? html`<div class="field"><label>سبب تعديل الدرجة</label><input ...${bind("reason")} /></div>` : null}
       <label class="check"><input type="checkbox" ...${bind("release", "checkbox")} /> نشر الدرجة للطالب الآن</label>
       <button disabled=${busy}>حفظ</button></form>
@@ -138,7 +140,7 @@ export function AssignmentDetail({ id, user }) {
           : a.submission.status === "reviewed" ? html`<p class="muted">تمت المراجعة، وستظهر الدرجة عند نشرها.</p>` : null}
       </div>` : null}
       ${a.submission?.status !== "reviewed" && (a.allow_late || new Date(a.due_at) > new Date())
-        ? html`<${SubmitForm} a=${a} onDone=${state.reload} />` : null}` : null}
+        ? html`<${DraftReview} assignmentId=${a.id} /><${SubmitForm} a=${a} onDone=${state.reload} />` : null}` : null}
     ${a.submissions ? html`<div class="card"><div class="card-head"><h3>التسليمات</h3>
       <button class="small" onClick=${async () => { const r = await api.post(`/api/assignments/${a.id}/release-grades`); toast(`نُشرت ${r.released} درجة`); state.reload(); }}>نشر الدرجات المقيّمة</button></div>
       <div class="table-wrap"><table><thead><tr><th>الطالب</th><th>الحالة</th><th>وقت التسليم</th><th class="num">الدرجة</th><th></th></tr></thead>

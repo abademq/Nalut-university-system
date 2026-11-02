@@ -269,6 +269,29 @@ class StudentProgram(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
+class AiResult(Base):
+    """A stored AI answer: reused while its inputs (hashed) are unchanged, and kept as a record."""
+
+    __tablename__ = "ai_results"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    university_id: Mapped[int] = mapped_column(ForeignKey("universities.id"), index=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), index=True)
+    kind: Mapped[str] = mapped_column(String(40))
+    subject: Mapped[str] = mapped_column(String(80), index=True)  # e.g. "student:12", "course:3"
+    input_hash: Mapped[str] = mapped_column(String(64))
+    output: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class AiConsent(Base):
+    """A student's agreement to have their (unnamed) record analysed by the AI service."""
+
+    __tablename__ = "ai_consents"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), unique=True)
+    granted_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
 class CourseStaff(Base):
     __tablename__ = "course_staff"
     id: Mapped[int] = mapped_column(primary_key=True)

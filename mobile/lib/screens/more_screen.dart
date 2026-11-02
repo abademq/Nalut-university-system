@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../state/session.dart';
 import '../widgets/common.dart';
 import 'account_screen.dart';
+import 'ai_screens.dart';
 import 'courses_screen.dart';
 import 'grade_entry_screen.dart';
 import 'grades_screen.dart';
@@ -94,6 +95,9 @@ class MoreScreen extends StatelessWidget {
           if (canSendNotifications(s.user))
             _tile(context, Icons.campaign_outlined, 'إرسال إشعار', const SendNotificationScreen()),
           _tile(context, Icons.chat_outlined, 'الرسائل', const MessagesScreen()),
+          if (u['ai_assistant'] == true)
+            _tile(context, Icons.auto_awesome_outlined, 'المساعد الذكي', const AssistantScreen(),
+                subtitle: 'أسئلة عن المنصة واللوائح'),
           _tile(context, Icons.help_outline, 'دليل الاستخدام', const GuideScreen()),
           if (s.isAdmin || s.role == 'staff' || s.isInstructor)
             ListTile(

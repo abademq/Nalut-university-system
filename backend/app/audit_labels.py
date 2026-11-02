@@ -49,6 +49,8 @@ ACTIONS: dict[str, tuple[str, str]] = {
     "course.staff_assigned": ("إسناد مقرر لعضو هيئة تدريس", "course"),
     "course.staff_removed": ("إلغاء إسناد مقرر", "course"),
     "course.enrolled": ("تسجيل طالب في مقرر", "course"),
+    "ai.consent_given": ("موافقة على التحليل بالذكاء الاصطناعي", "settings"),
+    "ai.consent_withdrawn": ("سحب الموافقة على التحليل بالذكاء الاصطناعي", "settings"),
     "course.prerequisites_changed": ("تعديل المتطلبات السابقة لمقرر", "course"),
     "program.created": ("إنشاء تخصص", "structure"), "program.updated": ("تعديل تخصص", "structure"),
     "program.deleted": ("حذف تخصص", "structure"), "program.plan_saved": ("حفظ الخطة الدراسية لتخصص", "structure"),

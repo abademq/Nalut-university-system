@@ -1,5 +1,6 @@
 import { html, useState, useAsync, Async, Empty, Chip, Kpi, Bar, Tabs, StatusChip, RESULT_STATUS, pct, toastError } from "../ui.js";
 import { api, request } from "../api.js";
+import { ReportNarrative } from "./ai.js";
 
 function Overview({ user }) {
   const state = useAsync(() => api.get("/api/reports/overview"), []);
@@ -79,7 +80,7 @@ export function ReportsView({ user }) {
   const [tab, setTab] = useState("overview");
   const tabs = [["overview", "نظرة عامة"], ["risk", "متابعة الطلبة"], ["attendance", "الحضور"], ...(admin ? [["staff", "دوام الموظفين"]] : [])];
   return html`<div><h1>التقارير والإحصائيات</h1><${Tabs} value=${tab} onChange=${setTab} tabs=${tabs} />
-    ${tab === "overview" ? html`<${Overview} user=${user} />` : null}
+    ${tab === "overview" ? html`${user.role !== "teacher" && user.role !== "assistant" ? html`<${ReportNarrative} />` : null}<${Overview} user=${user} />` : null}
     ${tab === "risk" ? html`<${AtRisk} />` : null}
     ${tab === "attendance" ? html`<${AttendanceTrend} />` : null}
     ${tab === "staff" ? html`<${StaffAttendance} />` : null}</div>`;

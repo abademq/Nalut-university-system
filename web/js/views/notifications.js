@@ -2,6 +2,7 @@ import {
   html, useState, useAsync, Async, Empty, Chip, StatusChip, ErrorBox, useForm, useSubmit, toast, Tabs,
   CATEGORY, PRIORITY, fmtDate, fmtRelative, useCourses, Icon } from "../ui.js";
 import { api } from "../api.js";
+import { ComposeHelper } from "./ai.js";
 
 const SENDERS = {
   announcement: ["university_admin", "faculty_admin", "teacher", "assistant"],
@@ -111,6 +112,8 @@ export function SendNotification({ user }) {
       <${TargetPicker} user=${user} v=${v} bind=${bind} setV=${setV} />
       <div class="field"><label>العنوان</label><input ...${bind("title")} required maxlength="200" /></div>
       <div class="field"><label>النص</label><textarea ...${bind("body")} required></textarea></div>
+      <${ComposeHelper} title=${v.title} body=${v.body} purpose=${v.category}
+        onApply=${(r) => setV((x) => ({ ...x, title: r.title.slice(0, 200), body: r.text }))} />
       <div class="row"><label class="check"><input type="checkbox" ...${bind("push", "checkbox")} /> إشعار فوري على الهاتف</label>
         <label class="check"><input type="checkbox" ...${bind("sms", "checkbox")} /> رسالة SMS (للعاجل والتحذيرات عند تفعيلها)</label>
         <label class="check"><input type="checkbox" ...${bind("schedule", "checkbox")} /> جدولة</label></div>
