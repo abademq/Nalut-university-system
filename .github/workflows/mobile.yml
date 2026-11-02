@@ -51,9 +51,11 @@ jobs:
         run: |
           APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
           "$APKSIGNER" verify --print-certs build/app/outputs/flutter-apk/app-release.apk | grep -m2 -E "DN|SHA-256"
+      # only a build signed with the release key installs over the app on phones; any other is
+      # kept under another name so nothing publishes it by mistake
       - uses: actions/upload-artifact@v4
         with:
-          name: nalut-university-apk
+          name: ${{ steps.key.outputs.signed == 'true' && 'nalut-university-apk' || 'nalut-university-apk-unsigned' }}
           path: mobile/build/app/outputs/flutter-apk/app-release.apk
           retention-days: 30
 
@@ -63,8 +65,9 @@ jobs:
     needs: android
     # only builds signed with the release key are published: any other would not install over the app
     if: >-
-      github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+      github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
       && needs.android.outputs.signed == 'true'
+      && (github.event_name == 'push' || github.event.inputs.server_url == 'https://nalut.abade.ly')
     runs-on: ubuntu-latest
     environment: production
     steps:
