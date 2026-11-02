@@ -284,7 +284,8 @@ def study_advice(db: Session, student: User, cfg: dict, tr: dict) -> list[dict]:
     if cum is not None and cum < pass_mark:
         out.append({"level": "danger", "text": f"معدلك التراكمي {cum}% أقل من درجة النجاح ({pass_mark}%). "
                     "راجع المرشد الأكاديمي لوضع خطة لرفعه."})
-    last = tr["terms"][-1] if tr["terms"] else None
+    terms = [t for t in tr["terms"] if not t.get("prior")]  # results taken on the platform, term by term
+    last = terms[-1] if terms else None
     failed = sorted({c["code"]: c for t in tr["terms"] for c in t["courses"] if c["state"] == "failed"}.values(),
                     key=lambda c: c["code"])
     passed_later = {c["code"] for t in tr["terms"] for c in t["courses"] if c["state"] == "passed"}
@@ -307,8 +308,8 @@ def study_advice(db: Session, student: User, cfg: dict, tr: dict) -> list[dict]:
         if reasons:
             out.append({"level": "warning", "course": c.code,
                         "text": f"في {c.title} هذا الفصل: {'، '.join(reasons)}. تدارك ذلك قبل الامتحانات."})
-    if len(tr["terms"]) >= 2:
-        a, b = tr["terms"][-2]["average"], tr["terms"][-1]["average"]
+    if len(terms) >= 2:
+        a, b = terms[-2]["average"], terms[-1]["average"]
         if a is not None and b is not None and b - a >= 5:
             out.append({"level": "success", "text": f"تحسّن معدلك الفصلي من {a}% إلى {b}%. استمر على هذا النسق."})
         elif a is not None and b is not None and a - b >= 5:

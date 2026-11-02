@@ -43,3 +43,35 @@ def test_plan_editing_rules_and_placement(client, as_, db):
     assert r["placed"] == ["2023001"] and r["unknown"] == ["2024001"]  # an engineering student is not in this faculty
     assert client.get("/api/me/plan", headers=as_(ALI)).json()["program"]["code"] == "IS"
     assert client.delete(f"/api/programs/{new['id']}", headers=d).status_code == 400  # has students
+
+
+def test_semester_and_courses_passed_before_the_platform(client, as_, db):
+    """A fifth-semester student whose first four semesters were before the platform."""
+    from app.models import User
+
+    d = as_(DEAN)
+    st = db.query(User).filter_by(email="student3@nalut.edu.ly").one()  # computer science, CS101 and CS201 now
+    before = client.get(f"/api/students/{st.id}/plan", headers=d).json()
+    assert before["level"] == 1 and before["can_manage"] is True
+    r = client.post(f"/api/students/{st.id}/prior-credits/bulk", headers=d, json={"up_to_semester": 1}).json()
+    assert "MATH101" in r["added"] and "CS101" not in r["added"]  # CS101 is being taken now
+    plan = client.get(f"/api/students/{st.id}/plan", headers=d).json()
+    assert plan["semester_set_manually"] and plan["level"] == 2 and plan["next_semester"] == 3
+    sem1 = {c["code"]: c for c in plan["semesters"][0]["courses"]}
+    assert sem1["MATH101"]["state"] == "passed" and sem1["MATH101"]["source"] == "prior"
+    nxt = {c["code"]: c for c in plan["next_courses"]}
+    assert nxt["MATH102"]["status"] == "open"  # its prerequisite was passed before the platform
+    # a course recognised from another university, with its mark
+    t = client.post(f"/api/students/{st.id}/prior-credits", headers=d,
+                    json={"code": "MATH102", "kind": "transfer", "percent": 80}).json()
+    assert t["title"] == "رياضة 2" and t["credits"] == 3  # taken from the plan
+    login = client.post("/api/auth/login", json={"identifier": st.email, "password": "Demo@12345"}).json()
+    tr = client.get("/api/me/transcript", headers={"Authorization": f"Bearer {login['access_token']}"}).json()
+    assert tr["terms"][0]["prior"] and tr["cumulative_average"] == 80.0  # only graded ones count in the average
+    assert tr["earned_credits"] >= 3 + 3 + 2 + 3
+    # registration now accepts MATH102's dependants; the teacher cannot change any of this
+    assert client.put(f"/api/students/{st.id}/semester", headers=as_("t.ahmed@nalut.edu.ly"),
+                      json={"semester": 4}).status_code == 403
+    assert client.put(f"/api/students/{st.id}/semester", headers=d, json={"semester": None}).status_code == 200
+    assert client.get(f"/api/students/{st.id}/plan", headers=d).json()["semester_set_manually"] is False
+    assert client.delete(f"/api/prior-credits/{t['id']}", headers=d).status_code == 200

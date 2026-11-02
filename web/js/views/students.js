@@ -1,4 +1,4 @@
-import { PlanCard } from "./plan.js";
+import { PlanCard, StandingManager } from "./plan.js";
 import { TranscriptCard } from "./transcript.js";
 import { AcademicSummary } from "./courses.js";
 import { html, useState, useAsync, Async, Empty, Chip, Kpi, navigate } from "../ui.js";
@@ -67,5 +67,6 @@ export function StudentDetail({ id, user }) {
 
 function StudentPlan({ id }) {
   const state = useAsync(() => api.get(`/api/students/${id}/plan`), [id]);
-  return html`<${Async} state=${state}>${(p) => html`<${PlanCard} p=${p} />`}<//>`;
+  return html`<${Async} state=${state}>${(p) => html`<${PlanCard} p=${p} />
+    ${p.can_manage && p.program ? html`<${StandingManager} studentId=${id} plan=${p} onChange=${state.reload} />` : null}`}<//>`;
 }

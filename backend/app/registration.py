@@ -38,6 +38,14 @@ def history(db: Session, student: User, grading: dict) -> list[dict]:
         CourseResult.course_id.in_([c.id for c, _ in rows] or [-1]), CourseResult.status == "published")))
     terms = {t.id: t for t in db.scalars(select(Term).where(Term.id.in_({c.term_id for c, _ in rows if c.term_id} or {-1})))}
     out = []
+    from .models import PriorCredit
+    from .tenancy import letter_for
+
+    for p in db.scalars(select(PriorCredit).where(PriorCredit.student_id == student.id).order_by(PriorCredit.code)):
+        out.append({"id": None, "prior_id": p.id, "code": p.code, "title": p.title, "credits": p.credits,
+                    "state": "passed", "source": p.kind, "percent": p.percent,
+                    "letter": letter_for(p.percent, grading)[0] if p.percent is not None else None,
+                    "term_id": None, "term": "معادلة" if p.kind == "transfer" else "قبل المنصة", "current": False})
     for c, _ in rows:
         state, letter, percent = "in_progress", None, None
         if c.id in published:
@@ -45,7 +53,7 @@ def history(db: Session, student: User, grading: dict) -> list[dict]:
             state = "passed" if s["passed"] else "failed"
             letter, percent = s["letter"], s["percent"]
         t = terms.get(c.term_id)
-        out.append({"id": c.id, "code": c.code, "title": c.title, "credits": c.credits, "state": state,
+        out.append({"id": c.id, "source": "platform", "code": c.code, "title": c.title, "credits": c.credits, "state": state,
                     "letter": letter, "percent": percent, "term_id": c.term_id, "term": t.name if t else None,
                     "current": bool(t and t.is_current) or (c.term_id is None and state == "in_progress")})
     return out
@@ -153,13 +161,25 @@ def transcript(db: Session, student: User, cfg: dict) -> dict:
     from .tenancy import letter_for
 
     grading = cfg["grading"]
-    hist = [h for h in history(db, student, grading) if h["state"] != "in_progress" and h["percent"] is not None]
+    full = history(db, student, grading)
+    prior = [h for h in full if h["source"] != "platform"]
+    hist = [h for h in full if h["source"] == "platform" and h["state"] != "in_progress" and h["percent"] is not None]
     term_rows = {t.id: t for t in db.scalars(select(Term).where(Term.id.in_({h["term_id"] for h in hist if h["term_id"]} or {-1})))}
     by_term: dict = {}
     for h in hist:
         by_term.setdefault(h["term_id"], []).append(h)
     order = sorted(by_term, key=lambda tid: (term_rows[tid].start_date.isoformat() if tid in term_rows else "", tid or 0))
     terms, latest = [], {}
+    if prior:  # passed outside the platform: first, as their own group
+        graded = [i for i in prior if i["percent"] is not None]
+        avg = _weighted(graded)
+        terms.append({"term_id": None, "term": "مواد منجزة قبل المنصة أو بالمعادلة", "prior": True,
+                      "courses": sorted(prior, key=lambda h: h["code"]), "credits": sum(i["credits"] for i in prior),
+                      "earned_credits": sum(i["credits"] for i in prior), "average": avg,
+                      "letter": letter_for(avg, grading)[0] if avg is not None else None,
+                      "label": letter_for(avg, grading)[1] if avg is not None else None})
+        for i in prior:
+            latest[i["code"]] = i
     for tid in order:
         items = sorted(by_term[tid], key=lambda h: h["code"])
         avg = _weighted(items)
@@ -171,7 +191,7 @@ def transcript(db: Session, student: User, cfg: dict) -> dict:
                       "label": letter_for(avg, grading)[1] if avg is not None else None})
         for i in items:
             latest[i["code"]] = i
-    cum = _weighted(list(latest.values()))
+    cum = _weighted([i for i in latest.values() if i["percent"] is not None])
     return {"terms": terms, "cumulative_average": cum,
             "cumulative_letter": letter_for(cum, grading)[0] if cum is not None else None,
             "cumulative_label": letter_for(cum, grading)[1] if cum is not None else None,
@@ -228,16 +248,24 @@ def plan_progress(db: Session, student: User, cfg: dict) -> dict | None:
             CoursePrerequisite.faculty_id == program.faculty_id, CoursePrerequisite.course_code.in_(plan_codes or ["-"]))):
         prereq.setdefault(a, []).append(b)
     names = {r.code: r.title for r in rows}
+    from .models import StudentSemester
+
     terms_taken = {h["term_id"] for h in hist if h["term_id"] is not None}
-    level = max(len(terms_taken), 1)  # the semester the student is in (or has just finished)
     running = any(h["state"] == "in_progress" for h in hist)
-    nxt = level + 1 if running or terms_taken else 1
+    manual = db.scalar(select(StudentSemester.semester).where(StudentSemester.student_id == student.id))
+    if manual:  # set by the administration (transfers, students from before the platform)
+        level, nxt = manual, manual + 1
+    else:  # counted: the semester the student is in (or has just finished)
+        level = max(len(terms_taken), 1)
+        nxt = level + 1 if running or terms_taken else 1
+
+    source = {h["code"]: h["source"] for h in hist if h["state"] == "passed"}
 
     def course_row(r) -> dict:
         st = state.get(r.code, "remaining")
         reqs = sorted(prereq.get(r.code, []))
         return {"code": r.code, "title": r.title, "credits": r.credits, "required": r.required, "semester": r.semester,
-                "state": st, "prerequisites": [{"code": c, "title": names.get(c, c), "state": state.get(c, "remaining")}
+                "state": st, "source": source.get(r.code) if st == "passed" else None, "prerequisites": [{"code": c, "title": names.get(c, c), "state": state.get(c, "remaining")}
                                                for c in reqs]}
 
     semesters = []
@@ -269,6 +297,7 @@ def plan_progress(db: Session, student: User, cfg: dict) -> dict | None:
     total = sum(r.credits for r in rows if r.required)
     earned = sum(r.credits for r in rows if state.get(r.code) == "passed")
     return {"program": {"id": program.id, "name": program.name, "code": program.code, "semesters": program.semesters},
-            "level": level if (running or terms_taken) else 0, "next_semester": nxt,
+            "level": level if (manual or running or terms_taken) else 0, "next_semester": nxt,
+            "semester_set_manually": bool(manual),
             "semesters": semesters, "next_courses": upcoming, "must_pass": must_pass,
             "plan_credits": total, "earned_credits": earned, "remaining_credits": max(total - earned, 0)}

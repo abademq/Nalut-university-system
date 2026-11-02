@@ -15,7 +15,8 @@ const reqs = (c) => c.prerequisites.length
 export function PlanCard({ p }) {
   if (!p || !p.program) return html`<${Empty}>لم يُربط بتخصص بعد. تواصل مع إدارة الكلية.<//>`;
   return html`<div>
-    <p class="muted">التخصص: <strong>${p.program.name}</strong> · ${p.level ? `الفصل الدراسي ${p.level}` : "لم يبدأ بعد"}</p>
+    <p class="muted">التخصص: <strong>${p.program.name}</strong> · ${p.level ? `الفصل الدراسي ${p.level}` : "لم يبدأ بعد"}
+      ${p.semester_set_manually ? html`<span class="small">(حددته الإدارة)</span>` : null}</p>
     <div class="kpis">
       <${Kpi} label="وحدات الخطة (الإجبارية)" value=${p.plan_credits} />
       <${Kpi} label="المنجز" value=${p.earned_credits} />
@@ -41,7 +42,7 @@ export function PlanCard({ p }) {
         <div class="table-wrap"><table><tbody>${s.courses.map((c) => html`<tr>
           <td><span class="mono small">${c.code}</span> ${c.title}${c.required ? "" : html` <${Chip}>اختياري<//>`}</td>
           <td class="num">${c.credits} وحدات</td><td class="small">يتطلب: ${reqs(c)}</td>
-          <td><${Chip} kind=${STATE[c.state][1]}>${STATE[c.state][0]}<//></td></tr>`)}</tbody></table></div>`)}
+          <td><${Chip} kind=${STATE[c.state][1]}>${c.source === "transfer" ? "معادلة" : c.source === "prior" ? "ناجح (قبل المنصة)" : STATE[c.state][0]}<//></td></tr>`)}</tbody></table></div>`)}
     </div>
   </div>`;
 }
@@ -135,4 +136,57 @@ export function ProgramsView({ user }) {
         <div class="field"><label>القسم</label><select ...${bind("department_id")}><option value="">—</option>
           ${((fac || facs.find((f) => f.id === user.faculty?.id))?.departments || []).map((d) => html`<option value=${d.id}>${d.name}</option>`)}</select></div>
       </div><button disabled=${busy}>إنشاء</button></form></div>`;
+}
+
+// For whoever manages programmes: the semester a student is in, and courses passed outside the platform.
+export function StandingManager({ studentId, plan, onChange }) {
+  const prior = useAsync(() => api.get(`/api/students/${studentId}/prior-credits`), [studentId]);
+  const [sem, setSem] = useState(plan.semester_set_manually ? plan.level : "");
+  const [upTo, setUpTo] = useState(Math.max((plan.level || 1) - 1, 1));
+  const remaining = plan.semesters.flatMap((s) => s.courses).filter((c) => c.state !== "passed" && c.state !== "in_progress");
+  const [v, bind, setV] = useForm({ code: "", title: "", credits: "", kind: "prior", percent: "", note: "" });
+  const reload = () => { prior.reload(); onChange(); };
+  const [saveSem, b1, e1] = useSubmit(async () => {
+    await api.put(`/api/students/${studentId}/semester`, { semester: sem ? Number(sem) : null });
+    toast("حُفظ الفصل الدراسي", "success"); reload();
+  });
+  const [bulk, b2, e2] = useSubmit(async () => {
+    if (!confirm(`اعتبار كل مقررات الخطة حتى الفصل ${upTo} منجزة قبل المنصة (عدا ما درسه في المنصة)؟`)) return;
+    const r = await api.post(`/api/students/${studentId}/prior-credits/bulk`, { up_to_semester: Number(upTo), kind: "prior" });
+    toast(`سُجل ${r.added.length} مقرر، والطالب الآن في الفصل ${r.semester}`, "success"); setSem(r.semester); reload();
+  });
+  const [add, b3, e3] = useSubmit(async () => {
+    await api.post(`/api/students/${studentId}/prior-credits`, { code: v.code, title: v.title, kind: v.kind, note: v.note,
+      credits: v.credits === "" ? null : Number(v.credits), percent: v.percent === "" ? null : Number(v.percent) });
+    toast("أُضيف المقرر", "success"); setV({ code: "", title: "", credits: "", kind: "prior", percent: "", note: "" }); reload();
+  });
+  return html`<div class="card"><h3>تعديل وضع الطالب (للإدارة)</h3>
+    <p class="small muted">للطلبة المنقولين، ومن بدأ الدراسة قبل المنصة. كل تعديل يُسجَّل في سجل التدقيق.</p>
+    <form class="row" onSubmit=${saveSem} style="flex-wrap:wrap"><${ErrorBox} error=${e1} />
+      <label>الفصل الدراسي الحالي</label>
+      <input type="number" min="1" max=${plan.program.semesters} style="max-width:90px" value=${sem} onInput=${(e) => setSem(e.target.value)} placeholder="تلقائي" />
+      <button class="small" disabled=${b1}>حفظ</button>
+      <span class="small muted">اتركه فارغاً ليُحسب من عدد الفصول التي درسها في المنصة.</span></form>
+    <form class="row" onSubmit=${bulk} style="flex-wrap:wrap;margin-top:.6rem"><${ErrorBox} error=${e2} />
+      <label>مقررات الخطة حتى الفصل</label>
+      <input type="number" min="1" max=${plan.program.semesters} style="max-width:90px" value=${upTo} onInput=${(e) => setUpTo(e.target.value)} />
+      <button class="small secondary" disabled=${b2}>اعتبرها منجزة قبل المنصة</button></form>
+    <h4 style="margin-top:1rem">المقررات المنجزة خارج المنصة</h4>
+    <${Async} state=${prior}>${(rows) => rows.length ? html`<div class="table-wrap"><table>
+      <thead><tr><th>المقرر</th><th class="num">الوحدات</th><th>النوع</th><th class="num">الدرجة</th><th>ملاحظة</th><th></th></tr></thead>
+      <tbody>${rows.map((p) => html`<tr><td><span class="mono small">${p.code}</span> ${p.title}</td><td class="num">${p.credits}</td>
+        <td>${p.kind === "transfer" ? "معادلة" : "قبل المنصة"}</td><td class="num">${p.percent ?? "—"}</td><td class="small">${p.note}</td>
+        <td><button class="ghost small" onClick=${() => confirm("حذف هذا المقرر من سجل الطالب؟") && api.del(`/api/prior-credits/${p.id}`).then(reload).catch(toastError)}>حذف</button></td></tr>`)}</tbody>
+    </table></div>` : html`<p class="small muted">لا يوجد.</p>`}<//>
+    <form onSubmit=${add} style="margin-top:.6rem"><${ErrorBox} error=${e3} />
+      <div class="form-grid">
+        <div class="field"><label>المقرر</label><select ...${bind("code")} required><option value="">اختر من الخطة…</option>
+          ${remaining.map((c) => html`<option value=${c.code}>${c.code} — ${c.title}</option>`)}</select></div>
+        <div class="field"><label>النوع</label><select ...${bind("kind")}><option value="prior">درسه قبل المنصة</option><option value="transfer">معادلة من جامعة أخرى</option></select></div>
+        <div class="field"><label>الدرجة % (اختياري)</label><input type="number" min="0" max="100" step="0.5" ...${bind("percent")} /></div>
+        <div class="field"><label>ملاحظة</label><input ...${bind("note")} placeholder="مثلاً: قرار المعادلة رقم …" maxlength="300" /></div>
+      </div>
+      <p class="small muted">الدرجة إن وُجدت تدخل في المعدل التراكمي؛ بدونها يُحتسب المقرر في الوحدات والمتطلبات فقط.</p>
+      <button class="small secondary" disabled=${b3}>إضافة</button></form>
+  </div>`;
 }

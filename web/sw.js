@@ -1,6 +1,6 @@
 // Service worker: caches the application shell so the app opens quickly and offline.
 // API responses are never cached (they contain personal data).
-const CACHE = "nus-shell-v14";
+const CACHE = "nus-shell-v15";
 // The page's code is under /b/<build>/ and gets cached as it loads (network first).
 const SHELL = ["/", "/static/vendor/preact-htm.mjs", "/static/icon.svg"];
 

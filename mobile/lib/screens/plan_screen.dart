@@ -38,7 +38,7 @@ class PlanScreen extends StatelessWidget {
           return ListView(padding: const EdgeInsets.all(12), children: [
             SectionCard(
               title: p['program']['name'] as String,
-              child: Text('الفصل الدراسي ${p['level']} · وحدات الخطة ${p['plan_credits']} · '
+              child: Text('الفصل الدراسي ${p['level']}${p['semester_set_manually'] == true ? ' (حددته الإدارة)' : ''} · وحدات الخطة ${p['plan_credits']} · '
                   'المنجز ${p['earned_credits']} · المتبقي ${p['remaining_credits']}'),
             ),
             if (must.isNotEmpty)
@@ -76,7 +76,9 @@ class PlanScreen extends StatelessWidget {
                       title: Text('${c['code']} ${c['title']}'),
                       subtitle: Text('${c['credits']} وحدات'
                           '${(c['prerequisites'] as List).isEmpty ? '' : ' · يتطلب ${(c['prerequisites'] as List).map((x) => x['code']).join('، ')}'}'),
-                      trailing: StatusChip(StatusStyle(_state[c['state']]!.$1, _state[c['state']]!.$2)),
+                      trailing: StatusChip(StatusStyle(
+                          c['source'] == 'transfer' ? 'معادلة' : c['source'] == 'prior' ? 'ناجح (سابق)' : _state[c['state']]!.$1,
+                          _state[c['state']]!.$2)),
                     ),
                 ]),
               ),

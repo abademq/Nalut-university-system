@@ -259,6 +259,37 @@ class ProgramCourse(Base):
     __table_args__ = (UniqueConstraint("program_id", "code"),)
 
 
+class StudentSemester(Base):
+    """The semester a student is in, when the administration sets it (transfers, students who
+    started before the platform). Without it the semester is counted from their terms."""
+
+    __tablename__ = "student_semesters"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    student_id: Mapped[int] = mapped_column(ForeignKey("users.id"), unique=True)
+    semester: Mapped[int] = mapped_column(Integer)
+    set_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+
+
+class PriorCredit(Base):
+    """A course passed outside the platform: before it started ("prior") or recognised from another
+    university ("transfer"). Counts as passed for prerequisites, the plan and credits earned."""
+
+    __tablename__ = "prior_credits"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    university_id: Mapped[int] = mapped_column(ForeignKey("universities.id"), index=True)
+    student_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    code: Mapped[str] = mapped_column(String(40))
+    title: Mapped[str] = mapped_column(String(200))
+    credits: Mapped[int] = mapped_column(Integer, default=3)
+    kind: Mapped[str] = mapped_column(String(20), default="prior")  # prior | transfer
+    percent: Mapped[float | None] = mapped_column(Float)  # counts in the cumulative average when given
+    note: Mapped[str] = mapped_column(String(300), default="")
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    __table_args__ = (UniqueConstraint("student_id", "code"),)
+
+
 class StudentProgram(Base):
     """The programme a student follows (without one, the programme of their department is used)."""
 

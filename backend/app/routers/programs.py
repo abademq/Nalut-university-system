@@ -14,10 +14,12 @@ from ..models import (
     CoursePrerequisite,
     Department,
     Faculty,
+    PriorCredit,
     Program,
     ProgramCourse,
     Role,
     StudentProgram,
+    StudentSemester,
     User,
 )
 
@@ -236,6 +238,139 @@ def student_plan(sid: int, user: User = Depends(get_current_user), db: Session =
     st = db.get(User, sid)
     if not st or st.role != Role.STUDENT or not _can_see_person(db, user, st):
         raise forbidden()
-    out = registration.plan_progress(db, st, tenant_settings(db, st))
+    out = registration.plan_progress(db, st, tenant_settings(db, st)) or {"program": None}
+    out["can_manage"] = permissions.in_scope(permissions.scope(db, user, KEY), st.faculty_id)
     db.commit()
-    return out or {"program": None}
+    return out
+
+
+# --------------------------------------------------------------------------- a student's standing set by hand
+
+
+def _managed_student(db: Session, user: User, sid: int) -> User:
+    st = db.get(User, sid)
+    if not st or st.role != Role.STUDENT or st.university_id != user.university_id:
+        raise not_found("الطالب غير موجود")
+    permissions.require_scope(db, user, KEY, st.faculty_id)
+    return st
+
+
+class SemesterIn(BaseModel):
+    semester: int | None = Field(default=None, ge=1, le=14)  # None: count it from the terms again
+
+
+@router.put("/students/{sid}/semester")
+def set_semester(sid: int, body: SemesterIn, request: Request, user: User = Depends(get_current_user),
+                 db: Session = Depends(get_db)):
+    st = _managed_student(db, user, sid)
+    row = db.scalar(select(StudentSemester).where(StudentSemester.student_id == st.id))
+    old = row.semester if row else None
+    if body.semester is None:
+        if row:
+            db.delete(row)
+    elif row:
+        row.semester, row.set_by = body.semester, user.id
+    else:
+        db.add(StudentSemester(student_id=st.id, semester=body.semester, set_by=user.id))
+    audit.record(db, "student.semester_set", actor=user, target_type="student", target_id=st.id,
+                 details={"old": old, "new": body.semester}, ip=client_ip(request))
+    db.commit()
+    return {"semester": body.semester}
+
+
+def _prior_out(p: PriorCredit) -> dict:
+    return {"id": p.id, "code": p.code, "title": p.title, "credits": p.credits, "kind": p.kind,
+            "percent": p.percent, "note": p.note, "created_at": p.created_at}
+
+
+@router.get("/students/{sid}/prior-credits")
+def list_prior(sid: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    st = _managed_student(db, user, sid)
+    return [_prior_out(p) for p in db.scalars(select(PriorCredit).where(PriorCredit.student_id == st.id)
+                                              .order_by(PriorCredit.code))]
+
+
+class PriorIn(BaseModel):
+    code: str = Field(min_length=2, max_length=40)
+    title: str = Field(default="", max_length=200)
+    credits: int | None = Field(default=None, ge=0, le=20)
+    kind: str = Field(default="prior", pattern="^(prior|transfer)$")
+    percent: float | None = Field(default=None, ge=0, le=100)
+    note: str = Field(default="", max_length=300)
+
+
+def _add_prior(db: Session, user: User, st: User, body: PriorIn) -> PriorCredit:
+    code = body.code.strip().upper()
+    program = registration.program_of(db, st)
+    plan = db.scalar(select(ProgramCourse).where(ProgramCourse.program_id == program.id, ProgramCourse.code == code)) \
+        if program else None
+    title = body.title.strip() or (plan.title if plan else "")
+    if len(title) < 2:
+        raise HTTPException(status_code=400, detail=f"{code}: اكتب اسم المقرر (ليس في خطة الطالب)")
+    credits = body.credits if body.credits is not None else (plan.credits if plan else 3)
+    row = db.scalar(select(PriorCredit).where(PriorCredit.student_id == st.id, PriorCredit.code == code))
+    if row is None:
+        row = PriorCredit(university_id=st.university_id, student_id=st.id, code=code, created_by=user.id)
+        db.add(row)
+    row.title, row.credits, row.kind, row.percent, row.note = title, credits, body.kind, body.percent, body.note.strip()
+    return row
+
+
+@router.post("/students/{sid}/prior-credits")
+def add_prior(sid: int, body: PriorIn, request: Request, user: User = Depends(get_current_user),
+              db: Session = Depends(get_db)):
+    st = _managed_student(db, user, sid)
+    row = _add_prior(db, user, st, body)
+    db.flush()
+    audit.record(db, "student.prior_credit_added", actor=user, target_type="student", target_id=st.id,
+                 details={"code": row.code, "kind": row.kind}, ip=client_ip(request))
+    db.commit()
+    return _prior_out(row)
+
+
+class BulkPriorIn(BaseModel):
+    up_to_semester: int = Field(ge=1, le=14)
+    kind: str = Field(default="prior", pattern="^(prior|transfer)$")
+
+
+@router.post("/students/{sid}/prior-credits/bulk")
+def add_prior_bulk(sid: int, body: BulkPriorIn, request: Request, user: User = Depends(get_current_user),
+                   db: Session = Depends(get_db)):
+    """Marks every course of the student's plan up to a semester as passed before the platform
+    (those already passed or being taken are left as they are), and sets the next semester."""
+    st = _managed_student(db, user, sid)
+    program = registration.program_of(db, st)
+    if not program:
+        raise HTTPException(status_code=400, detail="الطالب غير مربوط بتخصص")
+    taken = {h["code"] for h in registration.history(db, st, tenant_settings(db, st)["grading"])
+             if h["state"] in ("passed", "in_progress")}
+    added = []
+    for r in db.scalars(select(ProgramCourse).where(ProgramCourse.program_id == program.id,
+                                                    ProgramCourse.semester <= body.up_to_semester)):
+        if r.code not in taken:
+            _add_prior(db, user, st, PriorIn(code=r.code, kind=body.kind))
+            added.append(r.code)
+    row = db.scalar(select(StudentSemester).where(StudentSemester.student_id == st.id))
+    nxt = min(body.up_to_semester + 1, program.semesters)
+    if row:
+        row.semester, row.set_by = nxt, user.id
+    else:
+        db.add(StudentSemester(student_id=st.id, semester=nxt, set_by=user.id))
+    audit.record(db, "student.prior_credit_added", actor=user, target_type="student", target_id=st.id,
+                 details={"codes": added, "kind": body.kind, "up_to_semester": body.up_to_semester},
+                 ip=client_ip(request))
+    db.commit()
+    return {"added": sorted(added), "semester": nxt}
+
+
+@router.delete("/prior-credits/{pid}")
+def delete_prior(pid: int, request: Request, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    p = db.get(PriorCredit, pid)
+    if not p or p.university_id != user.university_id:
+        raise not_found()
+    _managed_student(db, user, p.student_id)
+    audit.record(db, "student.prior_credit_removed", actor=user, target_type="student", target_id=p.student_id,
+                 details={"code": p.code}, ip=client_ip(request))
+    db.delete(p)
+    db.commit()
+    return {"ok": True}
