@@ -106,6 +106,10 @@ def can(db: Session, user: User, section: str, *, manage: bool = False, target: 
         return ok
     if target.university_id != user.university_id or section_of(target) != section:
         return False
+    key = f"{section}.manage" if manage or permissions.allowed(db, user, f"{section}.manage") else f"{section}.view"
+    limit = permissions.department_limit(db, user, key)
+    if limit is not None and target.department_id != limit:  # a head of department: their department only
+        return False
     return user.role == Role.UNIVERSITY_ADMIN or user.faculty_id is None or target.faculty_id == user.faculty_id
 
 
@@ -150,6 +154,10 @@ def list_people(section: str = Query(pattern="^(staff|faculty)$"), q: str | None
     stmt = select(User).where(User.university_id == user.university_id, User.role.in_(SECTIONS[section]))
     if user.role != Role.UNIVERSITY_ADMIN and user.faculty_id is not None:
         stmt = stmt.where(User.faculty_id == user.faculty_id)
+    key = f"{section}.manage" if permissions.allowed(db, user, f"{section}.manage") else f"{section}.view"
+    dept = permissions.department_limit(db, user, key)
+    if dept is not None:  # a head of department: their department only
+        stmt = stmt.where(User.department_id == dept)
     if faculty_id:
         stmt = stmt.where(User.faculty_id == faculty_id)
     if q:

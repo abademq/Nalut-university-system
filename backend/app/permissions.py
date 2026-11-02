@@ -27,6 +27,7 @@ CAPABILITIES: dict[str, tuple[str, str, list[str], list[str]]] = {
     "notify.official_warning": ("الإشعارات", "إصدار إنذار رسمي", ROLES, [UA, FA]),
     "notify.admin_notice": ("الإشعارات", "إرسال تعميم إداري", ROLES, [UA, FA, STAFF]),
     "users.manage": ("الإدارة", "إنشاء وتعديل حسابات المستخدمين", ROLES, [UA, FA]),
+    "users.delete": ("الإدارة", "حذف الحسابات نهائياً والبت في طلبات الحذف", ROLES, [UA, FA]),
     "structure.faculties": ("الإدارة", "إضافة الكليات وتعديلها وحذفها", ROLES, [UA]),
     "structure.departments": ("الإدارة", "إضافة الأقسام وتعديلها وحذفها", ROLES, [UA, FA]),
     "structure.terms": ("الإدارة", "إدارة الفصول الدراسية", ROLES, [UA]),
@@ -92,19 +93,50 @@ def group_capabilities(db: Session, user: User) -> set[str]:
         return cached
     from sqlalchemy import select
 
-    from .models import PermissionGroup, PermissionGroupMember
+    from .models import PermissionGroup, PermissionGroupMember, PositionScope
 
     caps: set[str] = set()
+    dept: set[str] = set()  # held only through department-limited positions
     if user.id is not None and user.role in GROUP_ROLES:
-        for group_caps in db.scalars(select(PermissionGroup.capabilities).join(
-                PermissionGroupMember, PermissionGroupMember.group_id == PermissionGroup.id).where(
+        for group_caps, sc in db.execute(select(PermissionGroup.capabilities, PositionScope.scope).join(
+                PermissionGroupMember, PermissionGroupMember.group_id == PermissionGroup.id).outerjoin(
+                PositionScope, PositionScope.group_id == PermissionGroup.id).where(
                 PermissionGroupMember.user_id == user.id, PermissionGroup.university_id == user.university_id)):
-            caps.update(group_caps or [])
+            (dept if sc == "department" else caps).update(group_caps or [])
+    dept -= caps
+    caps |= dept
     try:
-        user._group_caps = caps
+        user._group_caps, user._dept_caps = caps, dept
     except AttributeError:
         pass
     return caps
+
+
+def department_limit(db: Session, user: User, key: str) -> int | None:
+    """The department ``key`` is limited to, when the user holds it only through a position
+    limited to its department (-1 when they belong to none: nothing matches); None otherwise."""
+    if is_platform(user) or user.role == Role.STUDENT:
+        return None
+    from .deps import tenant_settings
+
+    group_capabilities(db, user)
+    limited = key in getattr(user, "_dept_caps", set())
+    # a teacher's own role rights concern their own courses; how far beyond them they reach is the
+    # position's to say, so a department-limited position limits them even when the role holds the right
+    if limited and user.role in (TEACHER, ASSISTANT):
+        return user.department_id or -1
+    roles = tenant_settings(db, user).get("permissions", {}).get(key, DEFAULT_PERMISSIONS.get(key, []))
+    if user.role in roles:
+        return None
+    return (user.department_id or -1) if limited else None
+
+
+def in_unit(db: Session, user: User, key: str, faculty_id, department_id) -> bool:
+    """in_scope() for a record, also honouring a department-limited position."""
+    if not in_scope(scope(db, user, key), faculty_id):
+        return False
+    limit = department_limit(db, user, key)
+    return limit is None or department_id == limit
 
 
 # The positions (صفات) a university starts with: each is a permission group, and a person holds
@@ -118,7 +150,7 @@ DEFAULT_POSITIONS = [
       "banners.manage", "publications.manage", "reports.view"]),
     ("مسجل الكلية", "قيد الطلبة وحساباتهم وملفاتهم وربطهم بالتخصصات",
      ["users.manage", "students.view", "archive.access", "programs.manage", "notify.admin_notice"]),
-    ("رئيس قسم", "متابعة مقررات القسم وطلبته وأعضاء هيئة التدريس فيه",
+    ("رئيس قسم", "متابعة مقررات القسم وطلبته وأعضاء هيئة التدريس فيه (في قسمه فقط)",
      ["courses.schedule", "reports.view", "students.view", "faculty.view", "notify.announcement", "notify.academic_note"]),
     ("مكتب الامتحانات", "الجداول والنتائج ومتابعة الطلبة",
      ["students.view", "reports.view", "archive.access", "publications.manage", "notify.announcement"]),
@@ -129,6 +161,9 @@ DEFAULT_POSITIONS = [
     ("الإعلام والعلاقات العامة", "الإعلانات المثبتة والمنشورات واللوائح",
      ["banners.manage", "publications.manage", "regulations.manage", "notify.announcement"]),
 ]
+
+# positions whose rights apply to the holder's department only
+DEPARTMENT_POSITIONS = {"رئيس قسم"}
 
 # who can be put in a permission group (students never: their rights are fixed)
 GROUP_ROLES = (UA, FA, STAFF, TEACHER, ASSISTANT)

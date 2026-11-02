@@ -229,6 +229,13 @@ trap 'systemctl start nus' EXIT
 sudo -u nus bash -c 'set -a; . $ENV_FILE; set +a; cd $APP_DIR/backend; exec $APP_DIR/.venv/bin/python -m app.reset "\$@"' nus-reset "\$@"
 RESET
 chmod 755 /usr/local/sbin/nus-reset
+# every account but the platform administrator (same backup and confirmation)
+cat > /usr/local/sbin/nus-delete-accounts <<'DELACC'
+#!/usr/bin/env bash
+# Deletes every account except the platform administrator, with what belongs to them.
+exec /usr/local/sbin/nus-reset --accounts "$@"
+DELACC
+chmod 755 /usr/local/sbin/nus-delete-accounts
 
 # Keep the deploy command current (only where the deploy button was set up). Written to a new
 # file and renamed: this script may be running from inside nus-update right now.

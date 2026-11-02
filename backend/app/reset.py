@@ -74,6 +74,7 @@ def reset(*, keep_structure: bool = True) -> dict:
         keep.append((m.MfaPreference, _rows(db, m.MfaPreference, m.MfaPreference.user_id.in_(ids))))
         keep.append((m.AppAsset, _rows(db, m.AppAsset)))
         keep.append((m.PermissionGroup, _rows(db, m.PermissionGroup)))  # the positions, without holders
+        keep.append((m.PositionScope, _rows(db, m.PositionScope)))
         if keep_structure:
             keep += [(model, _rows(db, model)) for model in STRUCTURE]
     finally:
@@ -103,11 +104,43 @@ def reset(*, keep_structure: bool = True) -> dict:
     return counts
 
 
+def delete_accounts() -> dict:
+    """Every account but the platform administrators, with everything that belongs to them
+    (their courses' enrolments, grades, attendance, messages, requests, files ...). Courses,
+    structure, positions and settings stay."""
+    from . import audit, purge
+
+    db = SessionLocal()
+    try:
+        ids = set(db.scalars(select(m.User.id).where(m.User.role != m.Role.PLATFORM_ADMIN)))
+        counts = purge.purge_users(db, ids)
+        for uni in db.scalars(select(m.University)):
+            audit.record(db, "system.accounts_deleted", university_id=uni.id, details={"accounts": len(ids)})
+        db.commit()
+        purge.remove_purged_files(db)
+        return counts
+    finally:
+        db.close()
+
+
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description="Delete all data and start again (a backup is taken first).")
     p.add_argument("--all", action="store_true", help="also delete faculties, departments, terms and programmes")
     p.add_argument("--yes", action="store_true", help="do not ask for the typed confirmation")
+    p.add_argument("--accounts", action="store_true",
+                   help="only delete every account but the platform administrator (and what belongs to them)")
     args = p.parse_args(argv)
+    if args.accounts:
+        print("ستُحذف كل الحسابات عدا مشرف المنصة، ومعها كل ما يخص أصحابها: التسجيل في المقررات والدرجات والحضور "
+              "والرسائل والطلبات والملفات.\nيبقى: الجامعة وإعداداتها والهيكل والتخصصات والمقررات والصفات الوظيفية.")
+        if not args.yes and input(f"اكتب «{CONFIRM}» للمتابعة: ").strip() != CONFIRM:
+            print("أُلغي، لم يُحذف شيء.")
+            return 1
+        for path in backup():
+            print(f"backup: {path}")
+        counts = delete_accounts()
+        print(f"done. accounts deleted: {counts.get('users', 0)}; rows: " + ", ".join(f"{k} {v}" for k, v in counts.items()))
+        return 0
     kept = "الجامعة وإعداداتها وحسابات مشرف المنصة" + ("" if args.all else "، والكليات والأقسام والفصول والتخصصات وخططها")
     print(f"سيُحذف كل ما أُدخل في المنصة: الحسابات والمقررات والدرجات والحضور والرسائل والطلبات والملفات.\nيبقى: {kept}.")
     if not args.yes:

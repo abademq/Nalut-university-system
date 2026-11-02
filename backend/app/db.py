@@ -90,6 +90,7 @@ def init_db() -> None:
     _adopt_university_colors()
     _adopt_open_permissions()
     _seed_positions()
+    _scope_positions()
 
 
 # Colors of earlier identities (the green one, a maroon-first one, then bright gold with maroon), replaced
@@ -171,6 +172,30 @@ def _seed_positions() -> None:
                 if name not in have:
                     db.add(PermissionGroup(university_id=uni.id, name=name, description=desc, capabilities=list(caps)))
             st["_positions_v"] = 1
+            uni.settings = st
+            changed = True
+        if changed:
+            db.commit()
+
+
+def _scope_positions() -> None:
+    """Positions version 2: the heads of department act in their department only."""
+    from sqlalchemy import select
+
+    from .models import PermissionGroup, PositionScope, University
+    from .permissions import DEPARTMENT_POSITIONS
+
+    with SessionLocal() as db:
+        changed = False
+        for uni in db.scalars(select(University)):
+            st = dict(uni.settings or {})
+            if st.get("_positions_v", 0) >= 2 or st.get("_positions_v", 0) < 1:
+                continue
+            for g in db.scalars(select(PermissionGroup).where(PermissionGroup.university_id == uni.id,
+                                                              PermissionGroup.name.in_(DEPARTMENT_POSITIONS))):
+                if not db.scalar(select(PositionScope.id).where(PositionScope.group_id == g.id)):
+                    db.add(PositionScope(group_id=g.id, scope="department"))
+            st["_positions_v"] = 2
             uni.settings = st
             changed = True
         if changed:

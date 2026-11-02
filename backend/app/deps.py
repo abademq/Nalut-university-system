@@ -170,8 +170,19 @@ def course_authority(db: Session, user: User, course: Course) -> bool:
 
     if user.role == Role.STUDENT or user.university_id != course.university_id:
         return False
-    keys = _COURSE_WIDE if user.role in Role.INSTRUCTORS else _COURSE_WIDE + _TEACHING
-    return any(permissions.in_scope(permissions.scope(db, user, k), course.faculty_id) for k in keys)
+    return any(permissions.in_unit(db, user, k, course.faculty_id, course.department_id)
+               for k in _reach_keys(db, user))
+
+
+def _reach_keys(db: Session, user: User) -> tuple[str, ...]:
+    """The rights that open courses beyond one's own: for teachers the course-wide ones, plus any
+    teaching right their position (e.g. head of department) gives them."""
+    from . import permissions
+
+    if user.role not in Role.INSTRUCTORS:
+        return _COURSE_WIDE + _TEACHING
+    from_position = permissions.group_capabilities(db, user)
+    return _COURSE_WIDE + tuple(k for k in _TEACHING if k in from_position)
 
 
 def course_admin(db: Session, user: User, course: Course, key: str = "courses.manage") -> bool:
@@ -179,7 +190,7 @@ def course_admin(db: Session, user: User, course: Course, key: str = "courses.ma
     from . import permissions
 
     return user.university_id == course.university_id and \
-        permissions.in_scope(permissions.scope(db, user, key), course.faculty_id)
+        permissions.in_unit(db, user, key, course.faculty_id, course.department_id)
 
 
 def can_view_course(db: Session, user: User, course: Course) -> bool:
@@ -226,12 +237,22 @@ def visible_course_ids(db: Session, user: User) -> list[int]:
         own = set()
         if user.role in Role.INSTRUCTORS:
             own = set(db.scalars(select(CourseStaff.course_id).where(CourseStaff.user_id == user.id)))
-        keys = _COURSE_WIDE if user.role in Role.INSTRUCTORS else _COURSE_WIDE + _TEACHING
-        scopes = {permissions.scope(db, user, k) for k in keys} - {None}
-        if permissions.ALL in scopes:
-            return sorted(own | set(db.scalars(q)))
-        if scopes:
-            own |= set(db.scalars(q.where(Course.faculty_id.in_(scopes))))
+        conds = []
+        for k in _reach_keys(db, user):
+            sc = permissions.scope(db, user, k)
+            if sc is None:
+                continue
+            limit = permissions.department_limit(db, user, k)
+            cond = True if sc == permissions.ALL else (Course.faculty_id == sc)
+            if limit is not None:
+                cond = (Course.department_id == limit) if cond is True else (cond & (Course.department_id == limit))
+            if cond is True:
+                return sorted(own | set(db.scalars(q)))
+            conds.append(cond)
+        if conds:
+            from sqlalchemy import or_
+
+            own |= set(db.scalars(q.where(or_(*conds))))
         return sorted(own)
     elif user.role == Role.STUDENT:
         q = q.join(Enrollment, Enrollment.course_id == Course.id).where(

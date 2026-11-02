@@ -333,3 +333,32 @@ def test_each_staff_member_holds_one_position(client, as_, db):
     give = client.patch(f"/api/users/{uid}", headers=d, json={"position_id": pos["شؤون الموظفين"]["id"]})
     assert give.status_code == 403 and "لا تملكها" in give.json()["detail"]
     assert client.patch(f"/api/users/{uid}", headers=p, json={"position_id": None}).json()["position"] is None
+
+
+def test_head_of_department_acts_in_their_department_only(client, as_, db):
+    """Salma (information systems) as head of department: IS courses and students, not CS."""
+    from app.models import Course, PermissionGroup, PositionScope
+
+    head = db.query(PermissionGroup).filter_by(name="رئيس قسم", university_id=uni_id(db)).one()
+    assert db.query(PositionScope).filter_by(group_id=head.id).one().scope == "department"
+    salma = db.query(User).filter_by(email="t.salma@nalut.edu.ly").one()
+    r = client.patch(f"/api/users/{salma.id}", headers=as_(PRES), json={"position_id": head.id})
+    assert r.status_code == 200 and r.json()["position"]["name"] == "رئيس قسم"
+    s = as_("t.salma@nalut.edu.ly")
+    codes = {c["code"] for c in client.get("/api/courses", headers=s).json()}
+    assert "IS110" in codes and "CS101" not in codes and "CS201" not in codes
+    students = client.get("/api/students?limit=200", headers=s).json()["items"]
+    assert students and all(x["department"] == "نظم المعلومات" for x in students)
+    ali = db.query(User).filter_by(email="s.ali@nalut.edu.ly").one()  # computer science
+    assert client.get(f"/api/reports/person/{ali.id}", headers=s).status_code == 403
+    is_student = next(x for x in students)
+    assert client.get(f"/api/reports/person/{is_student['id']}", headers=s).status_code == 200
+    cs101 = db.query(Course).filter_by(code="CS101").one()
+    assert client.patch(f"/api/courses/{cs101.id}", headers=s, json={"schedule": []}).status_code == 403
+    # the same position set to the whole faculty opens computer science as well
+    act = {**platform(client), "X-Act-As-University": str(uni_id(db))}
+    g = client.get("/api/permission-groups", headers=act).json()
+    g = next(x for x in g if x["id"] == head.id)
+    client.patch(f"/api/permission-groups/{head.id}", headers=act,
+                 json={"name": g["name"], "description": g["description"], "capabilities": g["capabilities"], "scope": "faculty"})
+    assert "CS101" in {c["code"] for c in client.get("/api/courses", headers=s).json()}

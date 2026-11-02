@@ -1,5 +1,6 @@
 import { html, useState, useEffect, useAsync, Async, Empty, Chip, ErrorBox, useForm, useSubmit, toast, toastError, Modal, ROLE, CATEGORY, fmtDate, TemplateText } from "../ui.js";
 import { api, setActing } from "../api.js";
+import { deleteAccount } from "./deletions.js";
 
 const CREATABLE = {
   university_admin: ["student", "teacher", "assistant", "staff", "faculty_admin"],
@@ -100,7 +101,8 @@ export function UsersView({ user }) {
         <td>${u.id !== user.id && creatable(user).includes(u.role) ? html`<div class="row">
           <button class="small secondary" onClick=${() => setEditing(u)}>تعديل</button>
           <button class="small secondary" onClick=${() => toggle(u)}>${u.is_active ? "إيقاف" : "تفعيل"}</button>
-          <button class="small secondary" onClick=${() => reset(u)}>كلمة مرور</button></div>` : null}</td></tr>`)}</tbody></table></div></div>`}<//>
+          <button class="small secondary" onClick=${() => reset(u)}>كلمة مرور</button>
+          <button class="small danger" onClick=${() => deleteAccount(u, state.reload)}>حذف نهائي</button></div>` : null}</td></tr>`)}</tbody></table></div></div>`}<//>
     ${temp ? html`<${TempPassword} value=${temp} onClose=${() => setTemp(null)} />` : null}
     ${editing ? html`<${EditUser} user=${user} target=${editing} structure=${structure.data} onClose=${() => setEditing(null)}
       onSaved=${() => { setEditing(null); state.reload(); }} />` : null}
@@ -469,6 +471,7 @@ function SettingsForm({ data, acting, onSaved }) {
     max_credits_per_term: e.registration.max_credits_per_term, min_credits_per_term: e.registration.min_credits_per_term,
     enforce_prerequisites: e.registration.enforce_prerequisites, block_passed_repeat: e.registration.block_passed_repeat,
     block_schedule_clash: e.registration.block_schedule_clash,
+    deletion_approver: e.accounts?.deletion_approver || "faculty",
     ai_enabled: e.ai.enabled, ai_students: e.ai.students, ai_staff: e.ai.staff, ai_assistant: e.ai.assistant,
     warning_absence_percent: e.attendance.warning_absence_percent, limit_absence_percent: e.attendance.limit_absence_percent,
     review_threshold: e.attendance.review_threshold, selfie_retention_days: e.attendance.selfie_retention_days,
@@ -514,6 +517,7 @@ function SettingsForm({ data, acting, onSaved }) {
       registration: { ...e.registration, max_credits_per_term: n("max_credits_per_term"), min_credits_per_term: n("min_credits_per_term"),
         enforce_prerequisites: !!v.enforce_prerequisites, block_passed_repeat: !!v.block_passed_repeat,
         block_schedule_clash: !!v.block_schedule_clash },
+      accounts: { ...(e.accounts || {}), deletion_approver: v.deletion_approver },
       ai: { ...e.ai, enabled: !!v.ai_enabled, students: !!v.ai_students, staff: !!v.ai_staff, assistant: !!v.ai_assistant },
       grading: { ...e.grading, pass_mark: n("pass_mark"), low_performance_percent: n("low_performance_percent"),
         scale: scale.map(([m, l, a]) => [Number(m), String(l).trim(), String(a).trim()]) },
@@ -573,6 +577,11 @@ function SettingsForm({ data, acting, onSaved }) {
         <option value="faculty">أساتذة مقرراته، وموظفي كليته وإدارتها</option>
         <option value="none">لا يبدأ محادثات (يرد فقط)</option></select></div>
       ${num("max_attachment_mb", "أكبر حجم للمرفق (ميغابايت)", { min: 1, max: 25 })}</div></div>
+    <div class="card"><h3>حذف الحسابات</h3>
+      <div class="field"><label>من يبتّ في حذف الحسابات نهائياً</label><select ...${bind("deletion_approver")}>
+        <option value="faculty">إدارة كلية الحساب (ومن يملك صلاحية الحذف في الكلية)، وإدارة الجامعة</option>
+        <option value="university">إدارة الجامعة فقط</option></select></div>
+      <p class="small muted">رئيس القسم والموظف يرسلان طلب حذف، ويصل إشعار لمن يبتّ فيه. الحذف نهائي ويُسجَّل في سجل التدقيق.</p></div>
     <div class="card"><h3>الذكاء الاصطناعي</h3>
       <p class="small muted">تحليلات ونصائح بخدمة Claude من Anthropic. لا تُرسل الأسماء ولا أرقام القيد، ويوافق الطالب بنفسه قبل تحليل بياناته.
         تعمل فقط إذا أُضيف مفتاح الخدمة على الخادم.</p>
@@ -785,7 +794,8 @@ function PermissionGroups({ capabilities, editable }) {
       في «المستخدمون». صلاحيات الصفة تُضاف لصلاحيات دوره في الجدول أعلاه، ويمارسها في كليته (أو في الجامعة إن لم يتبع كلية).</p>
     <${Async} state=${state}>${(rows) => rows.length ? html`<div class="table-wrap"><table>
       <thead><tr><th>الصفة</th><th>الصلاحيات</th><th>من يحملها</th><th></th></tr></thead>
-      <tbody>${rows.map((g) => html`<tr><td><strong>${g.name}</strong><div class="small muted">${g.description}</div></td>
+      <tbody>${rows.map((g) => html`<tr><td><strong>${g.name}</strong>${g.scope === "department" ? html` <${Chip} kind="info">القسم فقط<//>` : null}
+        <div class="small muted">${g.description}</div></td>
         <td class="small">${g.capabilities.map((k) => label[k] || k).join("، ") || "—"}</td>
         <td class="small">${g.members.map((m) => m.full_name).join("، ") || "—"}</td>
         <td>${editable ? html`<div class="row"><button class="small secondary" onClick=${() => setEdit(g)}>تعديل</button>
@@ -797,7 +807,7 @@ function PermissionGroups({ capabilities, editable }) {
 }
 
 function GroupEditor({ group, capabilities, onClose, onSaved }) {
-  const [v, bind] = useForm({ name: group.name, description: group.description || "" });
+  const [v, bind] = useForm({ name: group.name, description: group.description || "", scope: group.scope || "faculty" });
   const [caps, setCaps] = useState(group.capabilities || []);
   const [members, setMembers] = useState(group.members || []);
   const [q, setQ] = useState("");
@@ -808,7 +818,7 @@ function GroupEditor({ group, capabilities, onClose, onSaved }) {
     if (r) setFound(r.items.filter((u) => PERM_ROLES.includes(u.role) && !members.some((m) => m.id === u.id)));
   };
   const [submit, busy, error] = useSubmit(async () => {
-    const body = { name: v.name, description: v.description, capabilities: caps };
+    const body = { name: v.name, description: v.description, capabilities: caps, scope: v.scope };
     const g = group.id ? await api.patch(`/api/permission-groups/${group.id}`, body)
       : await api.post("/api/permission-groups", body);
     await api.put(`/api/permission-groups/${g.id}/members`, { user_ids: members.map((m) => m.id) });
@@ -820,7 +830,10 @@ function GroupEditor({ group, capabilities, onClose, onSaved }) {
   return html`<${Modal} title=${group.id ? `تعديل «${group.name}»` : "صفة جديدة"} onClose=${onClose}>
     <form onSubmit=${submit}><${ErrorBox} error=${error} />
       <div class="form-grid"><div class="field"><label>الاسم</label><input ...${bind("name")} required minlength="2" /></div>
-        <div class="field"><label>الوصف</label><input ...${bind("description")} /></div></div>
+        <div class="field"><label>الوصف</label><input ...${bind("description")} /></div>
+        <div class="field"><label>نطاق الصلاحيات</label><select ...${bind("scope")}>
+          <option value="faculty">كلية حاملها (أو الجامعة إن لم يتبع كلية)</option>
+          <option value="department">قسم حاملها فقط (مثل رئيس القسم)</option></select></div></div>
       <h4>الصلاحيات</h4>
       ${groups.map((gname) => html`<div style="margin-bottom:.5rem"><strong class="small">${gname}</strong>
         ${capabilities.filter((c) => c.group === gname).map((c) => html`<label class="check"><input type="checkbox"

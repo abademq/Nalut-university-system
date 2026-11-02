@@ -674,6 +674,28 @@ class Message(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
+class AccountDeletionRequest(Base):
+    """A request to delete an account for good, decided by the faculty or university administration.
+
+    The account's name and number are copied here: the request outlives the account."""
+
+    __tablename__ = "account_deletion_requests"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    university_id: Mapped[int] = mapped_column(ForeignKey("universities.id"), index=True)
+    target_id: Mapped[int] = mapped_column(Integer, index=True)  # no foreign key: the account goes
+    target_name: Mapped[str] = mapped_column(String(200))
+    target_code: Mapped[str | None] = mapped_column(String(40))
+    target_role: Mapped[str] = mapped_column(String(30))
+    target_faculty_id: Mapped[int | None] = mapped_column(Integer)
+    reason: Mapped[str] = mapped_column(String(500))
+    requested_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    status: Mapped[str] = mapped_column(String(20), default="pending")  # pending | approved | rejected
+    decided_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    decision_note: Mapped[str] = mapped_column(String(500), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+
 class ImportJob(Base):
     """An uploaded Excel file waiting to be applied: its rows checked, and the problems found."""
 
@@ -936,6 +958,16 @@ class PermissionGroup(Base):
     description: Mapped[str] = mapped_column(String(300), default="")
     capabilities: Mapped[list] = mapped_column(JSON, default=list)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class PositionScope(Base):
+    """Where a position's rights apply: the holder's faculty (default) or only their department
+    (e.g. a head of department sees the department's courses, students and teachers only)."""
+
+    __tablename__ = "position_scopes"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    group_id: Mapped[int] = mapped_column(ForeignKey("permission_groups.id"), unique=True)
+    scope: Mapped[str] = mapped_column(String(20), default="faculty")  # faculty | department
 
 
 class PermissionGroupMember(Base):

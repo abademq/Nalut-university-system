@@ -58,6 +58,9 @@ def can_manage(db: Session, user: User, student: User | None = None) -> bool:
         return False
     if user.role == Role.UNIVERSITY_ADMIN:
         return True
+    limit = permissions.department_limit(db, user, "archive.access")
+    if limit is not None and student.department_id != limit:
+        return False
     return user.faculty_id is None or student.faculty_id == user.faculty_id
 
 
@@ -100,6 +103,9 @@ def list_students(q: str | None = Query(default=None, max_length=100), departmen
     stmt = select(User).where(User.university_id == user.university_id, User.role == Role.STUDENT)
     if user.role != Role.UNIVERSITY_ADMIN and user.faculty_id is not None:
         stmt = stmt.where(User.faculty_id == user.faculty_id)
+    dept = permissions.department_limit(db, user, "archive.access")
+    if dept is not None:
+        stmt = stmt.where(User.department_id == dept)
     if department_id:
         stmt = stmt.where(User.department_id == department_id)
     if cohort:

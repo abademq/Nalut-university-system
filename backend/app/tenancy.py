@@ -77,6 +77,9 @@ DEFAULT_SETTINGS: dict = {
         "staff": True,        # course summaries, feedback drafts, questions, reports, wording
         "assistant": True,    # questions about the platform and the regulations, for everyone
     },
+    # who decides the requests to delete an account for good: the faculty administration of the
+    # account's faculty ("faculty") or the university administration only ("university")
+    "accounts": {"deletion_approver": "faculty"},
     # registration rules, checked whenever students are registered in a course
     "registration": {
         "enforce_prerequisites": True,   # a course's prerequisites must have been passed

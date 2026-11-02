@@ -15,6 +15,7 @@ from .closed import ClosedGate
 from .config import settings
 from .db import init_db
 from .routers import (
+    accounts,
     admin,
     ai,
     archive,
@@ -117,7 +118,7 @@ async def unhandled(request: Request, exc: Exception):  # pragma: no cover - saf
     return JSONResponse({"detail": "حدث خطأ غير متوقع"}, status_code=500)
 
 
-for r in (auth, admin, ai, courses, assignments, grades, notifications, attendance, messages, requests, files, reports,
+for r in (auth, admin, accounts, ai, courses, assignments, grades, notifications, attendance, messages, requests, files, reports,
           banners, archive, publications, launch, personnel, programs, regulations, imports, download):
     app.include_router(r.router)
 

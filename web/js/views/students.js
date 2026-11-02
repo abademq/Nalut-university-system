@@ -1,3 +1,4 @@
+import { deleteAccount } from "./deletions.js";
 import { PlanCard, StandingManager } from "./plan.js";
 import { TranscriptCard } from "./transcript.js";
 import { AcademicSummary } from "./courses.js";
@@ -43,7 +44,8 @@ export function StudentDetail({ id, user }) {
       ${d.contact ? html`<div class="card"><h3>التواصل</h3><div class="row" style="flex-wrap:wrap">
         ${d.contact.can_message ? html`<a class="btn small" href=${`#/messages?to=${d.user.id}`}>مراسلة في المنصة</a>` : null}
         ${d.contact.phone ? html`<a class="btn small secondary ltr" href=${`tel:${d.contact.phone}`}>${d.contact.phone}</a>` : null}
-        ${d.contact.email ? html`<a class="btn small secondary ltr" href=${`mailto:${d.contact.email}`}>${d.contact.email}</a>` : null}</div>
+        ${d.contact.email ? html`<a class="btn small secondary ltr" href=${`mailto:${d.contact.email}`}>${d.contact.email}</a>` : null}
+        ${user.role !== "student" ? html`<button class="small danger" onClick=${() => deleteAccount(d.user, () => navigate("#/students"))}>حذف الحساب</button>` : null}</div>
         <p class="small muted">${[d.contact.faculty, d.contact.department, d.contact.cohort ? `دفعة ${d.contact.cohort}` : null].filter(Boolean).join(" · ")}
           ${d.contact.guardian_phone ? html` · ولي الأمر: ${d.contact.guardian_name || ""} ${d.contact.guardian_relation ? `(${d.contact.guardian_relation})` : ""}
             <a class="ltr" href=${`tel:${d.contact.guardian_phone}`}>${d.contact.guardian_phone}</a>` : null}</p></div>` : null}

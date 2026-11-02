@@ -33,6 +33,7 @@ from ..models import (
     MfaPreference,
     PermissionGroup,
     PermissionGroupMember,
+    PositionScope,
     Role,
     Term,
     University,
@@ -690,14 +691,24 @@ class GroupIn(BaseModel):
     name: str = Field(min_length=2, max_length=100)
     description: str = Field(default="", max_length=300)
     capabilities: list[str] = Field(default_factory=list, max_length=100)
+    scope: str = Field(default="faculty", pattern="^(faculty|department)$")
+
+
+def _set_scope(db: Session, g: PermissionGroup, scope: str) -> None:
+    row = db.scalar(select(PositionScope).where(PositionScope.group_id == g.id))
+    if row:
+        row.scope = scope
+    else:
+        db.add(PositionScope(group_id=g.id, scope=scope))
 
 
 def _group_out(db: Session, g: PermissionGroup) -> dict:
     members = db.execute(select(User.id, User.full_name, User.role, User.code).join(
         PermissionGroupMember, PermissionGroupMember.user_id == User.id).where(
         PermissionGroupMember.group_id == g.id).order_by(User.full_name)).all()
+    scope = db.scalar(select(PositionScope.scope).where(PositionScope.group_id == g.id)) or "faculty"
     return {"id": g.id, "name": g.name, "description": g.description, "capabilities": g.capabilities or [],
-            "members": [{"id": m.id, "full_name": m.full_name, "role": m.role, "code": m.code} for m in members]}
+            "scope": scope, "members": [{"id": m.id, "full_name": m.full_name, "role": m.role, "code": m.code} for m in members]}
 
 
 def _valid_caps(caps: list[str]) -> list[str]:
@@ -727,6 +738,7 @@ def create_group(body: GroupIn, request: Request, user: User = Depends(_platform
                         capabilities=_valid_caps(body.capabilities))
     db.add(g)
     db.flush()
+    _set_scope(db, g, body.scope)
     audit.record(db, "permissions.group_created", actor=user, target_type="permission_group", target_id=g.id,
                  details={"name": g.name, "capabilities": g.capabilities}, ip=client_ip(request))
     db.commit()
@@ -738,6 +750,7 @@ def patch_group(gid: int, body: GroupIn, request: Request, user: User = Depends(
                 db: Session = Depends(get_db)):
     g = _own_group(db, user, gid)
     g.name, g.description, g.capabilities = body.name.strip(), body.description.strip(), _valid_caps(body.capabilities)
+    _set_scope(db, g, body.scope)
     audit.record(db, "permissions.group_updated", actor=user, target_type="permission_group", target_id=g.id,
                  details={"name": g.name, "capabilities": g.capabilities}, ip=client_ip(request))
     db.commit()
@@ -749,6 +762,8 @@ def delete_group(gid: int, request: Request, user: User = Depends(_platform_acto
     g = _own_group(db, user, gid)
     for m in db.scalars(select(PermissionGroupMember).where(PermissionGroupMember.group_id == g.id)):
         db.delete(m)
+    for sc in db.scalars(select(PositionScope).where(PositionScope.group_id == g.id)):
+        db.delete(sc)
     audit.record(db, "permissions.group_deleted", actor=user, target_type="permission_group", target_id=g.id,
                  details={"name": g.name}, ip=client_ip(request))
     db.delete(g)
