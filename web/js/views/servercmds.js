@@ -25,6 +25,10 @@ const SECTIONS = [
     ["sudo nus-sms-check", "فحص إعدادات Resala في ملف الأسرار."],
     ["sudo nus-sms-check 0912345678", "فحصها وإرسال رمز تحقق تجريبي واحد للرقم."],
   ] },
+  { title: "الذكاء الاصطناعي", items: [
+    ["sudo nus-ai-check", "فحص مفتاح Anthropic والاتصال بالخدمة، وإرسال طلبين صغيرين يعرضان الرد أو الخطأ بالضبط."],
+    ["sudo systemctl restart nus", "بعد إضافة ANTHROPIC_API_KEY أو تغييره: المنصة لا تقرأ المفتاح إلا عند التشغيل."],
+  ] },
   { title: "الخدمة والتحديث", items: [
     ["sudo systemctl restart nus", "إعادة تشغيل المنصة؛ لازمة بعد أي تعديل في /etc/nus/nus.env."],
     ["sudo systemctl status nus", "حالة الخدمة (تعمل أم لا)."],

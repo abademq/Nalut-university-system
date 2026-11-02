@@ -64,30 +64,64 @@ def _client():
     return anthropic.Anthropic(timeout=120.0, max_retries=2)
 
 
+LAST_ERROR: dict = {}  # the latest failure, shown to the platform administrator and by nus-ai-check
+
+
+def _note_error(kind: str, exc) -> None:
+    import time
+
+    LAST_ERROR.clear()
+    LAST_ERROR.update({"kind": kind, "status": getattr(exc, "status_code", None),
+                       "message": str(getattr(exc, "message", "") or exc)[:500], "at": time.time()})
+
+
+def _request(content: list, system: str, schema: dict, effort: str, max_tokens: int, *, extras: bool):
+    """With ``extras``: adaptive thinking and the server-side fallback on declines (beta); without:
+    the plainest request with structured output, for accounts or regions that refuse the extras."""
+    client = _client()
+    params = dict(model=settings.ai_model, max_tokens=max_tokens, system=f"{BASE_SYSTEM}\n\n{system}",
+                  messages=[{"role": "user", "content": content}],
+                  output_config={"effort": effort, "format": {"type": "json_schema", "schema": schema}})
+    if extras:
+        return client.beta.messages.create(**params, thinking={"type": "adaptive"},
+                                           betas=["server-side-fallback-2026-07-01"], fallbacks="default")
+    return client.messages.create(**params)
+
+
 def _call(system: str, prompt: str | list, schema: dict, *, effort: str, max_tokens: int) -> dict:
     """One request to Claude; returns the JSON object the schema describes."""
     import anthropic
 
     content = prompt if isinstance(prompt, list) else [{"type": "text", "text": prompt}]
     try:
-        response = _client().beta.messages.create(
-            model=settings.ai_model,
-            max_tokens=max_tokens,
-            system=f"{BASE_SYSTEM}\n\n{system}",
-            messages=[{"role": "user", "content": content}],
-            thinking={"type": "adaptive"},
-            output_config={"effort": effort, "format": {"type": "json_schema", "schema": schema}},
-            # a declined request is retried on the model Anthropic recommends for that case
-            betas=["server-side-fallback-2026-07-01"],
-            fallbacks="default",
-        )
-    except anthropic.RateLimitError:
+        try:
+            response = _request(content, system, schema, effort, max_tokens, extras=True)
+        except anthropic.BadRequestError as exc:  # an option this account cannot use: try the plain request
+            log.warning("AI request refused (%s), retrying without the optional features", getattr(exc, "message", exc))
+            _note_error("bad_request_extras", exc)
+            response = _request(content, system, schema, effort, max_tokens, extras=False)
+    except anthropic.AuthenticationError as exc:
+        _note_error("auth", exc)
+        raise AiError("مفتاح خدمة الذكاء الاصطناعي غير صحيح أو أُلغي (ANTHROPIC_API_KEY)") from None
+    except anthropic.PermissionDeniedError as exc:
+        _note_error("permission", exc)
+        raise AiError("حساب Anthropic لا يسمح بهذا الطلب (رصيد أو صلاحية النموذج)") from None
+    except anthropic.NotFoundError as exc:
+        _note_error("model", exc)
+        raise AiError(f"النموذج {settings.ai_model} غير متاح لهذا الحساب (AI_MODEL)") from None
+    except anthropic.RateLimitError as exc:
+        _note_error("rate_limit", exc)
         raise AiError("خدمة الذكاء الاصطناعي مشغولة الآن، حاول بعد دقائق") from None
-    except anthropic.APIConnectionError:
-        raise AiError("تعذر الاتصال بخدمة الذكاء الاصطناعي، حاول لاحقاً") from None
+    except anthropic.APIConnectionError as exc:
+        _note_error("connection", exc)
+        raise AiError("تعذر الاتصال بخدمة الذكاء الاصطناعي من الخادم (الشبكة أو الجدار الناري)") from None
     except anthropic.APIStatusError as exc:
         log.warning("AI request failed: %s %s", exc.status_code, getattr(exc, "message", ""))
-        raise AiError("تعذر الحصول على رد من خدمة الذكاء الاصطناعي الآن") from None
+        _note_error("status", exc)
+        msg = str(getattr(exc, "message", "") or "")
+        if "credit" in msg.lower() or "balance" in msg.lower():
+            raise AiError("رصيد حساب Anthropic لا يكفي") from None
+        raise AiError(f"تعذر الحصول على رد من خدمة الذكاء الاصطناعي (رمز {exc.status_code})") from None
     if response.stop_reason == "refusal":
         raise AiError("لم تستطع خدمة الذكاء الاصطناعي معالجة هذا الطلب")
     if response.stop_reason == "max_tokens":

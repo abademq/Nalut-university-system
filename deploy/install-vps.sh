@@ -180,6 +180,12 @@ cat > /usr/local/sbin/nus-sms-check <<CHECK
 exec sudo -u nus bash -c 'set -a; . $ENV_FILE; set +a; cd $APP_DIR/backend; exec $APP_DIR/.venv/bin/python -m app.sms_check "\$@"' nus-sms-check "\$@"
 CHECK
 chmod 755 /usr/local/sbin/nus-sms-check
+cat > /usr/local/sbin/nus-ai-check <<CHECK
+#!/usr/bin/env bash
+# Checks the AI setup in $ENV_FILE: the key, the connection, and two small requests to Claude.
+exec sudo -u nus bash -c 'set -a; . $ENV_FILE; set +a; cd $APP_DIR/backend; exec $APP_DIR/.venv/bin/python -m app.ai_check' nus-ai-check
+CHECK
+chmod 755 /usr/local/sbin/nus-ai-check
 
 say "Installing the closing switch (sudo nus-close [\"message\"], sudo nus-open)"
 cat > /usr/local/sbin/nus-close <<CLOSE

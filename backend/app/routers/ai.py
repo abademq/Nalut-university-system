@@ -13,9 +13,10 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import ai, audit, files, grades, registration
+from .. import ai, audit, files, grades, permissions, registration
 from .. import attendance as att
 from ..ai import STR, AiError, arr, obj
+from ..config import settings
 from ..db import get_db, utcnow
 from ..deps import (
     can_teach_course,
@@ -63,7 +64,10 @@ def status(user: User = Depends(get_current_user), db: Session = Depends(get_db)
             "assistant": ai.available(cfg, "assistant"),
             "students": student and ai.available(cfg, "students"),
             "staff": not student and ai.available(cfg, "staff"),
-            "consent": ai.has_consent(db, user) if student else None}
+            "consent": ai.has_consent(db, user) if student else None,
+            # why it fails, for the platform administrator only
+            **({"key_present": settings.ai_key_present, "model": settings.ai_model, "last_error": ai.LAST_ERROR or None}
+               if permissions.is_platform(user) else {})}
 
 
 # --------------------------------------------------------------------------- consent

@@ -115,3 +115,25 @@ def test_draft_review_and_feedback_draft(client, as_, db, claude):
         fb = client.post(f"/api/ai/submissions/{sub.id}/feedback-draft", headers=as_(TEACHER))
         assert fb.status_code == 200 and fb.json()["feedback"]
         assert client.post(f"/api/ai/submissions/{sub.id}/feedback-draft", headers=h).status_code == 403
+
+
+def test_refused_options_fall_back_to_the_plain_request(monkeypatch):
+    import anthropic
+    import httpx2
+
+    calls = []
+
+    def fake(content, system, schema, effort, max_tokens, *, extras):
+        calls.append(extras)
+        if extras:
+            raise anthropic.BadRequestError("fallbacks: unknown field", body=None,
+                                            response=httpx2.Response(400, request=httpx2.Request("POST", "https://api.anthropic.com")))
+
+        class R:
+            stop_reason = "end_turn"
+            content = [type("B", (), {"type": "text", "text": '{"answer": "نعم"}'})()]
+        return R()
+
+    monkeypatch.setattr(ai, "_request", fake)
+    assert ai._call("s", "p", ai.obj({"answer": ai.STR}), effort="low", max_tokens=100) == {"answer": "نعم"}
+    assert calls == [True, False] and ai.LAST_ERROR["kind"] == "bad_request_extras"

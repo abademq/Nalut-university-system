@@ -457,6 +457,19 @@ const HINTS = {
   low_performance_percent: "إذا قلّ متوسط درجات الطالب في مهام مقرر عن هذه النسبة يظهر ضمن «طلبة يحتاجون متابعة».",
 };
 
+// For the platform administrator: whether the server has the key, and the latest error from the service.
+function AiDiagnosis() {
+  const st = useAsync(() => api.get("/api/ai/status"), []);
+  const d = st.data;
+  if (!d) return null;
+  return html`<div class=${`alert ${d.key_present ? (d.last_error ? "warning" : "success") : "error"}`} style="margin-top:.6rem">
+    ${d.key_present ? html`المفتاح موجود على الخادم · النموذج <span class="mono">${d.model}</span>`
+      : html`الخادم لا يرى ANTHROPIC_API_KEY: أضفه في /etc/nus/nus.env ثم <span class="mono ltr">sudo systemctl restart nus</span>`}
+    ${d.last_error ? html`<div class="small" style="margin-top:.3rem">آخر خطأ من الخدمة (${d.last_error.kind}${d.last_error.status ? ` ${d.last_error.status}` : ""}):
+      <span class="ltr">${d.last_error.message}</span></div>` : null}
+    <div class="small">للفحص الكامل من الخادم: <span class="mono ltr">sudo nus-ai-check</span></div></div>`;
+}
+
 function SettingsForm({ data, acting, onSaved }) {
   const e = data.effective;
   const [v, bind] = useForm({
@@ -588,7 +601,8 @@ function SettingsForm({ data, acting, onSaved }) {
       <label class="check"><input type="checkbox" ...${bind("ai_enabled", "checkbox")} /> تفعيل ميزات الذكاء الاصطناعي</label>
       <label class="check"><input type="checkbox" ...${bind("ai_students", "checkbox")} /> للطلبة: المرشد الدراسي، وتوقع وضع المقررات، ومراجعة المسودات</label>
       <label class="check"><input type="checkbox" ...${bind("ai_staff", "checkbox")} /> للأساتذة والإدارة: ملخص المقرر، ومسودات التعليق، وأسئلة المراجعة، والتقارير المكتوبة، وقراءة أنماط الحضور، وتحسين الصياغة</label>
-      <label class="check"><input type="checkbox" ...${bind("ai_assistant", "checkbox")} /> المساعد الذكي للأسئلة (للجميع)</label></div>
+      <label class="check"><input type="checkbox" ...${bind("ai_assistant", "checkbox")} /> المساعد الذكي للأسئلة (للجميع)</label>
+      ${acting ? html`<${AiDiagnosis} />` : null}</div>
     <div class="card"><h3>قواعد التسجيل في المقررات</h3>
       <p class="small muted">تُفحص عند كل تسجيل طالب في مقرر. لمن يسجّل الطلبة أن يستثني طالباً بسبب مكتوب، ويُحفظ الاستثناء في سجل التدقيق.</p>
       <label class="check"><input type="checkbox" ...${bind("enforce_prerequisites", "checkbox")} /> المتطلبات السابقة: لا يُسجَّل حتى ينجح فيها</label>
