@@ -28,6 +28,7 @@ CAPABILITIES: dict[str, tuple[str, str, list[str], list[str]]] = {
     "notify.sms_costs": ("الإشعارات", "الاطلاع على تكلفة الرسائل النصية", ROLES, [UA]),
     "notify.admin_notice": ("الإشعارات", "إرسال تعميم إداري", ROLES, [UA, FA, STAFF]),
     "users.manage": ("الإدارة", "إنشاء وتعديل حسابات المستخدمين", ROLES, [UA, FA]),
+    "documents.issue": ("شؤون الطلبة", "إصدار الوثائق الرسمية (إفادة قيد، كشف درجات) وإلغاؤها", ROLES, [UA, FA, STAFF]),
     "complaints.manage": ("الإدارة", "استقبال الشكاوى والمقترحات والرد عليها", ROLES, [UA, FA]),
     "users.delete": ("الإدارة", "حذف الحسابات نهائياً والبت في طلبات الحذف", ROLES, [UA, FA]),
     "structure.faculties": ("الإدارة", "إضافة الكليات وتعديلها وحذفها", ROLES, [UA]),

@@ -81,6 +81,8 @@ ACTIONS: dict[str, tuple[str, str]] = {
     # attendance
     "attendance.session_created": ("فتح جلسة حضور", "attendance"),
     "complaint.submitted": ("تقديم شكوى", "requests"),
+    "document.issued": ("إصدار وثيقة رسمية", "requests"),
+    "document.revoked": ("إلغاء وثيقة رسمية", "requests"),
     "complaint.replied": ("الرد على شكوى", "requests"),
     "attendance.checkpoint_created": ("إنشاء نقطة دوام ثابتة", "attendance"),
     "attendance.checkpoint_updated": ("تعديل نقطة دوام ثابتة", "attendance"),

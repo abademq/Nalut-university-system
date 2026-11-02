@@ -7,6 +7,7 @@ import '../state/session.dart';
 import '../widgets/common.dart';
 import 'messages_screen.dart';
 import 'reports_screen.dart';
+import 'documents_screen.dart';
 
 /// The students the account may follow (administration, supervisors, offices): search and open one.
 class StudentsScreen extends StatefulWidget {
@@ -90,7 +91,15 @@ class StudentDetailScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final s = context.read<Session>();
     return Scaffold(
-      appBar: AppBar(title: Text(name)),
+      appBar: AppBar(title: Text(name), actions: [
+        if (s.can('documents.issue'))
+          IconButton(
+            icon: const Icon(Icons.verified_outlined),
+            tooltip: 'الوثائق الرسمية',
+            onPressed: () => Navigator.push(
+                context, MaterialPageRoute(builder: (_) => DocumentsScreen(studentId: id, studentName: name))),
+          ),
+      ]),
       body: AsyncView<Map<String, dynamic>>(
         load: () async => await s.api.get('/api/reports/person/$id') as Map<String, dynamic>,
         builder: (context, r, _) {

@@ -784,6 +784,29 @@ class NotificationSmsCost(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
+class IssuedDocument(Base):
+    """An official document issued from the platform (enrolment certificate, transcript). What it
+    said is kept as issued, with its hash, so the QR on paper can be checked against it."""
+
+    __tablename__ = "issued_documents"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    code: Mapped[str] = mapped_column(String(40), unique=True, index=True)
+    university_id: Mapped[int] = mapped_column(ForeignKey("universities.id"), index=True)
+    faculty_id: Mapped[int | None] = mapped_column(ForeignKey("faculties.id"))
+    student_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    kind: Mapped[str] = mapped_column(String(30))  # enrollment | transcript
+    addressee: Mapped[str] = mapped_column(String(200), default="إلى من يهمه الأمر")
+    snapshot: Mapped[dict] = mapped_column(JSON, default=dict)
+    content_hash: Mapped[str] = mapped_column(String(64))
+    issued_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    issuer_name: Mapped[str] = mapped_column(String(200), default="")
+    issuer_title: Mapped[str] = mapped_column(String(200), default="")
+    self_issued: Mapped[bool] = mapped_column(Boolean, default=False)
+    issued_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime)
+    revoked_reason: Mapped[str | None] = mapped_column(String(300))
+
+
 class Complaint(Base):
     """The complaints and suggestions box. An anonymous complaint keeps its author only so they can
     follow it; the name is never shown to those who handle it, nor written to the audit log."""

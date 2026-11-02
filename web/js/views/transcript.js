@@ -1,6 +1,7 @@
 import { html, useAsync, Async, Empty, Chip, Kpi, pct } from "../ui.js";
 import { api } from "../api.js";
 import { StudentAdvisor } from "./ai.js";
+import { MyDocuments } from "./documents.js";
 
 const LEVEL = { danger: "error", warning: "warning", success: "success" };
 
@@ -37,5 +38,5 @@ export function TranscriptCard({ t }) {
 
 export function TranscriptView() {
   const state = useAsync(() => api.get("/api/me/transcript"), []);
-  return html`<div><h1>نتيجتي والمعدل</h1><${StudentAdvisor} /><${Async} state=${state}>${(t) => html`<${TranscriptCard} t=${t} />`}<//></div>`;
+  return html`<div><h1>نتيجتي والمعدل</h1><${StudentAdvisor} /><${Async} state=${state}>${(t) => html`<${TranscriptCard} t=${t} />`}<//><${MyDocuments} /></div>`;
 }

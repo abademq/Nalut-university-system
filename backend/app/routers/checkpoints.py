@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 from .. import attendance as svc
 from .. import audit, permissions
 from ..db import get_db
-from ..deps import client_ip, get_current_user, not_found, tenant_settings
+from ..deps import client_ip, get_current_user, not_found
 from ..models import AttendanceRecord, Faculty, StaffCheckpoint, StaffScan, User
 
 router = APIRouter(prefix="/api/attendance/checkpoints", tags=["attendance"])
@@ -125,8 +125,39 @@ def qr(cid: int, user: User = Depends(get_current_user), db: Session = Depends(g
 @router.get("/{cid}/poster", response_class=HTMLResponse)
 def poster(cid: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """A page to print and fix at the entrance."""
-    cp = _get(db, user, cid)
-    name = tenant_settings(db, user)["branding"].get("display_name") or "جامعة نالوت"
+    from ..printlinks import PRINT_CSP
+
+    return HTMLResponse(render_poster(db, _get(db, user, cid)), headers={"Content-Security-Policy": PRINT_CSP})
+
+
+@router.post("/{cid}/link")
+def poster_link(cid: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    from ..printlinks import make
+
+    return {"url": make("poster", _get(db, user, cid).id)}
+
+
+print_router = APIRouter(include_in_schema=False)
+
+
+@print_router.get("/print/poster/{token}", response_class=HTMLResponse)
+def poster_print(token: str, db: Session = Depends(get_db)):
+    from ..printlinks import PRINT_CSP, check
+
+    cid = check("poster", token)
+    cp = db.get(StaffCheckpoint, cid) if cid else None
+    if not cp:
+        return HTMLResponse("<p dir='rtl'>انتهت صلاحية الرابط، افتحه من المنصة مرة أخرى.</p>", status_code=410,
+                            headers={"Content-Security-Policy": PRINT_CSP})
+    return HTMLResponse(render_poster(db, cp), headers={"Content-Security-Policy": PRINT_CSP})
+
+
+def render_poster(db: Session, cp: StaffCheckpoint) -> str:
+    from ..models import University
+    from ..tenancy import effective_settings
+
+    uni = db.get(University, cp.university_id)
+    name = effective_settings(uni)["branding"].get("display_name") or uni.name
     fac = db.get(Faculty, cp.faculty_id) if cp.faculty_id else None
     return f"""<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>{escape(cp.name)}</title>
 <style>body{{font-family:system-ui,'Noto Sans Arabic',sans-serif;text-align:center;margin:2cm}}
@@ -135,7 +166,7 @@ p{{font-size:14pt;color:#333}}@media print{{button{{display:none}}}}</style></he
 <h2>{escape(name)}{" — " + escape(fac.name) if fac else ""}</h2><h1>تسجيل الدوام</h1><h2>{escape(cp.name)}</h2>
 <img src="{_qr_svg(svc.checkpoint_payload(cp))}" alt="QR">
 <p>امسح الرمز من تطبيق الجامعة عند الدخول وعند الخروج.<br>يُسجَّل الوقت والموقع تلقائياً.</p>
-<button onclick="print()">طباعة</button></body></html>"""
+<p style="font-size:10pt;color:#888">للطباعة: قائمة المتصفح ← طباعة (Ctrl+P)</p></body></html>"""
 
 
 @router.get("/{cid}/scans")

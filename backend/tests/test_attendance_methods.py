@@ -71,6 +71,8 @@ def test_fixed_staff_qr_records_every_entry_and_exit(client, as_, db):
     cp = client.post("/api/attendance/checkpoints", headers=dean, json={"name": "المدخل الرئيسي", **ROOM}).json()
     payload = client.get(f"/api/attendance/checkpoints/{cp['id']}/qr", headers=dean).json()["payload"]
     assert "<img" in client.get(f"/api/attendance/checkpoints/{cp['id']}/poster", headers=dean).text
+    link = client.post(f"/api/attendance/checkpoints/{cp['id']}/link", headers=dean).json()["url"]
+    assert "تسجيل الدوام" in client.get(link).text
     h = as_("registrar@nalut.edu.ly")
     assert client.post("/api/attendance/prepare", headers=as_(STUDENT), json={"payload": payload}).status_code == 403
     p = client.post("/api/attendance/prepare", headers=h, json={"payload": payload}).json()

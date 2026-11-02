@@ -2,6 +2,7 @@ import { deleteAccount } from "./deletions.js";
 import { PlanCard, StandingManager } from "./plan.js";
 import { TranscriptCard } from "./transcript.js";
 import { AcademicSummary } from "./courses.js";
+import { StudentDocuments } from "./documents.js";
 import { html, useState, useAsync, Async, Empty, Chip, Kpi, navigate } from "../ui.js";
 import { api } from "../api.js";
 
@@ -41,6 +42,7 @@ export function StudentDetail({ id, user }) {
       <div class="row between"><h1>${d.user.full_name}</h1>
         ${archive ? html`<a class="btn secondary small" href=${`#/archive/${d.user.id}`}>الملف الشخصي والمستندات</a>` : null}</div>
       <p class="muted">${d.user.code ? html`<span class="mono">${d.user.code}</span>` : null}</p>
+      ${(user.can || []).includes("documents.issue") ? html`<${StudentDocuments} studentId=${d.user.id} />` : null}
       ${d.contact ? html`<div class="card"><h3>التواصل</h3><div class="row" style="flex-wrap:wrap">
         ${d.contact.can_message ? html`<a class="btn small" href=${`#/messages?to=${d.user.id}`}>مراسلة في المنصة</a>` : null}
         ${d.contact.phone ? html`<a class="btn small secondary ltr" href=${`tel:${d.contact.phone}`}>${d.contact.phone}</a>` : null}

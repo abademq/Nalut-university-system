@@ -41,6 +41,12 @@ DEFAULT_SETTINGS: dict = {
         ],
         "low_performance_percent": 50,
     },
+    "documents": {
+        # students may issue their own enrolment certificate (marked as issued at the student's request)
+        "student_self_enrollment": False,
+        # how long a printed document stays valid when checked (days, 0 = no limit)
+        "valid_days": 90,
+    },
     "attendance": {
         # lectures: a student is late this many minutes after the session starts
         "late_after_minutes": 15,
@@ -205,6 +211,7 @@ NUMBER_LIMITS = {
     ("grading", "pass_mark"): (0, 100), ("grading", "low_performance_percent"): (0, 100),
     ("notifications", "due_reminder_hours"): (1, 168), ("messaging", "max_attachment_mb"): (1, 25),
     ("notifications", "sms_price"): (0, 100),
+    ("documents", "valid_days"): (0, 3650),
     ("registration", "max_credits_per_term"): (0, 60), ("registration", "min_credits_per_term"): (0, 60),
 }
 NUMBER_LABELS = {
@@ -217,7 +224,7 @@ NUMBER_LABELS = {
     "limit_absence_percent": "حد الغياب", "review_threshold": "درجة المراجعة", "default_radius_m": "نطاق القاعة",
     "selfie_retention_days": "مدة الاحتفاظ بالصور", "pass_mark": "درجة النجاح",
     "low_performance_percent": "حد الأداء الضعيف", "due_reminder_hours": "التذكير قبل التسليم",
-    "max_attachment_mb": "حجم المرفق", "sms_price": "سعر الرسالة النصية",
+    "max_attachment_mb": "حجم المرفق", "sms_price": "سعر الرسالة النصية", "valid_days": "مدة صلاحية الوثيقة",
     "max_credits_per_term": "الحد الأعلى للوحدات في الفصل", "min_credits_per_term": "الحد الأدنى للوحدات في الفصل",
 }
 RISK_SIGNALS = ("outside_geofence", "no_device_id", "shared_device", "device_used_by_other_account",

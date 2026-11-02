@@ -298,15 +298,9 @@ function Checkpoints() {
   const print = async (c) => {
     const w = window.open("", "_blank");
     try {
-      const q = await api.get(`/api/attendance/checkpoints/${c.id}/qr`);
-      const esc = (s) => String(s).replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
-      w.document.write(`<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>${esc(c.name)}</title>
-        <style>body{font-family:system-ui,sans-serif;text-align:center;margin:2cm}img{width:12cm;height:12cm}h1{font-size:28pt;margin:.2em}
-        p{font-size:14pt}@media print{button{display:none}}</style></head><body><h2>${esc(c.faculty || "")}</h2><h1>تسجيل الدوام</h1>
-        <h2>${esc(c.name)}</h2><img src="${q.image}" alt="QR"><p>امسح الرمز من تطبيق الجامعة عند الدخول وعند الخروج.<br>يُسجَّل الوقت والموقع تلقائياً.</p>
-        <button onclick="print()">طباعة</button></body></html>`);
-      w.document.close();
-    } catch (e) { w.close(); toastError(e); }
+      const { url } = await api.post(`/api/attendance/checkpoints/${c.id}/link`);
+      if (w) w.location.href = url; else window.location.href = url;
+    } catch (e) { if (w) w.close(); toastError(e); }
   };
   const act = async (c, change) => {
     try { await api.put(`/api/attendance/checkpoints/${c.id}`, { ...c, ...change }); list.reload(); } catch (e) { toastError(e); }
