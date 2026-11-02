@@ -112,7 +112,7 @@ def _deliver(phone: str) -> tuple[str, str | None]:
     from .notifications import sms_provider
 
     code = f"{secrets.randbelow(1_000_000):06d}"
-    if not sms_provider().send(phone, f"رمز التحقق: {code} - منصة الجامعة"):
+    if not sms_provider().send(phone, f"رمز التحقق: {code} - {settings.resala_service_name}"):
         raise OtpError("تعذر إرسال رمز التحقق الآن، حاول بعد قليل")
     return code, None
 

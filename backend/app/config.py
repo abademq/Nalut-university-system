@@ -90,7 +90,7 @@ class Settings:
     # text, signature (the sending faculty, e.g. "كلية تقنية المعلومات بجامعة نالوت"). E.g. "message,signature".
     resala_template_fields: str = field(default_factory=lambda: _env("RESALA_TEMPLATE_FIELDS", "") or "")
     resala_sender: str | None = field(default_factory=lambda: _env("RESALA_SENDER"))
-    resala_service_name: str = field(default_factory=lambda: _env("RESALA_SERVICE_NAME", "منصة الجامعة"))
+    resala_service_name: str = field(default_factory=lambda: _env("RESALA_SERVICE_NAME", "جامعة نالوت"))
     # test mode: Resala accepts the request without sending or charging
     resala_test: bool = field(default_factory=lambda: _env("RESALA_TEST", "false").lower() == "true")
 
