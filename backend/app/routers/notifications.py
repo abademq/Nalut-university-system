@@ -127,6 +127,40 @@ def send(body: SendIn, request: Request, user: User = Depends(get_current_user),
     return {"id": n.id, "status": n.status, "recipients": n.recipients_count, "scheduled_at": n.scheduled_at}
 
 
+@router.post("/estimate")
+def estimate(body: SendIn, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """The SMS a notification would send, before it is sent: its text, parts, recipients and cost."""
+    from .. import sms_templates
+    from ..models import NotificationSms  # noqa: F401 - the same tables as a real send
+
+    if not permissions.allowed(db, user, "notify.sms_costs"):
+        raise HTTPException(status_code=403, detail="غير مصرح لك بهذا الإجراء")
+    cfg = tenant_settings(db, user)["notifications"]
+    ids = [str(i) for i in body.target_ids] if body.target_type == "cohort" else [int(i) for i in body.target_ids]
+    n = Notification(university_id=user.university_id, sender_id=user.id, category=body.category,
+                     priority=body.priority, title=body.title, body=body.body, target_type=body.target_type,
+                     target_ids=ids, audience=body.audience, channels=body.channels,
+                     course_id=body.course_id if body.target_type == "course" else None)
+    try:
+        notifications.validate_new(db, user, n)
+        values = sms_templates.clean_vars(body.sms_template, body.sms_vars) if body.sms_template else None
+    except notifications.NotificationError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except (TypeError, ValueError, KeyError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc) or "بيانات غير صحيحة") from exc
+    recipients = notifications.resolve_recipients(db, n)
+    with_phone = db.scalar(select(func.count(User.id)).where(User.id.in_(recipients), User.phone.is_not(None),
+                                                             User.phone != "")) if recipients else 0
+    target_faculty = ids[0] if body.target_type == "faculty" and len(ids) == 1 else None
+    msg = notifications.sms_message(db, n, cfg, user, target_faculty, body.sms_template, values)
+    parts = sms_templates.parts(msg["text"])
+    price = float(cfg.get("sms_price") or 0)
+    allowed = bool(cfg.get("sms_enabled")) and (body.priority == "urgent" or body.category in cfg.get("sms_categories", []))
+    return {"text": msg["text"], "length": len(msg["text"]), "parts": parts, "recipients": len(recipients),
+            "with_phone": with_phone, "unit_price": price, "currency": cfg.get("sms_currency") or "د.ل",
+            "cost": round(with_phone * parts * price, 3), "sms_allowed": allowed}
+
+
 @router.get("/sent")
 def sent(limit: int = Query(default=50, le=200), user: User = Depends(get_current_user),
          db: Session = Depends(get_db)):
@@ -138,13 +172,22 @@ def sent(limit: int = Query(default=50, le=200), user: User = Depends(get_curren
     else:
         stmt = stmt.where(Notification.sender_id == user.id)
     rows = db.scalars(stmt.order_by(Notification.id.desc()).limit(limit)).all()
+    costs = {}
+    if rows and permissions.allowed(db, user, "notify.sms_costs"):
+        from ..models import NotificationSmsCost
+
+        costs = {c.notification_id: c for c in db.scalars(select(NotificationSmsCost).where(
+            NotificationSmsCost.notification_id.in_([n.id for n in rows])))}
     out = []
     for n in rows:
+        c = costs.get(n.id)
         read = db.scalar(select(func.count(NotificationDelivery.id)).where(
             NotificationDelivery.notification_id == n.id, NotificationDelivery.read_at.is_not(None)))
         out.append({**_out(n), "status": n.status, "target_type": n.target_type, "target_ids": n.target_ids,
                     "recipients": n.recipients_count, "read": read, "scheduled_at": n.scheduled_at,
-                    "channels": n.channels})
+                    "channels": n.channels,
+                    "sms_cost": {"parts": c.parts, "recipients": c.recipients, "sent": c.sent, "unit_price": c.unit_price,
+                                 "cost": c.cost, "currency": c.currency, "text": c.text} if c else None})
     return out
 
 

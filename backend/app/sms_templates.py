@@ -120,3 +120,19 @@ def validate_ids(value) -> dict:
         if item:
             out[key] = item
     return out
+
+
+def render(key: str, values: list[str], university: bool) -> str:
+    """The text as it reaches the phone: the template with its variables filled in."""
+    text = CATALOG[key][2] if university and CATALOG[key][2] else CATALOG[key][1]
+    for i, v in enumerate(values, start=1):
+        text = text.replace(f"${i}", v)
+    return text
+
+
+def parts(text: str) -> int:
+    """SMS parts the text takes: Arabic (UCS-2) fits 70 letters in one, 67 per part beyond."""
+    import math
+
+    n = len(text)
+    return 1 if n <= 70 else math.ceil(n / 67)

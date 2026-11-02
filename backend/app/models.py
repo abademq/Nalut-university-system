@@ -721,6 +721,23 @@ class NotificationSms(Base):
     params: Mapped[dict] = mapped_column(JSON, default=dict)
 
 
+class NotificationSmsCost(Base):
+    """What a notification's SMS cost: the text sent, its parts, how many went, at what price."""
+
+    __tablename__ = "notification_sms_costs"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    notification_id: Mapped[int] = mapped_column(ForeignKey("notifications.id"), unique=True)
+    template: Mapped[str | None] = mapped_column(String(40))
+    text: Mapped[str] = mapped_column(String(400), default="")
+    parts: Mapped[int] = mapped_column(Integer, default=1)
+    recipients: Mapped[int] = mapped_column(Integer, default=0)  # with a phone number
+    sent: Mapped[int] = mapped_column(Integer, default=0)
+    unit_price: Mapped[float] = mapped_column(Float, default=0)
+    cost: Mapped[float] = mapped_column(Float, default=0)
+    currency: Mapped[str] = mapped_column(String(10), default="د.ل")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
 class Regulation(Base):
     """A regulation or rule published for the university, or for one faculty."""
 

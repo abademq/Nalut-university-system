@@ -100,6 +100,9 @@ DEFAULT_SETTINGS: dict = {
         "sms_categories": ["official_warning", "admin_notice"],
         # Resala template ids per kind of message (sms_templates.CATALOG): {key: {id, id_university}}
         "sms_templates": {},
+        # price of one SMS part, for the cost shown before sending and kept for each notification
+        "sms_price": 0.1,
+        "sms_currency": "د.ل",
         "due_reminder_hours": 24,
         # per role, the notification topics (notifications.TOPICS) its members may switch off for
         # themselves; official warnings and urgent notifications always arrive
@@ -199,6 +202,7 @@ NUMBER_LIMITS = {
     ("attendance", "default_radius_m"): (20, 5000), ("attendance", "selfie_retention_days"): (1, 365),
     ("grading", "pass_mark"): (0, 100), ("grading", "low_performance_percent"): (0, 100),
     ("notifications", "due_reminder_hours"): (1, 168), ("messaging", "max_attachment_mb"): (1, 25),
+    ("notifications", "sms_price"): (0, 100),
     ("registration", "max_credits_per_term"): (0, 60), ("registration", "min_credits_per_term"): (0, 60),
 }
 NUMBER_LABELS = {
@@ -211,7 +215,7 @@ NUMBER_LABELS = {
     "limit_absence_percent": "حد الغياب", "review_threshold": "درجة المراجعة", "default_radius_m": "نطاق القاعة",
     "selfie_retention_days": "مدة الاحتفاظ بالصور", "pass_mark": "درجة النجاح",
     "low_performance_percent": "حد الأداء الضعيف", "due_reminder_hours": "التذكير قبل التسليم",
-    "max_attachment_mb": "حجم المرفق",
+    "max_attachment_mb": "حجم المرفق", "sms_price": "سعر الرسالة النصية",
     "max_credits_per_term": "الحد الأعلى للوحدات في الفصل", "min_credits_per_term": "الحد الأدنى للوحدات في الفصل",
 }
 RISK_SIGNALS = ("outside_geofence", "no_device_id", "shared_device", "device_used_by_other_account",
@@ -276,6 +280,9 @@ def validate_policies(changes: dict) -> None:
         if not isinstance(mutable, dict) or not set(mutable) <= set(Role.ALL) - {Role.PLATFORM_ADMIN} or any(
                 not isinstance(v, list) or not set(v) <= set(TOPICS) for v in mutable.values()):
             bad("أنواع الإشعارات القابلة للإيقاف غير صحيحة")
+    cur = (changes.get("notifications") or {}).get("sms_currency")
+    if cur is not None and (not isinstance(cur, str) or not 1 <= len(cur.strip()) <= 10):
+        bad("عملة الرسائل النصية من 1 إلى 10 أحرف")
     cats = (changes.get("notifications") or {}).get("sms_categories")
     if cats is not None and (not isinstance(cats, list) or not set(cats) <= set(NOTIFICATION_CATEGORIES)):
         bad("نوع إشعار غير معروف في الرسائل النصية")

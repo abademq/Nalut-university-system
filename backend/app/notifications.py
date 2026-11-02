@@ -34,6 +34,7 @@ from .models import (
     NotificationDelivery,
     NotificationMute,
     NotificationSms,
+    NotificationSmsCost,
     NotificationTopic,
     Role,
     University,
@@ -511,26 +512,45 @@ def muted_users(db: Session, n: Notification, user_ids: list[int], cfg: dict) ->
     return set(db.scalars(select(User.id).where(User.id.in_(muted), User.role.in_(allowed_roles))))
 
 
+def sms_message(db: Session, n: Notification, cfg: dict, sender: User | None, faculty_id: int | None,
+                template: str | None = None, values: dict | None = None) -> dict:
+    """What the SMS of a notification will say: template id and key, its variables and the text.
+    ``template``/``values`` stand for a notification not saved yet (the cost estimate)."""
+    from . import sms_templates
+
+    if template is None and n.id is not None:
+        row = db.scalar(select(NotificationSms).where(NotificationSms.notification_id == n.id))
+        template, values = (row.template, row.params) if row else (None, None)
+    fid = faculty_id or (sender.faculty_id if sender else None) or (
+        db.get(Course, n.course_id).faculty_id if n.course_id else None)
+    fac = db.get(Faculty, fid) if fid else None
+    templates = cfg.get("sms_templates") or {}
+    if not any(templates.values()):  # the single template of RESALA_SMS_TEMPLATE_ID
+        text = (f"{n.title}: {n.body}" if n.body else n.title)[:300]
+        sig = sms_signature(db, sender, n.university_id, faculty_id)
+        return {"id": settings.resala_sms_template_id, "key": None, "params": [], "with_faculty": False,
+                "text": f"{text} - {sig}" if sig else text}
+    tid, key, with_faculty = sms_templates.choose(template, templates, fac.name if fac else None)
+    vals = values if values and template == key else {}
+    if key == "free" and not vals:  # no template chosen: the notification's title, within the limit
+        vals = {"message": n.title}
+    params_ = sms_templates.params(key, vals, fac.name if fac else None, with_faculty)
+    return {"id": tid, "key": key, "params": params_, "with_faculty": with_faculty,
+            "text": sms_templates.render(key, params_, university=not with_faculty)}
+
+
 def _send_by_template(db: Session, provider: "ResalaSmsProvider", n: Notification, cfg: dict, sender: User | None,
                       faculty_id: int | None, phones: list[str]) -> dict[str, bool]:
     """Resala with one approved template per kind of message (sms_templates.py)."""
     from . import sms_templates
     from .resala import ResalaError, TemplateRecord, libyan_mobile
 
-    row = db.scalar(select(NotificationSms).where(NotificationSms.notification_id == n.id))
-    fid = faculty_id or (sender.faculty_id if sender else None) or (
-        db.get(Course, n.course_id).faculty_id if n.course_id else None)
-    fac = db.get(Faculty, fid) if fid else None
-    tid, key, with_faculty = sms_templates.choose(row.template if row else None, cfg.get("sms_templates"),
-                                                  fac.name if fac else None)
+    msg = sms_message(db, n, cfg, sender, faculty_id)
+    tid, key, params_ = msg["id"], msg["key"], msg["params"]
     result = {p: False for p in phones}
     if not tid:
         record_sms_error("template", Exception(f"لم يُدخل رقم قالب «{sms_templates.CATALOG[key][0]}» في إعدادات المؤسسة"))
         return result
-    values = row.params if row and row.template == key else {}
-    if key == "free" and not values:  # no template chosen: the notification's title, within the limit
-        values = {"message": n.title}
-    params_ = sms_templates.params(key, values, fac.name if fac else None, with_faculty)
     records, by_number = [], {}
     for phone in phones:
         number = libyan_mobile(phone)
@@ -551,6 +571,22 @@ def _send_by_template(db: Session, provider: "ResalaSmsProvider", n: Notificatio
     return result
 
 
+def _record_cost(db: Session, n: Notification, cfg: dict, sender, faculty_id, recipients: int, sent: int) -> dict | None:
+    from . import sms_templates
+
+    try:
+        msg = sms_message(db, n, cfg, sender, faculty_id)
+    except Exception:  # noqa: BLE001 - the cost record must never fail a notification
+        log.exception("SMS cost not recorded")
+        return None
+    parts = sms_templates.parts(msg["text"])
+    price = float(cfg.get("sms_price") or 0)
+    cost, currency = round(sent * parts * price, 3), cfg.get("sms_currency") or "د.ل"
+    db.add(NotificationSmsCost(notification_id=n.id, template=msg["key"], text=msg["text"][:400], parts=parts,
+                               recipients=recipients, sent=sent, unit_price=price, cost=cost, currency=currency))
+    return {"parts": parts, "sent": sent, "cost": cost, "currency": currency}
+
+
 def dispatch(db: Session, n: Notification) -> int:
     """Deliver a notification now. Returns the number of recipients."""
     uni = db.get(University, n.university_id)
@@ -567,6 +603,7 @@ def dispatch(db: Session, n: Notification) -> int:
     sms = sms_provider() if sms_allowed else None
     existing = set(db.scalars(select(NotificationDelivery.user_id).where(NotificationDelivery.notification_id == n.id)))
     sms_queue: list[tuple[NotificationDelivery, str]] = []
+    sms_cost = None
     for uid in recipients:
         if uid in existing:
             continue
@@ -585,10 +622,10 @@ def dispatch(db: Session, n: Notification) -> int:
                 d.sms_status = "skipped"
         db.add(d)
     if sms_queue:
+        sender = db.get(User, n.sender_id) if n.sender_id else None
+        # a faculty-wide notice from the university administration is signed by that faculty
+        target_faculty = n.target_ids[0] if n.target_type == "faculty" and len(n.target_ids) == 1 else None
         try:
-            sender = db.get(User, n.sender_id) if n.sender_id else None
-            # a faculty-wide notice from the university administration is signed by that faculty
-            target_faculty = n.target_ids[0] if n.target_type == "faculty" and len(n.target_ids) == 1 else None
             signature = sms_signature(db, sender, n.university_id, target_faculty)
             if isinstance(sms, ResalaSmsProvider) and any((cfg.get("sms_templates") or {}).values()):
                 delivered = _send_by_template(db, sms, n, cfg, sender, target_faculty,
@@ -600,6 +637,8 @@ def dispatch(db: Session, n: Notification) -> int:
             delivered = {}
         for d, phone in sms_queue:
             d.sms_status = "sent" if delivered.get(phone) else "failed"
+        sms_cost = _record_cost(db, n, cfg, sender, target_faculty, len(sms_queue),
+                                sum(1 for v in delivered.values() if v))
     n.status = "sent"
     n.sent_at = utcnow()
     n.recipients_count = len(recipients)
@@ -609,7 +648,8 @@ def dispatch(db: Session, n: Notification) -> int:
             actor=db.get(User, n.sender_id) if n.sender_id else None,
             target_type="notification", target_id=n.id,
             details={"category": n.category, "priority": n.priority, "target": n.target_type,
-                     "target_ids": n.target_ids, "recipients": len(recipients), "title": n.title},
+                     "target_ids": n.target_ids, "recipients": len(recipients), "title": n.title,
+                     **({"sms_cost": sms_cost} if sms_cost else {})},
         )
     db.flush()
     if push:

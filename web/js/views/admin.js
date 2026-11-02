@@ -474,7 +474,8 @@ function SettingsForm({ data, acting, onSaved }) {
   const e = data.effective;
   const [v, bind] = useForm({
     display_name: e.branding.display_name || data.university.name, primary_color: e.branding.primary_color, accent_color: e.branding.accent_color,
-    require_mfa: e.security.require_mfa_for_admins, first_login_otp: e.security.first_login_otp !== false, sms_enabled: e.notifications.sms_enabled, due_reminder_hours: e.notifications.due_reminder_hours,
+    require_mfa: e.security.require_mfa_for_admins, first_login_otp: e.security.first_login_otp !== false, sms_enabled: e.notifications.sms_enabled,
+    sms_price: e.notifications.sms_price ?? 0.1, sms_currency: e.notifications.sms_currency || "د.ل", due_reminder_hours: e.notifications.due_reminder_hours,
     late_after_minutes: e.attendance.late_after_minutes, rotation_seconds: e.attendance.rotation_seconds,
     default_duration_minutes: e.attendance.default_duration_minutes, open_before_minutes: e.attendance.open_before_minutes,
     staff_late_after_minutes: e.attendance.staff_late_after_minutes, staff_early_leave_minutes: e.attendance.staff_early_leave_minutes,
@@ -515,7 +516,8 @@ function SettingsForm({ data, acting, onSaved }) {
       security: { ...e.security, require_mfa_for_admins: v.require_mfa, first_login_otp: v.first_login_otp, mfa_methods: mfaMethods,
         mfa_required_roles: mfaRoles, mfa_required_capabilities: mfaCaps,
         max_login_failures: n("max_login_failures"), lockout_minutes: n("lockout_minutes") },
-      notifications: { ...e.notifications, sms_enabled: v.sms_enabled, due_reminder_hours: n("due_reminder_hours"),
+      notifications: { ...e.notifications, sms_enabled: v.sms_enabled, sms_price: n("sms_price"),
+        sms_currency: (v.sms_currency || "").trim() || "د.ل", due_reminder_hours: n("due_reminder_hours"),
         sms_categories: smsCats, tones: acting ? tones : e.notifications.tones,
         // every role is sent, so an emptied column really means "nothing may be switched off"
         mutable_topics: Object.fromEntries(MUTE_ROLES.map((r) => [r, mutable[r] || []])) },
@@ -577,7 +579,11 @@ function SettingsForm({ data, acting, onSaved }) {
       <p class="small muted">الإشعار العاجل يُرسل برسالة نصية دائماً، وهذه الأنواع تُرسل أيضاً مهما كانت أولويتها.</p>
       ${Object.entries(CATEGORY).map(([k, l]) => html`<label class="check"><input type="checkbox" checked=${smsCats.includes(k)}
         onChange=${() => flip(smsCats, setSmsCats, k)} /> ${l}</label>`)}
-      <div class="form-grid">${num("due_reminder_hours", "التذكير قبل موعد التسليم (ساعة)", { min: 1, max: 168 })}</div></div>
+      <div class="form-grid">${num("due_reminder_hours", "التذكير قبل موعد التسليم (ساعة)", { min: 1, max: 168 })}
+        ${num("sms_price", "سعر الرسالة النصية الواحدة", { min: 0, max: 100, step: "0.001" })}
+        <div class="field"><label>العملة</label><input ...${bind("sms_currency")} maxlength="10" /></div></div>
+      <p class="small muted">الرسالة الواحدة 70 حرفاً عربياً؛ الأطول تُحسب رسالتين (حتى 134 حرفاً) أو ثلاثاً (حتى 201).
+        تظهر التكلفة التقديرية قبل الإرسال وتكلفة كل إشعار في «المرسلة» لمن يملك صلاحية «الاطلاع على تكلفة الرسائل النصية».</p></div>
     <div class="card"><h3>إيقاف الإشعارات من المستخدمين</h3>
       <p class="small muted">علّم ما يسمح لكل فئة بإيقافه لنفسها من صفحة «حسابي». غير المعلَّم يصل دائماً، والتحذيرات الرسمية والإشعارات العاجلة تصل للجميع مهما كان الاختيار.</p>
       ${topics.data ? html`<div class="table-wrap"><table><thead><tr><th>نوع الإشعار</th>${MUTE_ROLES.map((r) => html`<th>${ROLE[r]}</th>`)}</tr></thead>

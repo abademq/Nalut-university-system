@@ -1,6 +1,6 @@
 import {
   html, useState, useAsync, Async, Empty, Chip, StatusChip, ErrorBox, useForm, useSubmit, toast, Tabs,
-  CATEGORY, PRIORITY, fmtDate, fmtRelative, useCourses, Icon, TemplateText } from "../ui.js";
+  CATEGORY, PRIORITY, fmtDate, fmtRelative, useCourses, Icon, TemplateText, useEffect } from "../ui.js";
 import { api } from "../api.js";
 import { ComposeHelper } from "./ai.js";
 
@@ -93,8 +93,32 @@ function SmsTemplatePicker({ value, vars, onKey, onVars }) {
     <div class="form-grid">${t.variables.map((x) => html`<div class="field"><label>${x.label} (${(vars[x.name] || "").length}/${x.max})</label>
       <input maxlength=${x.max} value=${vars[x.name] || ""} onInput=${(e) => onVars({ ...vars, [x.name]: e.target.value })} required /></div>`)}</div>
     ${t.key === "free" ? html`<p class="small ${(vars.message || "").length > 35 ? "" : "muted"}">رسالة واحدة حتى 35 حرفاً تقريباً مع التوقيع؛
-      الأطول تُرسل في أكثر من رسالة وتُخصم من الرصيد أكثر.</p>` : null}
+      الأطول تُرسل في رسالتين أو ثلاث وتُخصم من الرصيد بعددها.</p>` : null}
     <p class="small muted">تُضاف الكلية تلقائياً. تفاصيل الإشعار كاملة تصل في المنصة والتطبيق.</p></div>`;
+}
+
+const money = (x) => Number(x || 0).toLocaleString("ar-LY", { maximumFractionDigits: 3 });
+
+// The SMS cost before sending: recipients with a phone × parts of the message × the price set in settings.
+// Shown only to holders of «الاطلاع على تكلفة الرسائل النصية» (the server answers 403 to others).
+function SmsCost({ body }) {
+  const [est, setEst] = useState(null);
+  const key = JSON.stringify(body);
+  useEffect(() => {
+    if (!body.title || body.title.length < 2 || !body.body || body.body.length < 2) { setEst(null); return undefined; }
+    let live = true;
+    const t = setTimeout(() => api.post("/api/notifications/estimate", body)
+      .then((r) => live && setEst(r)).catch((e) => live && setEst(e.status === 403 ? null : { error: e.message })), 600);
+    return () => { live = false; clearTimeout(t); };
+  }, [key]);
+  if (!est) return null;
+  if (est.error) return html`<p class="small muted">تعذر حساب التكلفة: ${est.error}</p>`;
+  return html`<div class="alert ${est.parts > 1 ? "warning" : "info"}" style="margin:.5rem 0">
+    <div><b>التكلفة التقديرية: ${money(est.cost)} ${est.currency}</b>
+      <span class="small"> = ${est.with_phone} مستلم برقم هاتف × ${est.parts} ${est.parts > 1 ? "رسائل" : "رسالة"} × ${money(est.unit_price)} ${est.currency}</span></div>
+    <div class="small">النص (${est.length} حرفاً): <bdi>${est.text}</bdi></div>
+    ${est.recipients > est.with_phone ? html`<div class="small muted">${est.recipients - est.with_phone} مستلم بلا رقم هاتف لن تصلهم رسالة نصية.</div>` : null}
+    ${est.sms_allowed ? null : html`<div class="small">لن تُرسل رسالة نصية: الرسائل النصية غير مفعلة لهذا النوع أو الأولوية في إعدادات المؤسسة.</div>`}</div>`;
 }
 
 export function SendNotification({ user }) {
@@ -106,7 +130,7 @@ export function SendNotification({ user }) {
   const [smsKey, setSmsKey] = useState("urgent");
   const [smsVars, setSmsVars] = useState({});
   const [tab, setTab] = useState("new");
-  const [submit, busy, error] = useSubmit(async () => {
+  const build = () => {
     const target_ids = v.target_type === "users" ? v.users.map((u) => u.id)
       : v.target_type === "university" ? [] : v.target_type === "cohort" ? [v.target_id] : [Number(v.target_id)];
     const body = { category: v.category, priority: v.priority, title: v.title, body: v.body, target_type: v.target_type,
@@ -114,6 +138,10 @@ export function SendNotification({ user }) {
     if (v.sms && smsKey) Object.assign(body, { sms_template: smsKey, sms_vars: smsVars });
     if (body.target_type === "users" && target_ids.length === 1) body.target_type = "user";
     if (v.target_type === "course") body.course_id = Number(v.target_id);
+    return body;
+  };
+  const [submit, busy, error] = useSubmit(async () => {
+    const body = build();
     if (v.schedule && v.scheduled_at) body.scheduled_at = new Date(v.scheduled_at).toISOString();
     const r = await api.post("/api/notifications", body);
     toast(r.status === "scheduled" ? "تمت جدولة الإشعار" : `أُرسل إلى ${r.recipients} مستلم`);
@@ -137,13 +165,16 @@ export function SendNotification({ user }) {
         <label class="check"><input type="checkbox" ...${bind("sms", "checkbox")} /> رسالة SMS (للعاجل والتحذيرات عند تفعيلها)</label>
         <label class="check"><input type="checkbox" ...${bind("schedule", "checkbox")} /> جدولة</label></div>
       ${v.sms ? html`<${SmsTemplatePicker} value=${smsKey} vars=${smsVars} onKey=${setSmsKey} onVars=${setSmsVars} />` : null}
+      ${v.sms && (v.target_type === "university" || v.target_id || v.users.length) ? html`<${SmsCost} body=${build()} />` : null}
       ${v.schedule ? html`<div class="field" style="max-width:280px"><input type="datetime-local" ...${bind("scheduled_at")} /></div>` : null}
       <button disabled=${busy}>${v.schedule ? "جدولة" : "إرسال"}</button></form>` : null}
     ${tab === "sent" ? html`<div class="card"><${Async} state=${sent}>${(rows) => rows.length ? html`<div class="table-wrap"><table>
-      <thead><tr><th>العنوان</th><th>النوع</th><th>الحالة</th><th class="num">المستلمون</th><th class="num">قُرئ</th><th>الوقت</th><th></th></tr></thead>
+      <thead><tr><th>العنوان</th><th>النوع</th><th>الحالة</th><th class="num">المستلمون</th><th class="num">قُرئ</th>${rows.some((n) => n.sms_cost) ? html`<th class="num">تكلفة SMS</th>` : null}<th>الوقت</th><th></th></tr></thead>
       <tbody>${rows.map((n) => html`<tr><td>${n.title}</td><td>${CATEGORY[n.category]}</td>
         <td>${n.status === "sent" ? html`<${Chip} kind="success">أُرسل<//>` : n.status === "scheduled" ? html`<${Chip} kind="info">مجدول<//>` : html`<${Chip}>ملغى<//>`}</td>
-        <td class="num">${n.recipients}</td><td class="num">${n.read}</td><td class="small">${fmtDate(n.scheduled_at || n.created_at)}</td>
+        <td class="num">${n.recipients}</td><td class="num">${n.read}</td>
+        ${rows.some((x) => x.sms_cost) ? html`<td class="num small">${n.sms_cost ? html`<span title=${n.sms_cost.text}>${money(n.sms_cost.cost)} ${n.sms_cost.currency}
+          <span class="muted"> (${n.sms_cost.sent}×${n.sms_cost.parts})</span></span>` : "—"}</td>` : null}<td class="small">${fmtDate(n.scheduled_at || n.created_at)}</td>
         <td>${n.status === "scheduled" ? html`<button class="small secondary" onClick=${async () => { await api.post(`/api/notifications/${n.id}/cancel`); sent.reload(); }}>إلغاء</button>` : null}</td></tr>`)}
       </tbody></table></div>` : html`<${Empty} />`}<//></div>` : null}
   </div>`;

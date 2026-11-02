@@ -392,3 +392,41 @@ def test_free_text_template_carries_the_title(client, as_, db, monkeypatch):
     client.post("/api/notifications", headers=p, json={**msg, "sms_template": "free",
                                                        "sms_vars": {"message": "الامتحانات تبدأ الأحد"}})
     assert seen[-1] == ("T-FREE-U", [["الامتحانات تبدأ الأحد"]])
+
+
+def test_sms_cost_estimated_before_sending_and_kept_per_notification(client, as_, db, monkeypatch):
+    from app import notifications, resala, sms_templates
+    from app.config import settings
+    from app.models import NotificationSmsCost
+
+    class Fake:
+        def send_template(self, tid, records, **kw):
+            return resala.TemplateSendResult(True, len(records), 0, 0, 0, len(records), 0, [], [], {}, None)
+
+    assert sms_templates.parts("ا" * 70) == 1 and sms_templates.parts("ا" * 71) == 2
+    assert sms_templates.parts("ا" * 134) == 2 and sms_templates.parts("ا" * 135) == 3
+    monkeypatch.setattr(settings, "sms_provider", "resala")
+    monkeypatch.setattr(notifications, "sms_provider", lambda: notifications.ResalaSmsProvider(client=Fake()))
+    p = as_(PRES)
+    cur = client.get("/api/settings", headers=p).json()["effective"]["notifications"]
+    assert client.put("/api/settings", headers=p, json={"settings": {"notifications": {
+        **cur, "sms_enabled": True, "sms_price": 0.1, "sms_templates": {"free": {"id": "T-FREE", "id_university": "T-U"}}}}}
+    ).status_code == 200
+    student = db.query(User).filter_by(email="s.ali@nalut.edu.ly").one()
+    student.phone = "0910001234"
+    db.commit()
+    long = "ا" * 70  # with " - جامعة نالوت" the message runs to 2 parts
+    msg = {"category": "announcement", "priority": "urgent", "title": "تنبيه", "body": "نص",
+           "target_type": "user", "target_ids": [student.id], "channels": ["inapp", "sms"],
+           "sms_template": "free", "sms_vars": {"message": long}}
+    est = client.post("/api/notifications/estimate", headers=p, json=msg).json()
+    assert est["text"] == long + " - جامعة نالوت" and est["parts"] == 2
+    assert est["with_phone"] == 1 and est["cost"] == 0.2 and est["currency"] == "د.ل"
+    assert client.post("/api/notifications/estimate", headers=as_(DEAN), json=msg).status_code == 403
+    nid = client.post("/api/notifications", headers=p, json=msg).json()["id"]
+    c = db.query(NotificationSmsCost).filter_by(notification_id=nid).one()
+    assert (c.parts, c.sent, c.cost) == (2, 1, 0.2)
+    row = next(r for r in client.get("/api/notifications/sent", headers=p).json() if r["id"] == nid)
+    assert row["sms_cost"]["cost"] == 0.2
+    assert client.put("/api/settings", headers=p, json={"settings": {"notifications": {**cur, "sms_price": -1}}}
+                      ).status_code == 400
