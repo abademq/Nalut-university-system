@@ -6,3 +6,6 @@ backend/data/
 *.db
 .env
 /VERSION
+
+# generated presentation media (large files, kept out of the repository)
+media/
