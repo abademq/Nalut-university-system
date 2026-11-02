@@ -201,6 +201,21 @@ rm -f $DATA_DIR/closed && echo "platform open"
 OPEN
 chmod 755 /usr/local/sbin/nus-close /usr/local/sbin/nus-open
 
+say "Installing the demo accounts switch (sudo nus-demo off|on)"
+cat > /usr/local/sbin/nus-demo <<DEMO
+#!/usr/bin/env bash
+# Shows or hides the demo accounts and their password on the sign-in page. Takes effect at once.
+# Usage: sudo nus-demo off   (hide)  |  sudo nus-demo on   (show)  |  sudo nus-demo   (state)
+set -euo pipefail
+[ "\$(id -u)" = 0 ] || { echo "run with sudo" >&2; exit 1; }
+case "\${1:-}" in
+  off) umask 022; : > $DATA_DIR/demo-hidden; echo "demo accounts hidden from the sign-in page" ;;
+  on)  rm -f $DATA_DIR/demo-hidden; echo "demo accounts shown on the sign-in page" ;;
+  *)   if [ -e $DATA_DIR/demo-hidden ]; then echo "hidden (sudo nus-demo on to show)"; else echo "shown (sudo nus-demo off to hide)"; fi ;;
+esac
+DEMO
+chmod 755 /usr/local/sbin/nus-demo
+
 # Keep the deploy command current (only where the deploy button was set up). Written to a new
 # file and renamed: this script may be running from inside nus-update right now.
 if [ -f /usr/local/sbin/nus-update ]; then

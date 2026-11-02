@@ -33,3 +33,14 @@ def test_closed_platform_shows_the_notice_everywhere(client, tmp_path):
     finally:
         settings.closed_file = original
         closed._cache = (0.0, None)
+
+
+def test_demo_accounts_can_be_hidden_from_the_sign_in_page(client, tmp_path):
+    original = settings.demo_hidden_file
+    try:
+        settings.demo_hidden_file = tmp_path / "demo-hidden"
+        assert client.get("/api/health").json()["demo"] is True
+        settings.demo_hidden_file.write_text("")
+        assert client.get("/api/health").json()["demo"] is False
+    finally:
+        settings.demo_hidden_file = original
