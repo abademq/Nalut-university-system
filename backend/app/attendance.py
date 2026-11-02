@@ -31,7 +31,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from . import audit, notifications
+from . import audit, notifications, sms_templates
 from .biometrics import get_verifier
 from .db import utcnow
 from .models import (
@@ -442,7 +442,8 @@ def check_thresholds(db: Session, course: Course) -> int:
                     db, course.university_id, [sid], f"تجاوز حد الغياب: {course.title}",
                     f"بلغت نسبة غيابك {pct}% في مقرر {course.title} وتجاوزت الحد المعتمد ({limit}%). "
                     "سيتم عرض حالتك على الجهة المختصة للمراجعة.",
-                    category="system", priority="urgent", course_id=course.id, link="#/attendance", topic="attendance_alert")
+                    category="system", priority="urgent", course_id=course.id, link="#/attendance", topic="attendance_alert",
+                    sms=("absence", sms_templates.fit("absence", {"course": course.title})))
                 notifications.notify_users(
                     db, course.university_id, [*instructors, *fac_admins],
                     f"طالب تجاوز حد الغياب: {course.title}",

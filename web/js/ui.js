@@ -219,3 +219,7 @@ export function NationalId({ value, url }) {
     ${full ? html`<button type="button" class="ghost small" onClick=${() => setFull(null)}>إخفاء</button>`
       : html`<button type="button" class="ghost small" onClick=${reveal} title="يُسجَّل الإظهار في سجل التدقيق">إظهار</button>`}</span>`;
 }
+
+// A template's text with its $1, $2 … kept left-to-right inside the Arabic line.
+export const TemplateText = ({ text }) => html`<span>${String(text || "").split(/(\$\d+)/).map((part) =>
+  /^\$\d+$/.test(part) ? html`<bdi class="ltr" style="font-weight:600">${part}</bdi>` : part)}</span>`;

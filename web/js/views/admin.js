@@ -1,4 +1,4 @@
-import { html, useState, useEffect, useAsync, Async, Empty, Chip, ErrorBox, useForm, useSubmit, toast, toastError, Modal, ROLE, CATEGORY, fmtDate } from "../ui.js";
+import { html, useState, useEffect, useAsync, Async, Empty, Chip, ErrorBox, useForm, useSubmit, toast, toastError, Modal, ROLE, CATEGORY, fmtDate, TemplateText } from "../ui.js";
 import { api, setActing } from "../api.js";
 
 const CREATABLE = {
@@ -435,6 +435,9 @@ function SettingsForm({ data, acting, onSaved }) {
   const [weights, setWeights] = useState({ ...e.attendance.risk_weights });
   const [levels, setLevels] = useState(JSON.parse(JSON.stringify(e.attendance.levels)));
   const [smsCats, setSmsCats] = useState(e.notifications.sms_categories || []);
+  const smsCatalog = useAsync(() => api.get("/api/notifications/sms-templates"), []);
+  const [smsIds, setSmsIds] = useState(JSON.parse(JSON.stringify(e.notifications.sms_templates || {})));
+  const setSmsId = (key, field, val) => setSmsIds((x) => ({ ...x, [key]: { ...(x[key] || {}), [field]: val.trim() } }));
   const topics = useAsync(() => api.get("/api/notifications/topics"), []);
   const [mutable, setMutable] = useState(JSON.parse(JSON.stringify(e.notifications.mutable_topics || {})));
   const flipMutable = (role, t) => {
@@ -451,7 +454,7 @@ function SettingsForm({ data, acting, onSaved }) {
         mfa_required_roles: mfaRoles, mfa_required_capabilities: mfaCaps,
         max_login_failures: n("max_login_failures"), lockout_minutes: n("lockout_minutes") },
       notifications: { ...e.notifications, sms_enabled: v.sms_enabled, due_reminder_hours: n("due_reminder_hours"),
-        sms_categories: smsCats, tones: acting ? tones : e.notifications.tones,
+        sms_categories: smsCats, tones: acting ? tones : e.notifications.tones, sms_templates: smsIds,
         // every role is sent, so an emptied column really means "nothing may be switched off"
         mutable_topics: Object.fromEntries(MUTE_ROLES.map((r) => [r, mutable[r] || []])) },
       attendance: { ...e.attendance, late_after_minutes: n("late_after_minutes"), rotation_seconds: n("rotation_seconds"),
@@ -512,6 +515,20 @@ function SettingsForm({ data, acting, onSaved }) {
       ${Object.entries(CATEGORY).map(([k, l]) => html`<label class="check"><input type="checkbox" checked=${smsCats.includes(k)}
         onChange=${() => flip(smsCats, setSmsCats, k)} /> ${l}</label>`)}
       <div class="form-grid">${num("due_reminder_hours", "التذكير قبل موعد التسليم (ساعة)", { min: 1, max: 168 })}</div></div>
+    <div class="card"><h3>قوالب الرسائل النصية (Resala)</h3>
+      <p class="small muted">سجّل كل نص كما هو في منصة «رسالة» كقالب، وبعد اعتماده اكتب رقمه هنا. لكل قالب نسختان: باسم الكلية،
+        وباسم الجامعة وحدها لما يرسل من لا ينتمي لكلية. القالب الذي لا رقم له يُستبدل بقالب «إشعار عاجل».
+        ($ مع رقم: متغير تملؤه المنصة؛ اسم الكلية دائماً آخر متغير، دون كلمة «كلية»، حتى 15 حرفاً.)</p>
+      ${smsCatalog.data ? html`<div class="table-wrap"><table>
+        <thead><tr><th>النوع</th><th>النص المطلوب تسجيله</th><th>المتغيرات</th><th>رقم القالب (الكلية)</th><th>رقم القالب (الجامعة)</th></tr></thead>
+        <tbody>${smsCatalog.data.templates.map((t) => html`<tr>
+          <td><strong>${t.label}</strong></td>
+          <td class="small"><div><${TemplateText} text=${t.text} /></div>${t.text_university ? html`<div class="muted" style="margin-top:.25rem"><${TemplateText} text=${t.text_university} /></div>` : null}</td>
+          <td class="small">${t.variables.map((x, i) => html`<div><bdi class="ltr">$${i + 1}</bdi> ${x.label}: حتى ${x.max} حرفاً</div>`)}${t.has_faculty ? html`<div><bdi class="ltr">$${t.variables.length + 1}</bdi> الكلية: حتى ${t.faculty_max} حرفاً</div>` : null}</td>
+          <td><input class="ltr" style="max-width:140px" value=${smsIds[t.key]?.id || ""} onInput=${(ev) => setSmsId(t.key, "id", ev.target.value)} /></td>
+          <td>${t.text_university ? html`<input class="ltr" style="max-width:140px" value=${smsIds[t.key]?.id_university || ""}
+            onInput=${(ev) => setSmsId(t.key, "id_university", ev.target.value)} />` : html`<span class="muted">—</span>`}</td></tr>`)}</tbody></table></div>`
+        : html`<p class="small muted">جارٍ التحميل…</p>`}</div>
     <div class="card"><h3>إيقاف الإشعارات من المستخدمين</h3>
       <p class="small muted">علّم ما يسمح لكل فئة بإيقافه لنفسها من صفحة «حسابي». غير المعلَّم يصل دائماً، والتحذيرات الرسمية والإشعارات العاجلة تصل للجميع مهما كان الاختيار.</p>
       ${topics.data ? html`<div class="table-wrap"><table><thead><tr><th>نوع الإشعار</th>${MUTE_ROLES.map((r) => html`<th>${ROLE[r]}</th>`)}</tr></thead>

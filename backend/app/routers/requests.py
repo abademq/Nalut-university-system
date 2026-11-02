@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import audit, files, notifications
+from .. import audit, files, notifications, sms_templates
 from ..db import get_db, utcnow
 from ..deps import client_ip, forbidden, get_current_user, not_found, tenant_settings
 from ..models import Role, ServiceRequest, ServiceRequestEvent, StoredFile, User
@@ -153,7 +153,8 @@ def act(rid: int, body: ActionIn, request: Request, user: User = Depends(get_cur
         notifications.notify_users(
             db, r.university_id, [r.requester_id], f"تحديث على طلبك: {STATUS_LABELS[r.status]}",
             f"{r.subject}" + (f" — {body.comment}" if body.comment else ""), category="admin_notice",
-            priority="important", link=f"#/requests/{r.id}", sender=user, topic="request_update")
+            priority="important", link=f"#/requests/{r.id}", sender=user, topic="request_update",
+            sms=("request", sms_templates.fit("request", {"status": STATUS_LABELS[r.status]})))
         audit.record(db, f"request.{body.action}", actor=user, target_type="service_request", target_id=r.id,
                      details={"comment": body.comment}, ip=client_ip(request))
     db.commit()

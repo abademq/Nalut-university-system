@@ -674,6 +674,16 @@ class Message(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
+class NotificationSms(Base):
+    """Which approved SMS template a notification uses, and its variables (see sms_templates.py)."""
+
+    __tablename__ = "notification_sms"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    notification_id: Mapped[int] = mapped_column(ForeignKey("notifications.id"), unique=True)
+    template: Mapped[str] = mapped_column(String(40))
+    params: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
 class Regulation(Base):
     """A regulation or rule published for the university, or for one faculty."""
 

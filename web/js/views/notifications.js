@@ -1,6 +1,6 @@
 import {
   html, useState, useAsync, Async, Empty, Chip, StatusChip, ErrorBox, useForm, useSubmit, toast, Tabs,
-  CATEGORY, PRIORITY, fmtDate, fmtRelative, useCourses, Icon } from "../ui.js";
+  CATEGORY, PRIORITY, fmtDate, fmtRelative, useCourses, Icon, TemplateText } from "../ui.js";
 import { api } from "../api.js";
 import { ComposeHelper } from "./ai.js";
 
@@ -81,18 +81,35 @@ function TargetPicker({ user, v, bind, setV }) {
   </div>`;
 }
 
+// The SMS goes out through an approved template: pick the kind and fill its short variables.
+function SmsTemplatePicker({ value, vars, onKey, onVars }) {
+  const cat = useAsync(() => api.get("/api/notifications/sms-templates"), []);
+  if (!cat.data) return null;
+  const t = cat.data.templates.find((x) => x.key === value) || cat.data.templates[0];
+  return html`<div class="card" style="margin:.5rem 0"><div class="field"><label>نص الرسالة النصية (قالب معتمد)</label>
+      <select value=${t.key} onChange=${(e) => { onKey(e.target.value); onVars({}); }}>
+        ${cat.data.templates.filter((x) => x.key !== "request" && x.key !== "absence").map((x) => html`<option value=${x.key}>${x.label}${x.id || x.id_university ? "" : " (لم يُدخل رقمه)"}</option>`)}</select></div>
+    <div class="small muted"><${TemplateText} text=${t.text} /></div>
+    <div class="form-grid">${t.variables.map((x) => html`<div class="field"><label>${x.label} (${(vars[x.name] || "").length}/${x.max})</label>
+      <input maxlength=${x.max} value=${vars[x.name] || ""} onInput=${(e) => onVars({ ...vars, [x.name]: e.target.value })} required /></div>`)}</div>
+    <p class="small muted">تُضاف الكلية تلقائياً. تفاصيل الإشعار كاملة تصل في المنصة والتطبيق.</p></div>`;
+}
+
 export function SendNotification({ user }) {
   const allowed = sendable(user);
   const [v, bind, setV] = useForm({ category: allowed[0], priority: "normal", title: "", body: "",
     target_type: user.role === "teacher" || user.role === "assistant" ? "course" : "users", target_id: "", users: [],
     audience: "students", push: true, sms: false, schedule: false, scheduled_at: "" });
   const sent = useAsync(() => api.get("/api/notifications/sent"), []);
+  const [smsKey, setSmsKey] = useState("urgent");
+  const [smsVars, setSmsVars] = useState({});
   const [tab, setTab] = useState("new");
   const [submit, busy, error] = useSubmit(async () => {
     const target_ids = v.target_type === "users" ? v.users.map((u) => u.id)
       : v.target_type === "university" ? [] : v.target_type === "cohort" ? [v.target_id] : [Number(v.target_id)];
     const body = { category: v.category, priority: v.priority, title: v.title, body: v.body, target_type: v.target_type,
       target_ids, audience: v.audience, channels: ["inapp", ...(v.push ? ["push"] : []), ...(v.sms ? ["sms"] : [])] };
+    if (v.sms && smsKey) Object.assign(body, { sms_template: smsKey, sms_vars: smsVars });
     if (body.target_type === "users" && target_ids.length === 1) body.target_type = "user";
     if (v.target_type === "course") body.course_id = Number(v.target_id);
     if (v.schedule && v.scheduled_at) body.scheduled_at = new Date(v.scheduled_at).toISOString();
@@ -117,6 +134,7 @@ export function SendNotification({ user }) {
       <div class="row"><label class="check"><input type="checkbox" ...${bind("push", "checkbox")} /> إشعار فوري على الهاتف</label>
         <label class="check"><input type="checkbox" ...${bind("sms", "checkbox")} /> رسالة SMS (للعاجل والتحذيرات عند تفعيلها)</label>
         <label class="check"><input type="checkbox" ...${bind("schedule", "checkbox")} /> جدولة</label></div>
+      ${v.sms ? html`<${SmsTemplatePicker} value=${smsKey} vars=${smsVars} onKey=${setSmsKey} onVars=${setSmsVars} />` : null}
       ${v.schedule ? html`<div class="field" style="max-width:280px"><input type="datetime-local" ...${bind("scheduled_at")} /></div>` : null}
       <button disabled=${busy}>${v.schedule ? "جدولة" : "إرسال"}</button></form>` : null}
     ${tab === "sent" ? html`<div class="card"><${Async} state=${sent}>${(rows) => rows.length ? html`<div class="table-wrap"><table>

@@ -33,6 +33,7 @@ from .models import (
     Notification,
     NotificationDelivery,
     NotificationMute,
+    NotificationSms,
     NotificationTopic,
     Role,
     University,
@@ -510,6 +511,44 @@ def muted_users(db: Session, n: Notification, user_ids: list[int], cfg: dict) ->
     return set(db.scalars(select(User.id).where(User.id.in_(muted), User.role.in_(allowed_roles))))
 
 
+def _send_by_template(db: Session, provider: "ResalaSmsProvider", n: Notification, cfg: dict, sender: User | None,
+                      faculty_id: int | None, phones: list[str]) -> dict[str, bool]:
+    """Resala with one approved template per kind of message (sms_templates.py)."""
+    from . import sms_templates
+    from .resala import ResalaError, TemplateRecord, libyan_mobile
+
+    row = db.scalar(select(NotificationSms).where(NotificationSms.notification_id == n.id))
+    fid = faculty_id or (sender.faculty_id if sender else None) or (
+        db.get(Course, n.course_id).faculty_id if n.course_id else None)
+    fac = db.get(Faculty, fid) if fid else None
+    tid, key, with_faculty = sms_templates.choose(row.template if row else None, cfg.get("sms_templates"),
+                                                  fac.name if fac else None)
+    result = {p: False for p in phones}
+    if not tid:
+        record_sms_error("template", Exception(f"لم يُدخل رقم قالب «{sms_templates.CATALOG[key][0]}» في إعدادات المؤسسة"))
+        return result
+    values = row.params if row and row.template == key else {}
+    params_ = sms_templates.params(key, values, fac.name if fac else None, with_faculty)
+    records, by_number = [], {}
+    for phone in phones:
+        number = libyan_mobile(phone)
+        if number:
+            records.append(TemplateRecord(number, params_))
+            by_number[number[-9:]] = phone
+    if not records:
+        return result
+    try:
+        res = provider.client.send_template(tid, records, test=settings.resala_test or None, sender=settings.resala_sender)
+    except ResalaError as exc:
+        log.warning("Resala send-template %s failed: %s %s", key, exc.type, exc.message)
+        record_sms_error("template", exc)
+        return result
+    bad = {str(x)[-9:] for x in res.failed_numbers + res.invalid_numbers}
+    for tail, phone in by_number.items():
+        result[phone] = tail not in bad
+    return result
+
+
 def dispatch(db: Session, n: Notification) -> int:
     """Deliver a notification now. Returns the number of recipients."""
     uni = db.get(University, n.university_id)
@@ -549,7 +588,11 @@ def dispatch(db: Session, n: Notification) -> int:
             # a faculty-wide notice from the university administration is signed by that faculty
             target_faculty = n.target_ids[0] if n.target_type == "faculty" and len(n.target_ids) == 1 else None
             signature = sms_signature(db, sender, n.university_id, target_faculty)
-            delivered = send_sms_batch(sms, [(phone, n.title, n.body) for _, phone in sms_queue], signature=signature)
+            if isinstance(sms, ResalaSmsProvider) and any((cfg.get("sms_templates") or {}).values()):
+                delivered = _send_by_template(db, sms, n, cfg, sender, target_faculty,
+                                              [phone for _, phone in sms_queue])
+            else:  # the single template of RESALA_SMS_TEMPLATE_ID (or another provider)
+                delivered = send_sms_batch(sms, [(phone, n.title, n.body) for _, phone in sms_queue], signature=signature)
         except Exception:  # noqa: BLE001 - an SMS outage must not fail the notification
             log.exception("SMS batch failed")
             delivered = {}
@@ -602,7 +645,8 @@ def send_pending_pushes(db: Session, provider=None, limit: int = 500) -> int:
 def create(db: Session, *, sender: User | None, university_id: int, category: str, title: str, body: str,
            target_type: str, target_ids: Iterable, priority: str = "normal", audience: str = "students",
            channels: Iterable[str] = ("inapp", "push"), course_id: int | None = None, link: str | None = None,
-           scheduled_at=None, validate: bool = True, automatic: bool = False, topic: str | None = None) -> Notification:
+           scheduled_at=None, validate: bool = True, automatic: bool = False, topic: str | None = None,
+           sms_template: str | None = None, sms_vars: dict | None = None) -> Notification:
     n = Notification(
         university_id=university_id, sender_id=sender.id if sender else None, category=category,
         priority=priority, title=title.strip(), body=body.strip(), target_type=target_type,
@@ -618,6 +662,15 @@ def create(db: Session, *, sender: User | None, university_id: int, category: st
     if topic and topic != category:
         db.add(NotificationTopic(notification_id=n.id, topic=topic))
         db.flush()
+    if sms_template:
+        from . import sms_templates
+
+        try:
+            clean = sms_templates.clean_vars(sms_template, sms_vars or {})
+        except ValueError as exc:
+            raise NotificationError(str(exc)) from None
+        db.add(NotificationSms(notification_id=n.id, template=sms_template, params=clean))
+        db.flush()
     if scheduled_at is None or scheduled_at <= utcnow():
         dispatch(db, n)
     return n
@@ -626,15 +679,20 @@ def create(db: Session, *, sender: User | None, university_id: int, category: st
 def notify_users(db: Session, university_id: int, user_ids: Iterable[int], title: str, body: str, *,
                  category: str = "system", priority: str = "normal", link: str | None = None,
                  course_id: int | None = None, sender: User | None = None,
-                 topic: str | None = None) -> Notification | None:
+                 topic: str | None = None, sms: tuple[str, dict] | None = None) -> Notification | None:
     """Automated notification raised by the platform itself (no authority check)."""
     ids = sorted(set(user_ids))
     if not ids:
         return None
+    if sms:  # an SMS goes out by itself only once its own template has been entered in the settings
+        cfg = effective_settings(db.get(University, university_id))["notifications"]
+        if not ((cfg.get("sms_templates") or {}).get(sms[0]) or {}):
+            sms = None
     return create(
         db, sender=sender, university_id=university_id, category=category, title=title, body=body,
         target_type="users", target_ids=ids, priority=priority, course_id=course_id, link=link,
-        validate=False, topic=topic,
+        validate=False, topic=topic, channels=("inapp", "push", "sms") if sms else ("inapp", "push"),
+        sms_template=sms[0] if sms else None, sms_vars=sms[1] if sms else None,
     )
 
 

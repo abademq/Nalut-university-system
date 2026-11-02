@@ -95,6 +95,8 @@ DEFAULT_SETTINGS: dict = {
         "sms_enabled": False,
         # categories whose urgent messages also go out by SMS when SMS is enabled
         "sms_categories": ["official_warning", "admin_notice"],
+        # Resala template ids per kind of message (sms_templates.CATALOG): {key: {id, id_university}}
+        "sms_templates": {},
         "due_reminder_hours": 24,
         # per role, the notification topics (notifications.TOPICS) its members may switch off for
         # themselves; official warnings and urgent notifications always arrive
@@ -255,6 +257,14 @@ def validate_policies(changes: dict) -> None:
     msg = changes.get("messaging") or {}
     if "student_can_message" in msg and msg["student_can_message"] not in STUDENT_MESSAGING:
         bad("سياسة مراسلة الطلبة غير معروفة")
+    tpl = (changes.get("notifications") or {}).get("sms_templates")
+    if tpl is not None:
+        from .sms_templates import validate_ids
+
+        try:
+            changes["notifications"]["sms_templates"] = validate_ids(tpl)
+        except ValueError as exc:
+            bad(str(exc))
     mutable = (changes.get("notifications") or {}).get("mutable_topics")
     if mutable is not None:
         from .models import Role

@@ -9,7 +9,8 @@ from sqlalchemy.orm import Session
 
 from .. import audit, notifications, permissions
 from ..db import as_utc, get_db, utcnow
-from ..deps import client_ip, get_current_user, not_found
+from ..config import settings
+from ..deps import client_ip, get_current_user, not_found, tenant_settings
 from ..models import Notification, NotificationDelivery, Role, User
 
 router = APIRouter(prefix="/api/notifications", tags=["notifications"])
@@ -82,6 +83,21 @@ class SendIn(BaseModel):
     channels: list[str] = Field(default_factory=lambda: ["inapp", "push"])
     scheduled_at: datetime | None = None
     course_id: int | None = None
+    # with the sms channel: the approved template and its variables (sms_templates.CATALOG)
+    sms_template: str | None = Field(default=None, max_length=40)
+    sms_vars: dict = Field(default_factory=dict)
+
+
+@router.get("/sms-templates")
+def sms_templates_list(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """The kinds of SMS, the wording to register at Resala, their variables and the ids entered."""
+    from .. import sms_templates
+
+    if user.role == Role.STUDENT:
+        raise HTTPException(status_code=403, detail="غير مصرح لك بهذا الإجراء")
+    cfg = tenant_settings(db, user)["notifications"]
+    return {"templates": sms_templates.catalog_out(cfg.get("sms_templates") or {}),
+            "sms_enabled": bool(cfg.get("sms_enabled")), "provider": settings.sms_provider}
 
 
 @router.post("")
@@ -98,6 +114,7 @@ def send(body: SendIn, request: Request, user: User = Depends(get_current_user),
             title=body.title, body=body.body, target_type=body.target_type, target_ids=ids,
             audience=body.audience, channels=body.channels, scheduled_at=scheduled,
             course_id=body.course_id if body.target_type == "course" else None,
+            sms_template=body.sms_template if "sms" in body.channels else None, sms_vars=body.sms_vars,
         )
     except notifications.NotificationError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc

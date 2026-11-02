@@ -322,3 +322,45 @@ def test_student_turns_sms_verification_off_right_after_signing_in(client, db):
     assert r["sent"] is True
     off = client.post("/api/auth/mfa/disable", headers=h, json={"password": PASSWORD, "code": last_code()})
     assert off.status_code == 200, off.text
+
+
+def test_one_approved_template_per_kind_of_message(client, as_, db, monkeypatch):
+    from app import notifications, resala
+    from app.config import settings
+    from app.models import University
+
+    seen = []
+
+    class Fake:
+        def send_template(self, tid, records, **kw):
+            seen.append((tid, [r.params for r in records]))
+            return resala.TemplateSendResult(True, len(records), 0, 0, 0, len(records), 0, [], [], {}, None)
+
+    monkeypatch.setattr(settings, "sms_provider", "resala")
+    monkeypatch.setattr(notifications, "sms_provider", lambda: notifications.ResalaSmsProvider(client=Fake()))
+    p = as_(PRES)
+    cur = client.get("/api/settings", headers=p).json()["effective"]["notifications"]
+    ids = {"exam": {"id": "T-EXAM"}, "urgent": {"id": "T-URG", "id_university": "T-URG-U"},
+           "request": {"id": "T-REQ"}}
+    assert client.put("/api/settings", headers=p, json={"settings": {"notifications": {
+        **cur, "sms_enabled": True, "sms_templates": ids}}}).status_code == 200
+    cat = client.get("/api/notifications/sms-templates", headers=p).json()["templates"]
+    assert {t["key"]: t["id"] for t in cat}["exam"] == "T-EXAM"
+    student = db.query(User).filter_by(email="s.ali@nalut.edu.ly").one()
+    d = as_(DEAN)
+    msg = {"category": "announcement", "priority": "urgent", "title": "امتحان", "body": "امتحان البرمجة الأحد",
+           "target_type": "user", "target_ids": [student.id], "channels": ["inapp", "sms"]}
+    # the variables are checked against their limits
+    too_long = client.post("/api/notifications", headers=d, json={**msg, "sms_template": "exam",
+                           "sms_vars": {"course": "مقدمة في البرمجة المتقدمة", "date": "الأحد 10/11"}})
+    assert too_long.status_code == 403 and "الحد" in too_long.json()["detail"]
+    ok = client.post("/api/notifications", headers=d, json={**msg, "sms_template": "exam",
+                     "sms_vars": {"course": "البرمجة", "date": "الأحد 10/11"}})
+    assert ok.status_code == 200, ok.text
+    assert seen[-1] == ("T-EXAM", [["البرمجة", "الأحد 10/11", "تقنية المعلومات"]])
+    # no template named: the general one; from the university administration, its university version
+    client.post("/api/notifications", headers=p, json={**msg})
+    assert seen[-1] == ("T-URG-U", [[]])
+    # a template without an id entered falls back to the general one
+    client.post("/api/notifications", headers=d, json={**msg, "sms_template": "summon", "sms_vars": {"office": "شؤون الطلبة"}})
+    assert seen[-1] == ("T-URG", [["تقنية المعلومات"]])
