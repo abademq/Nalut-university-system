@@ -13,6 +13,7 @@ from ..models import (
     ConversationParticipant,
     Course,
     Message,
+    MessageAttachment,
     Publication,
     ServiceRequest,
     ServiceRequestEvent,
@@ -40,6 +41,9 @@ def can_read(db: Session, user: User, f: StoredFile) -> bool:
         return can_teach_course(db, user, db.get(Course, a.course_id))
     if f.purpose == "message":
         m = db.scalar(select(Message).where(Message.file_id == f.id))
+        if m is None:  # a further attachment of the message
+            att = db.scalar(select(MessageAttachment).where(MessageAttachment.file_id == f.id))
+            m = db.get(Message, att.message_id) if att else None
         if m and permissions.scope(db, user, "messages.oversight") == permissions.ALL:  # message oversight; every download is audited below
             return True
         return bool(m and not m.hidden and db.scalar(select(ConversationParticipant.id).where(

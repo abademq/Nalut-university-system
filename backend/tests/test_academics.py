@@ -337,3 +337,22 @@ def test_thread_polling_returns_only_newer_messages(client, as_):
     client.post(f"/api/conversations/{conv}/messages", headers=s, data={"body": "الثانية"})
     new = client.get(f"/api/conversations/{conv}/messages?after={last}", headers=as_(TEACHER)).json()["messages"]
     assert [m["body"] for m in new] == ["الثانية"]
+
+
+def test_several_files_in_one_message(client, as_):
+    s = as_("s.ali@nalut.edu.ly")
+    teacher_id = client.get("/api/me", headers=as_(TEACHER)).json()["id"]
+    conv = client.post("/api/conversations", headers=s, json={"recipient_ids": [teacher_id], "subject": "ملفات",
+                                                              "body": "مرفقات"}).json()["id"]
+    pdf = b"%PDF-1.4\n% part\n"
+    parts = [("upload", (f"part{i}.pdf", pdf + bytes([i]), "application/pdf")) for i in range(3)]
+    r = client.post(f"/api/conversations/{conv}/messages", headers=s, data={"body": "ثلاثة ملفات"}, files=parts)
+    assert r.status_code == 200, r.text
+    last = client.get(f"/api/conversations/{conv}/messages", headers=as_(TEACHER)).json()["messages"][-1]
+    assert [f["name"] for f in last["files"]] == ["part0.pdf", "part1.pdf", "part2.pdf"]
+    assert last["file"]["name"] == "part0.pdf"  # older app versions show the first
+    for f in last["files"]:
+        assert client.get(f"/api/files/{f['id']}", headers=as_(TEACHER)).status_code == 200
+        assert client.get(f"/api/files/{f['id']}", headers=as_("student2@nalut.edu.ly")).status_code == 404
+    many = [("upload", (f"p{i}.pdf", pdf, "application/pdf")) for i in range(11)]
+    assert client.post(f"/api/conversations/{conv}/messages", headers=s, data={"body": ""}, files=many).status_code == 400

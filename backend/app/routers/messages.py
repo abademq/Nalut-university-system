@@ -15,6 +15,7 @@ from ..models import (
     CourseStaff,
     Enrollment,
     Message,
+    MessageAttachment,
     MessageReport,
     Role,
     StoredFile,
@@ -167,22 +168,47 @@ def get_messages(cid: int, after: int = 0, user: User = Depends(get_current_user
     part.last_read_at = utcnow()
     db.commit()
     out = []
+    attached = message_files(db, msgs)
     for m in msgs:
-        f = db.get(StoredFile, m.file_id) if m.file_id else None
+        fl = [] if m.hidden else attached.get(m.id, [])
         out.append({"id": m.id, "sender_id": m.sender_id, "sender": names.get(m.sender_id), "mine": m.sender_id == user.id,
                     "body": "[أُخفيت هذه الرسالة بعد مراجعة بلاغ]" if m.hidden else m.body,
-                    "file": files.file_info(f) if f and not m.hidden else None, "created_at": m.created_at})
+                    # "file": the first one, for app versions that show a single attachment
+                    "files": fl, "file": fl[0] if fl else None, "created_at": m.created_at})
     return {"id": conv.id, "subject": conv.subject, "messages": out}
+
+
+MAX_FILES = 10
+
+
+def message_files(db: Session, msgs: list) -> dict[int, list[dict]]:
+    """Each message's attachments in order (first: Message.file_id, then MessageAttachment)."""
+    out: dict[int, list] = {m.id: [] for m in msgs}
+    ids = [m.file_id for m in msgs if m.file_id]
+    extra = db.execute(select(MessageAttachment.message_id, MessageAttachment.file_id).where(
+        MessageAttachment.message_id.in_([m.id for m in msgs] or [-1])).order_by(MessageAttachment.position)).all()
+    stored = {f.id: f for f in db.scalars(select(StoredFile).where(StoredFile.id.in_(ids + [f for _, f in extra] or [-1])))}
+    for m in msgs:
+        if m.file_id in stored:
+            out[m.id].append(files.file_info(stored[m.file_id]))
+    for mid, fid in extra:
+        if fid in stored:
+            out[mid].append(files.file_info(stored[fid]))
+    return out
 
 
 @router.post("/conversations/{cid}/messages")
 async def post_message(cid: int, body: str = Form("", max_length=5000),
-                       upload: UploadFile | None = File(None), user: User = Depends(get_current_user),
+                       upload: list[UploadFile] | None = File(None), user: User = Depends(get_current_user),
                        db: Session = Depends(get_db)):
+    """``upload`` may be repeated: up to MAX_FILES files in one message."""
     conv = _participant(db, user, cid)
     body = body.strip()
-    if not body and upload is None:  # a file alone is a message too
+    uploads = [u for u in (upload or []) if u is not None and (u.filename or u.size)]
+    if not body and not uploads:  # files alone are a message too
         raise HTTPException(status_code=400, detail="اكتب رسالة أو أرفق ملفاً")
+    if len(uploads) > MAX_FILES:
+        raise HTTPException(status_code=400, detail=f"يمكن إرفاق {MAX_FILES} ملفات على الأكثر في الرسالة")
     if not limiter.hit(f"msg:{user.id}", 30, 60):
         raise HTTPException(status_code=429, detail="عدد كبير من الرسائل، حاول بعد قليل")
     others = db.scalars(select(User).join(ConversationParticipant, ConversationParticipant.user_id == User.id).where(
@@ -193,15 +219,20 @@ async def post_message(cid: int, body: str = Form("", max_length=5000),
     if not any(can_message(db, user, o, conv.course_id) or can_message(db, o, user, conv.course_id)
                for o in others):
         raise forbidden("لم يعد مسموحاً بالمراسلة في هذه المحادثة")
-    file_id = None
-    if upload is not None:
+    stored = []
+    if uploads:
         cfg = tenant_settings(db, user)
-        data = await files.read_upload(upload, int(cfg["messaging"]["max_attachment_mb"]))
-        f = files.store(db, owner=user, purpose="message", filename=upload.filename or "file", data=data,
-                        allowed_extensions=cfg["uploads"]["allowed_extensions"])
-        file_id = f.id
+        for up in uploads:
+            data = await files.read_upload(up, int(cfg["messaging"]["max_attachment_mb"]))
+            stored.append(files.store(db, owner=user, purpose="message", filename=up.filename or "file", data=data,
+                                      allowed_extensions=cfg["uploads"]["allowed_extensions"]))
     now = utcnow()
-    db.add(Message(conversation_id=conv.id, sender_id=user.id, body=body, file_id=file_id, created_at=now))
+    msg = Message(conversation_id=conv.id, sender_id=user.id, body=body,
+                  file_id=stored[0].id if stored else None, created_at=now)
+    db.add(msg)
+    db.flush()
+    for i, f in enumerate(stored[1:], start=1):
+        db.add(MessageAttachment(message_id=msg.id, file_id=f.id, position=i))
     conv.last_message_at = now
     part = db.scalar(select(ConversationParticipant).where(ConversationParticipant.conversation_id == conv.id,
                                                           ConversationParticipant.user_id == user.id))
@@ -331,10 +362,11 @@ def oversight_read(cid: int, request: Request, user: User = Depends(get_current_
                  details={"subject": conv.subject}, ip=client_ip(request))
     db.commit()
     out = []
+    attached = message_files(db, msgs)
     for m in msgs:
-        f = db.get(StoredFile, m.file_id) if m.file_id else None
+        fl = attached.get(m.id, [])
         out.append({"id": m.id, "sender_id": m.sender_id, "sender": names.get(m.sender_id), "mine": False,
-                    "body": m.body, "hidden": m.hidden, "file": files.file_info(f) if f else None,
+                    "body": m.body, "hidden": m.hidden, "files": fl, "file": fl[0] if fl else None,
                     "created_at": m.created_at})
     return {"id": conv.id, "subject": conv.subject, "kind": conv.kind,
             "participants": [{"id": u.id, "full_name": u.full_name, "role": u.role} for u in people], "messages": out}

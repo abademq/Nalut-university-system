@@ -42,7 +42,7 @@ export function MessagesView({ params }) {
 export function ThreadView({ id }) {
   const state = useAsync(() => api.get(`/api/conversations/${id}/messages`), [id]);
   const [body, setBody] = useState("");
-  const [file, setFile] = useState(null);
+  const [picked, setPicked] = useState([]); // files to send with the next message (up to 10)
   const [pick, setPick] = useState(0);  // remounts the file input to clear it after sending
   const end = useRef(null);
   const [fresh, setFresh] = useState([]); // messages that arrived after the page loaded
@@ -69,13 +69,14 @@ export function ThreadView({ id }) {
     return () => { clearInterval(t); document.removeEventListener("visibilitychange", back); };
   }, [id]);
   const [send, busy, error] = useSubmit(async () => {
-    if (!body.trim() && !file) throw new Error("اكتب رسالة أو أرفق ملفاً");
+    if (!body.trim() && !picked.length) throw new Error("اكتب رسالة أو أرفق ملفاً");
+    if (picked.length > 10) throw new Error("يمكن إرفاق 10 ملفات على الأكثر في الرسالة");
     const fd = new FormData();
     fd.append("body", body);
-    if (file) fd.append("upload", file);
+    for (const f of picked) fd.append("upload", f);
     await api.form(`/api/conversations/${id}/messages`, fd);
     setBody("");
-    setFile(null);
+    setPicked([]);
     setPick(pick + 1);
     await poll();
   });
@@ -89,14 +90,17 @@ export function ThreadView({ id }) {
     <div class="card"><div class="thread">${all.map((m) => html`<div class=${`bubble ${m.mine ? "mine" : ""}`}>
       <div class="meta">${m.sender} · ${fmtDate(m.created_at)}</div>
       ${m.body ? html`<div style="white-space:pre-wrap">${m.body}</div>` : null}
-      ${m.file ? html`<button class="secondary small" style="margin-top:.35rem" title="تنزيل الملف"
-        onClick=${() => downloadFile(m.file.id, m.file.name).catch(toastError)}><${Icon} name="download" size=${16} /> تنزيل ${m.file.name}</button>` : null}
+      ${(m.files || (m.file ? [m.file] : [])).map((f) => html`<button class="secondary small" style="margin:.35rem .35rem 0 0" title="تنزيل الملف"
+        onClick=${() => downloadFile(f.id, f.name).catch(toastError)}><${Icon} name="download" size=${16} /> ${f.name}</button>`)}
       ${!m.mine ? html`<button class="ghost small" onClick=${() => report(m)} title="إبلاغ"><${Icon} name="flag" size=${16} /> إبلاغ</button>` : null}
     </div>`)}<div ref=${end}></div></div></div>
     <form class="card" onSubmit=${send}><${ErrorBox} error=${error} />
       <div class="field"><textarea placeholder="اكتب رسالتك… (أو أرفق ملفاً فقط)" value=${body} onInput=${(e) => setBody(e.target.value)}></textarea></div>
-      <div class="row"><input key=${pick} type="file" style="max-width:260px" accept=".pdf,.doc,.docx,.pptx,.xlsx,.txt,.png,.jpg,.jpeg,.zip"
-        onChange=${(e) => setFile(e.target.files[0] || null)} />
+      ${picked.length ? html`<div class="row" style="flex-wrap:wrap;margin-bottom:.4rem">${picked.map((f, i) => html`<${Chip}>${f.name}
+        <button type="button" class="ghost small" aria-label=${`إزالة ${f.name}`} onClick=${() => setPicked(picked.filter((_, j) => j !== i))}>×</button><//>`)}</div>` : null}
+      <div class="row"><input key=${pick} type="file" multiple style="max-width:260px" accept=".pdf,.doc,.docx,.pptx,.xlsx,.txt,.png,.jpg,.jpeg,.zip"
+        onChange=${(e) => { setPicked([...picked, ...e.target.files].slice(0, 10)); setPick(pick + 1); }} />
+        <span class="small muted">${picked.length ? `${picked.length} ملف` : "حتى 10 ملفات"}</span>
         <span class="spacer"></span><button disabled=${busy}>إرسال</button></div></form>
   </div>`}<//>`;
 }
@@ -131,7 +135,7 @@ export function OversightThread({ id }) {
     <div class="card"><div class="thread" style="max-height:none">${c.messages.map((m) => html`<div class="bubble">
       <div class="meta"><strong>${m.sender}</strong> · ${fmtDate(m.created_at)}${m.hidden ? html` · <${Chip} kind="danger">مخفية بعد بلاغ<//>` : null}</div>
       ${m.body ? html`<div style="white-space:pre-wrap">${m.body}</div>` : null}
-      ${m.file ? html`<button class="secondary small" style="margin-top:.35rem" onClick=${() => downloadFile(m.file.id, m.file.name).catch(toastError)}>
-        <${Icon} name="download" size=${16} /> تنزيل ${m.file.name}</button>` : null}</div>`)}</div></div>
+      ${(m.files || (m.file ? [m.file] : [])).map((f) => html`<button class="secondary small" style="margin:.35rem .35rem 0 0" onClick=${() => downloadFile(f.id, f.name).catch(toastError)}>
+        <${Icon} name="download" size=${16} /> ${f.name}</button>`)}</div>`)}</div></div>
   </div>`}<//>`;
 }

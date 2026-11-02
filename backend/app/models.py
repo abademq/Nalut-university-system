@@ -674,6 +674,16 @@ class Message(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
+class MessageAttachment(Base):
+    """Further files of a message (the first one stays in Message.file_id)."""
+
+    __tablename__ = "message_attachments"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    message_id: Mapped[int] = mapped_column(ForeignKey("messages.id"), index=True)
+    file_id: Mapped[int] = mapped_column(ForeignKey("stored_files.id"), unique=True)
+    position: Mapped[int] = mapped_column(Integer, default=1)
+
+
 class MessageReport(Base):
     __tablename__ = "message_reports"
     id: Mapped[int] = mapped_column(primary_key=True)

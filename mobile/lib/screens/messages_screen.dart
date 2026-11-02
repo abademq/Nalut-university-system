@@ -159,7 +159,7 @@ class _ThreadScreenState extends State<ThreadScreen> with WidgetsBindingObserver
   Map<String, dynamic>? _data;
   Timer? _timer;
   bool _sending = false;
-  UploadFile? _file; // attachment waiting to be sent
+  final _files = <UploadFile>[]; // attachments waiting to be sent (up to 10)
 
   @override
   void initState() {
@@ -219,24 +219,30 @@ class _ThreadScreenState extends State<ThreadScreen> with WidgetsBindingObserver
     final picked = await FilePicker.pickFiles(
         type: FileType.custom, allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png', 'docx', 'doc', 'pptx', 'xlsx', 'txt', 'zip']);
     if (picked.isEmpty) return;
-    final f = picked.first;
-    final bytes = await f.xFile.readAsBytes();
-    if (bytes.length > 5 * 1024 * 1024) {
-      if (mounted) showMessage(context, 'الملف أكبر من 5 ميغابايت', error: true);
-      return;
+    final add = <UploadFile>[];
+    for (final f in picked) {
+      final bytes = await f.xFile.readAsBytes();
+      if (bytes.length > 5 * 1024 * 1024) {
+        if (mounted) showMessage(context, '${f.name}: الملف أكبر من 5 ميغابايت', error: true);
+        continue;
+      }
+      add.add(UploadFile('upload', f.name, bytes));
     }
-    if (mounted) setState(() => _file = UploadFile('upload', f.name, bytes));
+    if (!mounted) return;
+    final room = 10 - _files.length;
+    setState(() => _files.addAll(add.take(room)));
+    if (add.length > room) showMessage(context, 'يمكن إرفاق 10 ملفات على الأكثر في الرسالة', error: true);
   }
 
   Future<void> _send() async {
-    if (_body.text.trim().isEmpty && _file == null) return;
+    if (_body.text.trim().isEmpty && _files.isEmpty) return;
     final s = context.read<Session>();
     setState(() => _sending = true);
     try {
       await s.api.multipart('/api/conversations/${widget.id}/messages',
-          fields: {'body': _body.text.trim()}, files: [?_file]);
+          fields: {'body': _body.text.trim()}, files: List.of(_files));
       _body.clear();
-      setState(() => _file = null);
+      setState(_files.clear);
       await _poll();
     } catch (e) {
       if (mounted) showMessage(context, e, error: true);
@@ -301,14 +307,14 @@ class _ThreadScreenState extends State<ThreadScreen> with WidgetsBindingObserver
                             Text('${m['sender']} · ${fmtDate(m['created_at'])}', style: const TextStyle(fontSize: 11, color: Colors.grey)),
                             const SizedBox(height: 2),
                             if ((m['body'] as String).isNotEmpty) Text(m['body'] as String),
-                            if (m['file'] != null)
-                              // tap to download and open with the phone's viewer
+                            // tap to download and open with the phone's viewer
+                            for (final f in (m['files'] as List?) ?? [if (m['file'] != null) m['file']])
                               TextButton.icon(
                                 style: TextButton.styleFrom(padding: EdgeInsets.zero, visualDensity: VisualDensity.compact),
                                 icon: const Icon(Icons.attach_file, size: 18),
-                                label: Text('${m['file']['name']}', overflow: TextOverflow.ellipsis),
-                                onPressed: () => downloadAndOpen(context, context.read<Session>(),
-                                    '/api/files/${m['file']['id']}', m['file']['name'] as String),
+                                label: Text('${f['name']}', overflow: TextOverflow.ellipsis),
+                                onPressed: () => downloadAndOpen(
+                                    context, context.read<Session>(), '/api/files/${f['id']}', f['name'] as String),
                               ),
                           ]),
                         ),
@@ -334,10 +340,15 @@ class _ThreadScreenState extends State<ThreadScreen> with WidgetsBindingObserver
                   decoration: InputDecoration(
                     hintText: 'اكتب رسالتك…',
                     isDense: true,
-                    helperText: _file == null ? null : 'مرفق: ${_file!.filename}',
-                    suffixIcon: _file == null
+                    helperText: _files.isEmpty
                         ? null
-                        : IconButton(icon: const Icon(Icons.close, size: 18), onPressed: () => setState(() => _file = null)),
+                        : _files.length == 1 ? 'مرفق: ${_files.first.filename}' : '${_files.length} ملفات مرفقة',
+                    suffixIcon: _files.isEmpty
+                        ? null
+                        : IconButton(
+                            tooltip: 'إزالة المرفقات',
+                            icon: const Icon(Icons.close, size: 18),
+                            onPressed: () => setState(_files.clear)),
                   ),
                 ),
               ),
