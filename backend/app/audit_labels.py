@@ -50,6 +50,9 @@ ACTIONS: dict[str, tuple[str, str]] = {
     "course.staff_removed": ("إلغاء إسناد مقرر", "course"),
     "course.enrolled": ("تسجيل طالب في مقرر", "course"),
     "course.prerequisites_changed": ("تعديل المتطلبات السابقة لمقرر", "course"),
+    "program.created": ("إنشاء تخصص", "structure"), "program.updated": ("تعديل تخصص", "structure"),
+    "program.deleted": ("حذف تخصص", "structure"), "program.plan_saved": ("حفظ الخطة الدراسية لتخصص", "structure"),
+    "program.students_placed": ("ربط طلبة بتخصص", "structure"),
     "course.unenrolled": ("إلغاء تسجيل طالب من مقرر", "course"),
     "component.updated": ("تعديل عنصر تقييم", "grade"),
     "component.deleted": ("حذف عنصر تقييم", "grade"),
@@ -115,7 +118,7 @@ TARGETS = {
     "term": "فصل دراسي", "university": "الجامعة", "assignment": "مهمة", "submission": "تسليم", "grade": "درجة",
     "attendance_session": "جلسة حضور", "attendance_record": "سجل حضور", "banner": "إعلان مثبت",
     "publication": "منشور", "message": "رسالة", "conversation": "محادثة", "notification": "إشعار", "service_request": "طلب",
-    "permission_group": "مجموعة صلاحيات", "file": "ملف",
+    "permission_group": "مجموعة صلاحيات", "program": "تخصص", "file": "ملف",
 }
 
 # names of the keys found in details (values that are codes are translated with VALUES)

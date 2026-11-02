@@ -18,6 +18,7 @@ import { StudentsList, StudentDetail } from "./views/students.js";
 import { GuideView } from "./views/guide.js";
 import { PublicationsView } from "./views/publications.js";
 import { TranscriptView } from "./views/transcript.js";
+import { MyPlanView, ProgramsView, ProgramDetail } from "./views/plan.js";
 
 const isInstructor = (r) => r === "teacher" || r === "assistant";
 // a configurable capability (see the permissions page): the server lists what this account holds
@@ -36,6 +37,7 @@ const NAV = [
   ["#/assignments", "المهام والواجبات", "assignments", (r) => r === "student" || isInstructor(r), true],
   ["#/grades", "الدرجات", "grades", (r) => r === "student" || isInstructor(r), false],
   ["#/transcript", "نتيجتي والمعدل", "results", (r) => r === "student", false],
+  ["#/plan", "خطتي الدراسية", "structure", (r) => r === "student", false],
   ["#/results", "اعتماد النتائج", "results", (r, u) => can(u, "results.approve"), false],
   ["#/attendance", "الحضور", "attendance", (r) => r !== "platform_admin", true],
   ["#/notifications", "الإشعارات", "notifications", (r) => r !== "platform_admin", true],
@@ -44,6 +46,7 @@ const NAV = [
   ["#/requests", "الطلبات والمعاملات", "requests", (r) => r !== "platform_admin", false],
   ["#/reports", "التقارير", "reports", (r, u) => can(u, "reports.view"), false],
   ["#/users", "المستخدمون", "users", (r, u) => can(u, "users.manage"), false],
+  ["#/programs", "التخصصات والخطط", "courses", (r, u) => can(u, "programs.manage"), false],
   ["#/structure", "الهيكل التنظيمي", "structure", (r, u) => ["structure.faculties", "structure.departments", "structure.terms"].some((k) => can(u, k)), false],
   ["#/banners", "الإعلانات المثبتة", "banners", (r, u) => can(u, "banners.manage"), false],
   ["#/students", "الطلبة", "students", (r, u) => can(u, "students.view"), false],
@@ -73,6 +76,8 @@ function route(hash, user) {
     case "grades": return html`<${GradesView} user=${user} courseId=${b} />`;
     case "results": return html`<${ResultsApproval} user=${user} />`;
     case "transcript": return html`<${TranscriptView} />`;
+    case "plan": return html`<${MyPlanView} />`;
+    case "programs": return b ? html`<${ProgramDetail} id=${b} />` : html`<${ProgramsView} user=${user} />`;
     case "attendance":
       if (b === "scan") return html`<${ScanView} user=${user} />`;
       if (b === "session") return html`<${SessionView} id=${c} user=${user} />`;

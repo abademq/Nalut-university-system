@@ -28,6 +28,8 @@ from .models import (
     ConversationParticipant,
     Course,
     CoursePrerequisite,
+    Program,
+    ProgramCourse,
     CourseResult,
     CourseStaff,
     Department,
@@ -161,8 +163,23 @@ def seed(db, second_university: bool = False) -> None:
                    [{"day": 0, "start": "12:30", "end": "14:00", "room": "E-Hall"}],
                    [(t_khaled, "instructor")], eng_students)
 
-    # data structures need programming first (registration checks it from now on)
-    db.add(CoursePrerequisite(university_id=uni.id, faculty_id=it.id, course_code="CS201", required_code="CS101"))
+    # the computer science programme: its plan by semester, and its prerequisites
+    prog = Program(university_id=uni.id, faculty_id=it.id, department_id=cs.id, name="علوم الحاسوب", code="CS",
+                   semesters=8)
+    db.add(prog)
+    db.flush()
+    plan = [(1, "CS101", "مقدمة في البرمجة", 3, ()), (1, "MATH101", "رياضة 1", 3, ()), (1, "ENG101", "لغة إنجليزية 1", 2, ()),
+            (1, "IS110", "مبادئ نظم المعلومات", 3, ()),
+            (2, "CS201", "هياكل البيانات", 3, ("CS101",)), (2, "MATH102", "رياضة 2", 3, ("MATH101",)),
+            (2, "ENG102", "لغة إنجليزية 2", 2, ("ENG101",)), (2, "CS102", "برمجة 2", 3, ("CS101",)),
+            (3, "CS301", "قواعد البيانات", 3, ("CS201",)), (3, "CS302", "الخوارزميات", 3, ("CS201", "MATH102")),
+            (3, "STAT201", "الإحصاء", 3, ("MATH102",)), (4, "CS401", "نظم التشغيل", 3, ("CS301",)),
+            (4, "CS402", "شبكات الحاسوب", 3, ("CS102",)), (4, "CS410", "مقرر اختياري: الذكاء الاصطناعي", 3, ("CS302",))]
+    for sem, code, title, credits, reqs in plan:
+        db.add(ProgramCourse(program_id=prog.id, semester=sem, code=code, title=title, credits=credits,
+                             required=not title.startswith("مقرر اختياري")))
+        for r in reqs:
+            db.add(CoursePrerequisite(university_id=uni.id, faculty_id=it.id, course_code=code, required_code=r))
 
     # ----- grades: IS110 published, CS201 waiting for approval, CS101 draft in progress
     def fill_grades(c, studs, lo=40, hi=98, skip=()):

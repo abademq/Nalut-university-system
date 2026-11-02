@@ -230,6 +230,45 @@ class CoursePrerequisite(Base):
     __table_args__ = (UniqueConstraint("faculty_id", "course_code", "required_code"),)
 
 
+class Program(Base):
+    """A study programme (تخصص): its courses spread over numbered semesters."""
+
+    __tablename__ = "programs"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    university_id: Mapped[int] = mapped_column(ForeignKey("universities.id"), index=True)
+    faculty_id: Mapped[int] = mapped_column(ForeignKey("faculties.id"), index=True)
+    department_id: Mapped[int | None] = mapped_column(ForeignKey("departments.id"))
+    name: Mapped[str] = mapped_column(String(200))
+    code: Mapped[str] = mapped_column(String(40))
+    semesters: Mapped[int] = mapped_column(Integer, default=8)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    __table_args__ = (UniqueConstraint("faculty_id", "code"),)
+
+
+class ProgramCourse(Base):
+    """One course of a programme's plan, by code (the term offerings carry the same code)."""
+
+    __tablename__ = "program_courses"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    program_id: Mapped[int] = mapped_column(ForeignKey("programs.id"), index=True)
+    semester: Mapped[int] = mapped_column(Integer)
+    code: Mapped[str] = mapped_column(String(40))
+    title: Mapped[str] = mapped_column(String(200))
+    credits: Mapped[int] = mapped_column(Integer, default=3)
+    required: Mapped[bool] = mapped_column(Boolean, default=True)  # False: elective
+    __table_args__ = (UniqueConstraint("program_id", "code"),)
+
+
+class StudentProgram(Base):
+    """The programme a student follows (without one, the programme of their department is used)."""
+
+    __tablename__ = "student_programs"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    student_id: Mapped[int] = mapped_column(ForeignKey("users.id"), unique=True)
+    program_id: Mapped[int] = mapped_column(ForeignKey("programs.id"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
 class CourseStaff(Base):
     __tablename__ = "course_staff"
     id: Mapped[int] = mapped_column(primary_key=True)

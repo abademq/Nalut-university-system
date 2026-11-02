@@ -9,6 +9,7 @@ import 'courses_screen.dart';
 import 'grade_entry_screen.dart';
 import 'grades_screen.dart';
 import 'guide_screen.dart';
+import 'plan_screen.dart';
 import 'messages_screen.dart';
 import 'oversight_screens.dart';
 import 'publications_screen.dart';
@@ -60,6 +61,9 @@ class MoreScreen extends StatelessWidget {
           _tile(context, Icons.manage_accounts_outlined, 'حسابي', const AccountScreen(),
               subtitle: 'كلمة المرور والتحقق الثنائي'),
           if (s.isStudent) _tile(context, Icons.grade_outlined, 'درجاتي ونتائجي', const GradesScreen()),
+          if (s.isStudent)
+            _tile(context, Icons.account_tree_outlined, 'خطتي الدراسية', const PlanScreen(),
+                subtitle: 'المقررات المتبقية، والفصل القادم، وما يجب النجاح فيه'),
           // what each role sees follows the university's permission matrix (the profile's `can` list)
           if (!s.isStudent && s.can('grades.enter'))
             _tile(context, Icons.edit_note, 'رصد الدرجات', const GradeEntryScreen(), subtitle: 'إدخال الدرجات ورفعها للاعتماد'),

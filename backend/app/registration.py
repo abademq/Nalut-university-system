@@ -186,3 +186,89 @@ def blocked_by(db: Session, student: User, failed_codes: list[str]) -> dict[str,
             CoursePrerequisite.faculty_id == student.faculty_id, CoursePrerequisite.required_code.in_(failed_codes or ["-"]))):
         out.setdefault(b, []).append(a)
     return out
+
+
+# --------------------------------------------------------------------------- study plans
+
+
+def program_of(db: Session, student: User):
+    """The student's programme: the one they were placed in, else the only one of their department."""
+    from .models import Program, StudentProgram
+
+    sp = db.scalar(select(StudentProgram).where(StudentProgram.student_id == student.id))
+    if sp:
+        return db.get(Program, sp.program_id)
+    if student.department_id:
+        rows = db.scalars(select(Program).where(Program.department_id == student.department_id)).all()
+        if len(rows) == 1:
+            return rows[0]
+    return None
+
+
+def plan_progress(db: Session, student: User, cfg: dict) -> dict | None:
+    """The programme semester by semester with the state of each course, the semester the student
+    has reached, what the plan expects next, and the courses of this term that must be passed so
+    that next term's courses are not closed to them."""
+    from .models import ProgramCourse
+
+    program = program_of(db, student)
+    if not program:
+        return None
+    hist = history(db, student, cfg["grading"])
+    state: dict[str, str] = {}
+    for h in hist:  # passed wins over a later attempt still running, which wins over a fail
+        rank = {"failed": 0, "in_progress": 1, "passed": 2}
+        if rank[h["state"]] >= rank.get(state.get(h["code"], ""), -1):
+            state[h["code"]] = h["state"]
+    rows = list(db.scalars(select(ProgramCourse).where(ProgramCourse.program_id == program.id)
+                           .order_by(ProgramCourse.semester, ProgramCourse.code)))
+    plan_codes = {r.code for r in rows}
+    prereq: dict[str, list[str]] = {}
+    for a, b in db.execute(select(CoursePrerequisite.course_code, CoursePrerequisite.required_code).where(
+            CoursePrerequisite.faculty_id == program.faculty_id, CoursePrerequisite.course_code.in_(plan_codes or ["-"]))):
+        prereq.setdefault(a, []).append(b)
+    names = {r.code: r.title for r in rows}
+    terms_taken = {h["term_id"] for h in hist if h["term_id"] is not None}
+    level = max(len(terms_taken), 1)  # the semester the student is in (or has just finished)
+    running = any(h["state"] == "in_progress" for h in hist)
+    nxt = level + 1 if running or terms_taken else 1
+
+    def course_row(r) -> dict:
+        st = state.get(r.code, "remaining")
+        reqs = sorted(prereq.get(r.code, []))
+        return {"code": r.code, "title": r.title, "credits": r.credits, "required": r.required, "semester": r.semester,
+                "state": st, "prerequisites": [{"code": c, "title": names.get(c, c), "state": state.get(c, "remaining")}
+                                               for c in reqs]}
+
+    semesters = []
+    for n in range(1, program.semesters + 1):
+        items = [course_row(r) for r in rows if r.semester == n]
+        semesters.append({"semester": n, "courses": items, "credits": sum(i["credits"] for i in items),
+                          "earned": sum(i["credits"] for i in items if i["state"] == "passed")})
+    # next term: this level's courses, and anything left over from earlier semesters
+    upcoming = []
+    for s in semesters:
+        if s["semester"] > nxt:
+            break
+        for c in s["courses"]:
+            if c["state"] in ("passed", "in_progress"):
+                continue
+            missing = [p for p in c["prerequisites"] if p["state"] != "passed"]
+            pending = [p for p in missing if p["state"] == "in_progress"]
+            upcoming.append({**c, "overdue": s["semester"] < nxt,
+                             "status": "open" if not missing else "pending" if len(pending) == len(missing) else "closed",
+                             "missing": missing})
+    # this term's courses whose failure would close a course of the next term
+    unlocks: dict[str, list[str]] = {}
+    for c in upcoming:
+        for p in c["prerequisites"]:
+            if p["state"] == "in_progress":
+                unlocks.setdefault(p["code"], []).append(f"{c['title']} ({c['code']})")
+    must_pass = [{"code": k, "title": names.get(k) or next((h["title"] for h in hist if h["code"] == k), k),
+                  "unlocks": v} for k, v in sorted(unlocks.items())]
+    total = sum(r.credits for r in rows if r.required)
+    earned = sum(r.credits for r in rows if state.get(r.code) == "passed")
+    return {"program": {"id": program.id, "name": program.name, "code": program.code, "semesters": program.semesters},
+            "level": level if (running or terms_taken) else 0, "next_semester": nxt,
+            "semesters": semesters, "next_courses": upcoming, "must_pass": must_pass,
+            "plan_credits": total, "earned_credits": earned, "remaining_credits": max(total - earned, 0)}

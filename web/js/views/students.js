@@ -1,3 +1,4 @@
+import { PlanCard } from "./plan.js";
 import { TranscriptCard } from "./transcript.js";
 import { AcademicSummary } from "./courses.js";
 import { html, useState, useAsync, Async, Empty, Chip, Kpi, navigate } from "../ui.js";
@@ -46,6 +47,7 @@ export function StudentDetail({ id, user }) {
         <${Kpi} label="متوسط درجات المهام" value=${pct(s.avg_score_percent)} />
         <${Kpi} label="تنبيهات" value=${s.alerts} />
       </div>
+      <h3>الخطة الدراسية</h3><${StudentPlan} id=${d.user.id} />
       ${d.transcript ? html`<h3>النتائج والمعدل</h3><${TranscriptCard} t=${d.transcript} />` : null}
       ${d.academic ? html`<h3>المقررات والوحدات</h3><${AcademicSummary} a=${d.academic} />` : null}
       <div class="card"><h3>المتابعة في كل مقرر</h3>${d.courses.length ? html`<div class="table-wrap"><table>
@@ -61,4 +63,9 @@ export function StudentDetail({ id, user }) {
         <p class="small muted">الغياب نسبة من محاضرات المقرر. النتيجة تظهر بعد اعتمادها ونشرها، وقبل ذلك المجموع الجاري للمختصين فقط.</p></div>
     </div>`;
   }}<//>`;
+}
+
+function StudentPlan({ id }) {
+  const state = useAsync(() => api.get(`/api/students/${id}/plan`), [id]);
+  return html`<${Async} state=${state}>${(p) => html`<${PlanCard} p=${p} />`}<//>`;
 }

@@ -39,6 +39,7 @@ CAPABILITIES: dict[str, tuple[str, str, list[str], list[str]]] = {
     "messages.moderate": ("الإدارة", "معالجة بلاغات الرسائل وإخفاء المخالف منها", ROLES, [UA, FA]),
     "messages.oversight": ("الإدارة", "الاطلاع على كل الرسائل (رقابة الرسائل)", ROLES, [UA]),
     "courses.manage": ("المقررات", "إنشاء المقررات وتعديلها وإسناد الأساتذة وتسجيل الطلبة", ROLES, [UA, FA]),
+    "programs.manage": ("المقررات", "إدارة التخصصات والخطط الدراسية وربط الطلبة بها", ROLES, [UA, FA]),
     "courses.schedule": ("المقررات", "تعديل مواعيد المحاضرات", ROLES, [UA, FA, _T, _A]),
     "courses.components": ("المقررات", "إدارة عناصر التقييم", ROLES, [UA, FA, _T, _A]),
     "grades.enter": ("الدرجات", "رصد الدرجات وتعديلها واستيرادها", ROLES, [UA, FA, _T, _A]),
