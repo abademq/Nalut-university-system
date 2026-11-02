@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_ble_peripheral/flutter_ble_peripheral.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:provider/provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
@@ -102,6 +103,8 @@ class _NewSessionScreenState extends State<NewSessionScreen> {
   int? _course;
   String _kind = 'course';
   String _risk = 'normal';
+  String _method = 'code'; // code | bluetooth | qr
+  int _codeSeconds = 120;
   final _location = TextEditingController();
   final _duration = TextEditingController(); // empty: the institution's default
   Position? _pos;
@@ -142,6 +145,12 @@ class _NewSessionScreenState extends State<NewSessionScreen> {
 
   Future<void> _create() async {
     if (_kind == 'course' && _course == null) return showMessage(context, 'اختر المقرر', error: true);
+    final method = _kind == 'course' ? _method : 'qr';
+    if (method == 'code' && _pos == null) {
+      await _locate(); // the room's location is what keeps a shared code from counting at home
+      if (_pos == null) return;
+    }
+    if (!mounted) return;
     if (_geofence && _pos == null) {
       return showMessage(context, 'التحقق بالموقع يتطلب تحديد موقع القاعة: اضغط «استخدام موقعي الحالي» وأنت داخلها', error: true);
     }
@@ -153,7 +162,9 @@ class _NewSessionScreenState extends State<NewSessionScreen> {
         'location': _location.text.trim().isEmpty ? null : _location.text.trim(),
         if (int.tryParse(_duration.text) != null) 'duration_minutes': int.parse(_duration.text),
         'risk_level': _risk,
-        if (_geofence && _pos != null) ...{'latitude': _pos!.latitude, 'longitude': _pos!.longitude},
+        'method': method,
+        if (method == 'code') 'code_seconds': _codeSeconds,
+        if ((_geofence || method == 'code') && _pos != null) ...{'latitude': _pos!.latitude, 'longitude': _pos!.longitude},
       }) as Map<String, dynamic>;
       if (mounted) Navigator.pop(context, r);
     } catch (e) {
@@ -186,6 +197,47 @@ class _NewSessionScreenState extends State<NewSessionScreen> {
             items: [for (final c in _courses) DropdownMenuItem(value: c['id'] as int, child: Text('${c['code']} — ${c['title']}'))],
             onChanged: (v) => setState(() => _course = v),
           ),
+        if (_kind == 'course') ...[
+          const SizedBox(height: 12),
+          DropdownButtonFormField<String>(
+            initialValue: _method,
+            isExpanded: true,
+            decoration: const InputDecoration(labelText: 'طريقة التسجيل'),
+            items: const [
+              DropdownMenuItem(value: 'code', child: Text('رمز من 4 أرقام أقوله للطلبة (بدون شاشة)')),
+              DropdownMenuItem(value: 'bluetooth', child: Text('بلوتوث من هاتفي (بدون شاشة ولا رمز)')),
+              DropdownMenuItem(value: 'qr', child: Text('رمز QR على شاشة أو جهاز عرض')),
+            ],
+            onChanged: (v) => setState(() => _method = v!),
+          ),
+          if (_method == 'code') ...[
+            const SizedBox(height: 12),
+            DropdownButtonFormField<int>(
+              initialValue: _codeSeconds,
+              decoration: const InputDecoration(labelText: 'مدة الرمز قبل أن يتغير'),
+              items: const [
+                DropdownMenuItem(value: 30, child: Text('30 ثانية')),
+                DropdownMenuItem(value: 60, child: Text('دقيقة')),
+                DropdownMenuItem(value: 120, child: Text('دقيقتان')),
+                DropdownMenuItem(value: 300, child: Text('5 دقائق')),
+                DropdownMenuItem(value: 600, child: Text('10 دقائق')),
+                DropdownMenuItem(value: 0, child: Text('رمز واحد طوال المحاضرة')),
+              ],
+              onChanged: (v) => setState(() => _codeSeconds = v!),
+            ),
+            const Padding(
+              padding: EdgeInsets.only(top: 6),
+              child: Text('يُحفظ موقعك الحالي كموقع للقاعة: من يرسل له زميله الرمز وهو خارجها يُحال للمراجعة.',
+                  style: TextStyle(fontSize: 12, color: Colors.grey)),
+            ),
+          ],
+          if (_method == 'bluetooth')
+            const Padding(
+              padding: EdgeInsets.only(top: 6),
+              child: Text('أبقِ هذه الشاشة مفتوحة والبلوتوث يعمل؛ هواتف الطلبة القريبة (نحو 10–30 متراً) تلتقط إشارة هاتفك.',
+                  style: TextStyle(fontSize: 12, color: Colors.grey)),
+            ),
+        ],
         const SizedBox(height: 12),
         TextField(controller: _location, decoration: const InputDecoration(labelText: 'المكان / القاعة')),
         const SizedBox(height: 12),
@@ -212,7 +264,7 @@ class _NewSessionScreenState extends State<NewSessionScreen> {
               style: TextStyle(fontSize: 12, color: Colors.grey)),
         ),
         const SizedBox(height: 8),
-        FilledButton(onPressed: _busy ? null : _create, child: Text(_busy ? 'جارٍ الإنشاء…' : 'بدء الجلسة وعرض الرمز')),
+        FilledButton(onPressed: _busy ? null : _create, child: Text(_busy ? 'جارٍ الإنشاء…' : 'بدء الجلسة')),
       ]),
     );
   }
@@ -247,7 +299,31 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
   void dispose() {
     _qrTimer?.cancel();
     _rollTimer?.cancel();
+    if (_advertising) FlutterBlePeripheral().stop().catchError((_) => PeripheralBluetoothState.unknown);
     super.dispose();
+  }
+
+  bool _advertising = false;
+  String? _bleError;
+  String get _method => _session?['method'] as String? ?? 'qr';
+
+  Future<void> _advertise(String uuid) async {
+    final ble = FlutterBlePeripheral();
+    try {
+      if (_advertising) await ble.stop();
+      var perm = await ble.hasPermission();
+      if (perm != PeripheralBluetoothState.granted) perm = await ble.requestPermission();
+      if (perm == PeripheralBluetoothState.denied || perm == PeripheralBluetoothState.permanentlyDenied) {
+        throw Exception('perm');
+      }
+      if (!await ble.isBluetoothOn) await ble.enableBluetooth();
+      await ble.start(advertiseData: AdvertiseDataCore(serviceUuids: [uuid]));
+      _advertising = true;
+      _bleError = null;
+    } catch (_) {
+      _advertising = false;
+      _bleError = 'تعذر بث البلوتوث: شغّل البلوتوث واسمح للتطبيق بالأجهزة القريبة';
+    }
   }
 
   Future<void> _loadSession() async {
@@ -265,7 +341,9 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
   Future<void> _loadQr() async {
     _qrTimer?.cancel();
     try {
-      final q = await _s.api.get('/api/attendance/sessions/${widget.id}/qr') as Map<String, dynamic>;
+      final path = switch (_method) { 'code' => 'code', 'bluetooth' => 'ble', _ => 'qr' };
+      final q = await _s.api.get('/api/attendance/sessions/${widget.id}/$path') as Map<String, dynamic>;
+      if (_method == 'bluetooth') await _advertise(q['uuid'] as String);
       if (!mounted) return;
       setState(() => _qr = q);
       final ms = ((q['expires_in'] as num) * 1000).round() + 300;
@@ -291,6 +369,10 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
     try {
       await _s.api.post('/api/attendance/sessions/${widget.id}/close');
       _qrTimer?.cancel();
+      if (_advertising) {
+        await FlutterBlePeripheral().stop();
+        _advertising = false;
+      }
       setState(() => _qr = null);
       await _loadSession();
     } catch (e) {
@@ -366,18 +448,44 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
                       Text('سجّل $present${d['expected'] != null ? ' من ${d['expected']}' : ''}',
                           style: const TextStyle(color: AppColors.success, fontWeight: FontWeight.bold)),
                       const SizedBox(height: 12),
-                      Container(
-                        color: Colors.white,
-                        padding: const EdgeInsets.all(12),
-                        child: QrImageView(data: _qr!['payload'] as String, size: 300, backgroundColor: Colors.white),
-                      ),
-                      const SizedBox(height: 12),
-                      Text('يتجدد الرمز كل ${_qr!['rotation_seconds']} ثانية', style: const TextStyle(color: Colors.grey)),
-                      const SizedBox(height: 8),
-                      Text('رقم الجلسة ${widget.id}'),
-                      Text('${_qr!['short_code']}',
-                          textDirection: TextDirection.ltr,
-                          style: const TextStyle(fontSize: 34, letterSpacing: 6, fontWeight: FontWeight.bold)),
+                      if (_method == 'code') ...[
+                        const Text('قل هذا الرمز للطلبة أو اكتبه على السبورة:'),
+                        const SizedBox(height: 8),
+                        Text('${_qr!['code']}',
+                            textDirection: TextDirection.ltr,
+                            style: const TextStyle(fontSize: 72, letterSpacing: 14, fontWeight: FontWeight.bold)),
+                        Text(
+                            (_qr!['code_seconds'] as num) == 0
+                                ? 'الرمز نفسه حتى نهاية المحاضرة'
+                                : 'يتغير كل ${_qr!['code_seconds']} ثانية تلقائياً',
+                            style: const TextStyle(color: Colors.grey)),
+                        const SizedBox(height: 8),
+                        const Text('يكتبه الطالب في التطبيق: تسجيل الحضور ← إدخال الرمز.',
+                            style: TextStyle(fontSize: 12, color: Colors.grey)),
+                      ] else if (_method == 'bluetooth') ...[
+                        Icon(_advertising ? Icons.bluetooth_audio : Icons.bluetooth_disabled,
+                            size: 96, color: _advertising ? AppColors.success : Colors.grey),
+                        const SizedBox(height: 8),
+                        Text(_advertising ? 'هاتفك يبث الحضور الآن' : (_bleError ?? 'جارٍ تشغيل البلوتوث…'),
+                            textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 8),
+                        const Text('أبقِ هذه الشاشة مفتوحة. يضغط الطالب «بلوتوث» في شاشة تسجيل الحضور وهو قريب منك.',
+                            textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: Colors.grey)),
+                        if (!_advertising) TextButton(onPressed: _loadQr, child: const Text('إعادة المحاولة')),
+                      ] else ...[
+                        Container(
+                          color: Colors.white,
+                          padding: const EdgeInsets.all(12),
+                          child: QrImageView(data: _qr!['payload'] as String, size: 300, backgroundColor: Colors.white),
+                        ),
+                        const SizedBox(height: 12),
+                        Text('يتجدد الرمز كل ${_qr!['rotation_seconds']} ثانية', style: const TextStyle(color: Colors.grey)),
+                        const SizedBox(height: 8),
+                        Text('رقم الجلسة ${widget.id}'),
+                        Text('${_qr!['short_code']}',
+                            textDirection: TextDirection.ltr,
+                            style: const TextStyle(fontSize: 34, letterSpacing: 6, fontWeight: FontWeight.bold)),
+                      ],
                       const SizedBox(height: 16),
                       OutlinedButton.icon(
                         onPressed: () => setState(() => _showRoll = true),

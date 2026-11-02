@@ -479,7 +479,7 @@ function SettingsForm({ data, acting, onSaved }) {
     late_after_minutes: e.attendance.late_after_minutes, rotation_seconds: e.attendance.rotation_seconds,
     default_duration_minutes: e.attendance.default_duration_minutes, open_before_minutes: e.attendance.open_before_minutes,
     staff_late_after_minutes: e.attendance.staff_late_after_minutes, staff_early_leave_minutes: e.attendance.staff_early_leave_minutes,
-    staff_default_duration_minutes: e.attendance.staff_default_duration_minutes, default_radius_m: e.attendance.default_radius_m,
+    staff_default_duration_minutes: e.attendance.staff_default_duration_minutes, staff_work_start: e.attendance.staff_work_start || "08:00", default_radius_m: e.attendance.default_radius_m,
     max_login_failures: e.security.max_login_failures, lockout_minutes: e.security.lockout_minutes,
     max_attachment_mb: e.messaging.max_attachment_mb, student_can_message: e.messaging.student_can_message,
     max_credits_per_term: e.registration.max_credits_per_term, min_credits_per_term: e.registration.min_credits_per_term,
@@ -524,7 +524,7 @@ function SettingsForm({ data, acting, onSaved }) {
       attendance: { ...e.attendance, late_after_minutes: n("late_after_minutes"), rotation_seconds: n("rotation_seconds"),
         default_duration_minutes: n("default_duration_minutes"), open_before_minutes: n("open_before_minutes"),
         staff_late_after_minutes: n("staff_late_after_minutes"), staff_early_leave_minutes: n("staff_early_leave_minutes"),
-        staff_default_duration_minutes: n("staff_default_duration_minutes"), default_radius_m: n("default_radius_m"),
+        staff_default_duration_minutes: n("staff_default_duration_minutes"), staff_work_start: v.staff_work_start || "08:00", default_radius_m: n("default_radius_m"),
         warning_absence_percent: n("warning_absence_percent"), limit_absence_percent: n("limit_absence_percent"),
         review_threshold: n("review_threshold"), selfie_retention_days: n("selfie_retention_days"),
         risk_weights: Object.fromEntries(Object.entries(weights).map(([k, w]) => [k, Number(w)])), levels },
@@ -623,7 +623,8 @@ function SettingsForm({ data, acting, onSaved }) {
     <div class="card"><h3>دوام الموظفين</h3><div class="form-grid">
       ${num("staff_late_after_minutes", "الموظف متأخر بعد (دقيقة من بداية الدوام)", { min: 0, max: 240 })}
       ${num("staff_early_leave_minutes", "انصراف مبكر إذا خرج قبل النهاية بـ (دقيقة)", { min: 0, max: 240 })}
-      ${num("staff_default_duration_minutes", "مدة الدوام الافتراضية (دقيقة)", { min: 30, max: 960 })}</div></div>
+      ${num("staff_default_duration_minutes", "مدة الدوام الافتراضية (دقيقة)", { min: 30, max: 960 })}
+      <div class="field"><label>بداية الدوام (لنقاط QR الثابتة)</label><input type="time" ...${bind("staff_work_start")} /></div></div></div>
     <div class="card"><h3>رمز الحضور والتحقق</h3><div class="form-grid">
       ${num("rotation_seconds", "مدة صلاحية رمز QR (ثانية)", { min: 5, max: 120 })}
       ${num("open_before_minutes", "فتح التسجيل قبل البداية بـ (دقيقة)", { min: 0, max: 120 })}

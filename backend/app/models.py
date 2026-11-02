@@ -561,6 +561,52 @@ class AttendanceSession(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
+class AttendanceSessionOption(Base):
+    """How a session takes attendance beyond the rotating QR: a code the teacher reads out, the teacher's
+    phone over Bluetooth, or the fixed QR of a staff checkpoint (one session per checkpoint and day)."""
+
+    __tablename__ = "attendance_session_options"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    session_id: Mapped[int] = mapped_column(ForeignKey("attendance_sessions.id"), unique=True)
+    method: Mapped[str] = mapped_column(String(20), default="qr")  # qr | code | bluetooth | post
+    code_seconds: Mapped[int] = mapped_column(Integer, default=0)  # 0: one code for the whole session
+    checkpoint_id: Mapped[int | None] = mapped_column(ForeignKey("staff_checkpoints.id"), index=True)
+    day: Mapped[str | None] = mapped_column(String(10))
+    opens_at: Mapped[datetime | None] = mapped_column(DateTime)
+    shift_end: Mapped[datetime | None] = mapped_column(DateTime)
+
+
+class StaffCheckpoint(Base):
+    """A printed QR fixed at an entrance: staff scan it on arrival and on leaving."""
+
+    __tablename__ = "staff_checkpoints"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    university_id: Mapped[int] = mapped_column(ForeignKey("universities.id"), index=True)
+    faculty_id: Mapped[int | None] = mapped_column(ForeignKey("faculties.id"))
+    name: Mapped[str] = mapped_column(String(120))
+    secret: Mapped[str] = mapped_column(String(100))
+    latitude: Mapped[float | None] = mapped_column(Float)
+    longitude: Mapped[float | None] = mapped_column(Float)
+    radius_m: Mapped[int] = mapped_column(Integer, default=150)
+    require_selfie: Mapped[bool] = mapped_column(Boolean, default=False)
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class StaffScan(Base):
+    """Every scan of a checkpoint, in or out, so the day's movements can be read back."""
+
+    __tablename__ = "staff_scans"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    university_id: Mapped[int] = mapped_column(Integer, index=True)
+    checkpoint_id: Mapped[int] = mapped_column(ForeignKey("staff_checkpoints.id"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    record_id: Mapped[int | None] = mapped_column(ForeignKey("attendance_records.id"))
+    kind: Mapped[str] = mapped_column(String(5))  # in | out
+    at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
 class AttendanceRecord(Base):
     __tablename__ = "attendance_records"
     id: Mapped[int] = mapped_column(primary_key=True)

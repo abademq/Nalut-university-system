@@ -91,7 +91,7 @@ function QrScanner({ onCode }) {
             const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
             text = window.jsQR(img.data, img.width, img.height, { inversionAttempts: "dontInvert" })?.data || null;
           }
-          if (text && text.startsWith("NUS1:")) {
+          if (text && (text.startsWith("NUS1:") || text.startsWith("NUSP1:"))) {
             stop = true;
             onCode(text);
             return;
@@ -168,7 +168,7 @@ export function ScanView() {
     try {
       // the code is checked the moment it is scanned; the ticket covers the slower steps after it
       const req = await api.post("/api/attendance/prepare", p.payload ? { payload: p.payload }
-        : { short_code: p.short_code, session_id: Number(p.session_id) });
+        : { short_code: p.short_code, ...(p.session_id ? { session_id: Number(p.session_id) } : {}) });
       const full = { ...p, req };
       setPending(full);
       if (req.require_selfie) setStage("selfie");
@@ -179,18 +179,19 @@ export function ScanView() {
     }
   };
 
-  const onCode = (payload) => begin({ payload, session_id: payload.split(":")[1] });
+  const onCode = (payload) => begin({ payload });
 
   return html`<div style="max-width:480px;margin:0 auto">
     <h1>تسجيل الحضور</h1>
     <${ErrorBox} error=${error} />
     ${stage === "scan" ? html`<div class="card stack">
-      <p class="muted">وجّه الكاميرا إلى رمز QR المعروض في القاعة. الرمز يتغير كل بضع ثوانٍ، لذا امسحه مباشرة من الشاشة.</p>
+      <p class="muted">وجّه الكاميرا إلى رمز QR في القاعة أو رمز الدوام المثبت عند المدخل، أو اكتب الرمز الذي يقوله الأستاذ.
+        التسجيل بالبلوتوث من تطبيق الهاتف فقط.</p>
       <${QrScanner} onCode=${onCode} />
-      <button class="secondary" onClick=${() => setStage("manual")}>إدخال الرمز الرقمي بدلاً من المسح</button></div>` : null}
+      <button class="secondary" onClick=${() => setStage("manual")}>إدخال الرمز</button></div>` : null}
     ${stage === "manual" ? html`<form class="card" onSubmit=${(e) => { e.preventDefault(); begin({ short_code: manual.short_code, session_id: manual.session_id }); }}>
-      <div class="field"><label>رقم الجلسة</label><input inputmode="numeric" ...${bindManual("session_id")} required /></div>
-      <div class="field"><label>الرمز الرقمي (6 أرقام)</label><input inputmode="numeric" maxlength="6" class="mono" ...${bindManual("short_code")} required /></div>
+      <div class="field"><label>الرمز الذي قاله الأستاذ (4 أرقام)</label><input inputmode="numeric" maxlength="6" minlength="4" class="mono" ...${bindManual("short_code")} required autofocus /></div>
+      <div class="field"><label>رقم الجلسة (فقط مع الرمز ذي 6 أرقام تحت QR)</label><input inputmode="numeric" ...${bindManual("session_id")} required=${manual.short_code.length === 6} /></div>
       <div class="row"><button>تسجيل</button><button type="button" class="secondary" onClick=${() => setStage("scan")}>العودة للمسح</button></div></form>` : null}
     ${stage === "selfie" ? html`<div class="card"><${SelfieCapture} onCapture=${(b) => send(pending, b)} onCancel=${() => setStage("scan")} /></div>` : null}
     ${stage === "sending" ? html`<div class="card empty">جارٍ التحقق على الخادم…</div>` : null}
@@ -227,7 +228,7 @@ function MyAttendance({ user }) {
 function CreateSession({ user, kind, onCreated }) {
   const courses = useCourses();
   const [v, bind, setV] = useForm({ course_id: "", title: "", location: "", risk_level: "normal", duration_minutes: "",
-    geofence: false, latitude: "", longitude: "", radius_m: "" });
+    geofence: false, latitude: "", longitude: "", radius_m: "", method: kind === "course" ? "code" : "qr", code_seconds: "120" });
   const useHere = async () => {
     const p = await getPosition();
     if (!p) return toast("تعذر تحديد الموقع", "error");
@@ -237,7 +238,14 @@ function CreateSession({ user, kind, onCreated }) {
     const body = { kind, title: v.title || null, location: v.location || null, risk_level: v.risk_level,
       duration_minutes: v.duration_minutes ? Number(v.duration_minutes) : null };
     if (kind === "course") body.course_id = Number(v.course_id);
-    if (v.geofence && v.latitude) Object.assign(body, { latitude: Number(v.latitude), longitude: Number(v.longitude), radius_m: v.radius_m ? Number(v.radius_m) : null });
+    let lat = v.latitude, lon = v.longitude;
+    if (kind === "course" && v.method === "code" && !lat) {
+      const p = await getPosition(); // the room's location keeps a code shared by chat from counting elsewhere
+      if (!p) throw new Error("الحضور بالرمز يتطلب موقع القاعة: اسمح للمتصفح باستخدام الموقع وأنت داخلها");
+      lat = p.latitude.toFixed(6); lon = p.longitude.toFixed(6);
+    }
+    if ((v.geofence || v.method === "code") && lat) Object.assign(body, { latitude: Number(lat), longitude: Number(lon), radius_m: v.radius_m ? Number(v.radius_m) : null });
+    if (kind === "course") Object.assign(body, { method: v.method, code_seconds: Number(v.code_seconds) });
     const s = await api.post("/api/attendance/sessions", body);
     onCreated(s);
   });
@@ -248,6 +256,13 @@ function CreateSession({ user, kind, onCreated }) {
         : html`<div class="field"><label>العنوان</label><input ...${bind("title")} placeholder="دوام — المدخل الرئيسي" /></div>`}
       <div class="field"><label>المكان / القاعة</label><input ...${bind("location")} /></div>
       <div class="field"><label>المدة (دقيقة)</label><input type="number" min="5" max="960" placeholder="الافتراضي من إعدادات المؤسسة" ...${bind("duration_minutes")} /></div>
+      ${kind === "course" ? html`<div class="field"><label>طريقة التسجيل</label><select ...${bind("method")}>
+        <option value="code">رمز من 4 أرقام يقوله الأستاذ (بدون شاشة)</option>
+        <option value="qr">رمز QR على شاشة أو جهاز عرض</option>
+        <option value="bluetooth">بلوتوث (يُبث من تطبيق هاتف الأستاذ)</option></select></div>` : null}
+      ${kind === "course" && v.method === "code" ? html`<div class="field"><label>مدة الرمز قبل أن يتغير</label><select ...${bind("code_seconds")}>
+        <option value="30">30 ثانية</option><option value="60">دقيقة</option><option value="120">دقيقتان</option>
+        <option value="300">5 دقائق</option><option value="600">10 دقائق</option><option value="0">رمز واحد طوال المحاضرة</option></select></div>` : null}
       <div class="field"><label>مستوى التحقق</label><select ...${bind("risk_level")}>
         <option value="normal">عادي — QR ديناميكي</option><option value="high">مرتفع (امتحان) — حسب إعدادات المؤسسة</option></select></div>
     </div>
@@ -257,7 +272,84 @@ function CreateSession({ user, kind, onCreated }) {
       <div class="field"><label>خط الطول</label><input class="ltr" ...${bind("longitude")} /></div>
       <div class="field"><label>نصف القطر (م)</label><input type="number" min="20" placeholder="الافتراضي" ...${bind("radius_m")} /></div>
       <div class="field"><label> </label><button type="button" class="secondary" onClick=${useHere}><${Icon} name="pin_map" size=${18} />استخدام موقعي الحالي</button></div></div>` : null}
-    <button disabled=${busy}>بدء الجلسة وعرض الرمز</button></form>`;
+    ${kind === "course" && v.method === "bluetooth" ? html`<p class="small muted">البث بالبلوتوث يعمل من تطبيق هاتف الأستاذ:
+      افتح الجلسة منه وأبقِ شاشتها مفتوحة، ويضغط الطلبة «بلوتوث» في شاشة تسجيل الحضور.</p>` : null}
+    ${kind === "course" && v.method === "code" ? html`<p class="small muted">يُحفظ موقعك الحالي كموقع للقاعة؛ من يكتب الرمز وهو خارجها يُحال للمراجعة.</p>` : null}
+    <button disabled=${busy}>بدء الجلسة</button></form>`;
+}
+
+// Fixed QR at an entrance: printed once, scanned by staff on arrival and on leaving.
+function Checkpoints() {
+  const list = useAsync(() => api.get("/api/attendance/checkpoints"), []);
+  const [day, setDay] = useState(null); // checkpoint whose day is shown
+  const [v, bind, setV] = useForm({ name: "", latitude: "", longitude: "", radius_m: "150", require_selfie: false });
+  const here = async () => {
+    const p = await getPosition();
+    if (!p) return toast("تعذر تحديد الموقع", "error");
+    setV({ ...v, latitude: p.latitude.toFixed(6), longitude: p.longitude.toFixed(6) });
+  };
+  const [submit, busy, error] = useSubmit(async () => {
+    await api.post("/api/attendance/checkpoints", { name: v.name, radius_m: Number(v.radius_m || 150), require_selfie: v.require_selfie,
+      ...(v.latitude ? { latitude: Number(v.latitude), longitude: Number(v.longitude) } : {}) });
+    setV({ ...v, name: "" });
+    toast("أُنشئت النقطة، اطبع رمزها وثبّته عند المدخل");
+    list.reload();
+  });
+  const print = async (c) => {
+    const w = window.open("", "_blank");
+    try {
+      const q = await api.get(`/api/attendance/checkpoints/${c.id}/qr`);
+      const esc = (s) => String(s).replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
+      w.document.write(`<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>${esc(c.name)}</title>
+        <style>body{font-family:system-ui,sans-serif;text-align:center;margin:2cm}img{width:12cm;height:12cm}h1{font-size:28pt;margin:.2em}
+        p{font-size:14pt}@media print{button{display:none}}</style></head><body><h2>${esc(c.faculty || "")}</h2><h1>تسجيل الدوام</h1>
+        <h2>${esc(c.name)}</h2><img src="${q.image}" alt="QR"><p>امسح الرمز من تطبيق الجامعة عند الدخول وعند الخروج.<br>يُسجَّل الوقت والموقع تلقائياً.</p>
+        <button onclick="print()">طباعة</button></body></html>`);
+      w.document.close();
+    } catch (e) { w.close(); toastError(e); }
+  };
+  const act = async (c, change) => {
+    try { await api.put(`/api/attendance/checkpoints/${c.id}`, { ...c, ...change }); list.reload(); } catch (e) { toastError(e); }
+  };
+  const rotate = async (c) => {
+    if (!confirm("تغيير الرمز يوقف الورقة المطبوعة الحالية، وتحتاج طباعة رمز جديد. متابعة؟")) return;
+    try { await api.post(`/api/attendance/checkpoints/${c.id}/rotate`); toast("تم تغيير الرمز، اطبع الجديد"); } catch (e) { toastError(e); }
+  };
+  return html`<div class="card"><h3>نقاط الدوام الثابتة (QR مطبوع عند المدخل)</h3>
+    <p class="small muted">لا تحتاج شاشة ولا كهرباء: يمسح الموظف الرمز المطبوع بتطبيقه عند الدخول وعند الخروج، ويُسجَّل الوقت والموقع.
+      من يمسح صورة الرمز خارج مكان العمل يُحال للمراجعة، ولا يُقبل خروجه.</p>
+    <${Async} state=${list}>${(rows) => rows.length ? html`<div class="table-wrap"><table><thead><tr><th>النقطة</th><th>الموقع</th><th>الحالة</th><th></th></tr></thead>
+      <tbody>${rows.map((c) => html`<tr><td>${c.name}${c.faculty ? html`<div class="small muted">${c.faculty}</div>` : null}</td>
+        <td class="small">${c.latitude != null ? `نطاق ${c.radius_m} م` : html`<${Chip} kind="warning">بدون موقع<//>`}${c.require_selfie ? " · صورة حية" : ""}</td>
+        <td>${c.active ? html`<${Chip} kind="success">تعمل<//>` : html`<${Chip}>موقوفة<//>`}</td>
+        <td class="row"><button class="small" onClick=${() => print(c)}>طباعة الرمز</button>
+          <button class="small secondary" onClick=${() => setDay(c)}>حركة اليوم</button>
+          <button class="small ghost" onClick=${() => act(c, { active: !c.active })}>${c.active ? "إيقاف" : "تشغيل"}</button>
+          <button class="small ghost" onClick=${() => rotate(c)}>تغيير الرمز</button></td></tr>`)}</tbody></table></div>`
+      : html`<${Empty}>لا توجد نقاط بعد<//>`}<//>
+    <form onSubmit=${submit} style="margin-top:1rem"><${ErrorBox} error=${error} /><div class="form-grid">
+      <div class="field"><label>اسم النقطة</label><input ...${bind("name")} required minlength="2" placeholder="المدخل الرئيسي" /></div>
+      <div class="field"><label>خط العرض</label><input class="ltr" ...${bind("latitude")} /></div>
+      <div class="field"><label>خط الطول</label><input class="ltr" ...${bind("longitude")} /></div>
+      <div class="field"><label>نصف القطر (م)</label><input type="number" min="20" max="5000" ...${bind("radius_m")} /></div>
+      <div class="field"><label> </label><button type="button" class="secondary" onClick=${here}><${Icon} name="pin_map" size=${18} />موقعي الحالي (وأنا عند المدخل)</button></div></div>
+      <label class="check"><input type="checkbox" ...${bind("require_selfie", "checkbox")} /> صورة حية عند الدخول</label>
+      <button disabled=${busy}>إضافة نقطة</button></form>
+    ${day ? html`<${CheckpointDay} cp=${day} onClose=${() => setDay(null)} />` : null}</div>`;
+}
+
+function CheckpointDay({ cp, onClose }) {
+  const [date, setDate] = useState("");
+  const state = useAsync(() => api.get(`/api/attendance/checkpoints/${cp.id}/scans${date ? `?day=${date}` : ""}`), [cp.id, date]);
+  const time = (t) => (t ? new Date(t).toLocaleTimeString("ar-LY", { hour: "2-digit", minute: "2-digit" }) : "—");
+  return html`<${Modal} title=${`حركة ${cp.name}`} onClose=${onClose}>
+    <div class="field" style="max-width:200px"><input type="date" value=${date} onChange=${(e) => setDate(e.target.value)} /></div>
+    <${Async} state=${state}>${(d) => d.people.length ? html`<div class="table-wrap"><table><thead><tr><th>الموظف</th><th>أول دخول</th><th>آخر خروج</th><th>الحالة</th><th>كل المسحات</th></tr></thead>
+      <tbody>${d.people.map((p) => html`<tr><td>${p.name}</td><td>${time(p.first_in)}</td><td>${time(p.last_out)}</td>
+        <td>${p.status ? html`<${StatusChip} map=${ATT_STATUS} value=${p.status} />` : "—"}
+          ${(p.flags || []).map((f) => html` <${Chip} kind="warning">${RISK_FLAG[f] || f}<//>`)}</td>
+        <td class="small">${p.scans.map((s) => `${s.kind === "in" ? "دخول" : "خروج"} ${time(s.at)}`).join(" · ")}</td></tr>`)}</tbody></table></div>`
+      : html`<${Empty}>لا توجد مسحات في هذا اليوم<//>`}<//><//>`;
 }
 
 function SessionsList({ kindFilter }) {
@@ -343,7 +435,8 @@ function ManagerAttendance({ user }) {
     <${Tabs} value=${tab} onChange=${setTab} tabs=${tabs} />
     ${tab === "sessions" ? html`${has(user, "attendance.manage") ? html`<${CreateSession} user=${user} kind="course" onCreated=${created} />` : null}
       <${SessionsList} kindFilter="course" />` : null}
-    ${tab === "staff" ? html`<${CreateSession} user=${user} kind="staff" onCreated=${created} /><${SessionsList} kindFilter="staff" />` : null}
+    ${tab === "staff" ? html`<${Checkpoints} /><details class="card"><summary>جلسة دوام مؤقتة بشاشة QR (الطريقة السابقة)</summary>
+      <${CreateSession} user=${user} kind="staff" onCreated=${created} /></details><${SessionsList} kindFilter="staff" />` : null}
     ${tab === "review" ? html`<${ReviewQueue} />` : null}
     ${tab === "anomalies" ? html`<${PatternsReading} /><${Anomalies} />` : null}
     ${tab === "integrity" ? html`<${Integrity} />` : null}
@@ -387,7 +480,7 @@ export function SessionView({ id }) {
   };
   return html`<${Async} state=${state}>${(s) => html`<div>
     <div class="row between"><h1>${s.title}</h1>
-      <div class="row">${s.status === "open" ? html`<a class="btn" href=${`#/attendance/display/${s.id}`}>عرض رمز QR</a>
+      <div class="row">${s.status === "open" && s.method !== "bluetooth" ? html`<a class="btn" href=${`#/attendance/display/${s.id}`}>${s.method === "code" ? "عرض الرمز" : "عرض رمز QR"}</a>
         <button class="secondary" onClick=${close}>إغلاق الجلسة</button>` : html`<${Chip}>مغلقة<//>`}</div></div>
     <p class="muted">${fmtDate(s.starts_at)} — ${fmtDate(s.ends_at)} ${s.location ? `· ${s.location}` : ""}
       ${s.require_selfie ? " · صورة حية" : ""}${s.require_location ? " · موقع" : ""}</p>
@@ -417,9 +510,12 @@ export function DisplayView({ id }) {
   useEffect(() => {
     let timer;
     let stop = false;
+    let method = null;
     const load = async () => {
       try {
-        const d = await api.get(`/api/attendance/sessions/${id}/qr`);
+        if (!method) method = (await api.get(`/api/attendance/sessions/${id}`)).method || "qr";
+        if (method === "bluetooth") { setQr({ bluetooth: true }); return; }
+        const d = await api.get(`/api/attendance/sessions/${id}/${method === "code" ? "code" : "qr"}`);
         if (stop) return;
         setQr(d);
         setError(null);
@@ -442,13 +538,19 @@ export function DisplayView({ id }) {
   return html`<div class="qr-stage">
     <div class="row" style="width:100%;justify-content:space-between">
       <a class="btn secondary small" href=${`#/attendance/session/${id}`}>← تفاصيل الجلسة</a>
-      ${qr ? html`<${Chip} kind="success">سجّل ${qr.present} حتى الآن<//>` : null}</div>
+      ${qr && qr.present != null ? html`<${Chip} kind="success">سجّل ${qr.present} حتى الآن<//>` : null}</div>
     <${ErrorBox} error=${error} />
-    ${qr ? html`
+    ${qr?.bluetooth ? html`<h2>هذه الجلسة بالبلوتوث</h2><p>افتحها من تطبيق هاتف الأستاذ وأبقِ شاشتها مفتوحة.</p>` : null}
+    ${qr?.code ? html`<h2>اكتب هذا الرمز في التطبيق: تسجيل الحضور ← إدخال الرمز</h2>
+      <div class="mono" style="font-size:min(30vw,12rem);font-weight:700;letter-spacing:.15em;direction:ltr">${qr.code}</div>
+      ${qr.code_seconds ? html`<div class="countdown"><span style=${`width:${(left / qr.code_seconds) * 100}%`}></span></div>
+        <div class="muted">يتغير كل ${qr.code_seconds} ثانية</div>` : html`<div class="muted">الرمز نفسه حتى نهاية المحاضرة</div>`}` : null}
+    ${qr?.payload ? html`
       <h2>امسح الرمز بتطبيق المنصة لتسجيل الحضور</h2>
       <img src=${qr.image} alt="رمز QR للحضور" />
       <div class="countdown"><span style=${`width:${(left / qr.rotation_seconds) * 100}%`}></span></div>
       <div class="muted">يتجدد الرمز كل ${qr.rotation_seconds} ثانية — صور الرمز القديمة لا تُقبل</div>
-      <div>رقم الجلسة <strong class="mono">${id}</strong> · الرمز الرقمي <span class="qr-code mono">${qr.short_code}</span></div>` : html`<p>جارٍ التحميل…</p>`}
+      <div>رقم الجلسة <strong class="mono">${id}</strong> · الرمز الرقمي <span class="qr-code mono">${qr.short_code}</span></div>` : null}
+    ${qr ? null : html`<p>جارٍ التحميل…</p>`}
   </div>`;
 }

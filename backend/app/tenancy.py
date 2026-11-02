@@ -50,6 +50,8 @@ DEFAULT_SETTINGS: dict = {
         "staff_late_after_minutes": 15,
         "staff_early_leave_minutes": 15,
         "staff_default_duration_minutes": 480,
+        # the work day of the fixed entrance QR (local time, Africa/Tripoli)
+        "staff_work_start": "08:00",
         # check-in opens this many minutes before a session starts
         "open_before_minutes": 10,
         # after a valid scan, the student has this long to finish (location, live photo, upload)
@@ -280,6 +282,12 @@ def validate_policies(changes: dict) -> None:
         if not isinstance(mutable, dict) or not set(mutable) <= set(Role.ALL) - {Role.PLATFORM_ADMIN} or any(
                 not isinstance(v, list) or not set(v) <= set(TOPICS) for v in mutable.values()):
             bad("أنواع الإشعارات القابلة للإيقاف غير صحيحة")
+    ws = (changes.get("attendance") or {}).get("staff_work_start")
+    if ws is not None:
+        import re
+
+        if not isinstance(ws, str) or not re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", ws):
+            bad("بداية الدوام بصيغة ساعة:دقيقة مثل 08:00")
     cur = (changes.get("notifications") or {}).get("sms_currency")
     if cur is not None and (not isinstance(cur, str) or not 1 <= len(cur.strip()) <= 10):
         bad("عملة الرسائل النصية من 1 إلى 10 أحرف")

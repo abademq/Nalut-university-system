@@ -62,7 +62,7 @@ def _session_out(db: Session, s: AttendanceSession) -> dict:
             "require_location": s.require_location, "require_selfie": s.require_selfie,
             "rotation_seconds": s.rotation_seconds, "late_after_minutes": s.late_after_minutes,
             "has_geofence": s.latitude is not None, "radius_m": s.radius_m,
-            "counts": counts, "expected": expected}
+            "counts": counts, "expected": expected, "method": svc.method_of(db, s)}
 
 
 class SessionIn(BaseModel):
@@ -79,6 +79,10 @@ class SessionIn(BaseModel):
     require_location: bool | None = None
     require_selfie: bool | None = None
     late_after_minutes: int | None = Field(default=None, ge=0, le=180)
+    # qr: the rotating QR on a screen; code: a code the teacher reads out, valid code_seconds
+    # (0 = the whole session); bluetooth: students' phones pick up the teacher's phone
+    method: str = Field(default="qr", pattern="^(qr|code|bluetooth)$")
+    code_seconds: int = Field(default=60, ge=0, le=7200)
 
 
 @router.post("/attendance/sessions")
@@ -99,6 +103,15 @@ def create_session(body: SessionIn, request: Request, user: User = Depends(get_c
     level = policy["levels"].get(body.risk_level, {})
     starts = as_utc(body.starts_at) or utcnow()
     require_location = level.get("require_location", False) if body.require_location is None else body.require_location
+    if body.method != "qr" and body.kind != "course":
+        raise HTTPException(status_code=400, detail="الرمز والبلوتوث للمحاضرات؛ للموظفين استخدم نقطة الدوام الثابتة")
+    if body.method == "code":
+        # a code can be passed on by chat, so the room's location is what proves presence
+        if body.latitude is None:
+            raise HTTPException(status_code=400, detail="الحضور بالرمز يتطلب موقع القاعة، فعّل الموقع في هاتفك")
+        if body.code_seconds and body.code_seconds < 30:
+            raise HTTPException(status_code=400, detail="أقل مدة للرمز 30 ثانية")
+        require_location = True
     if require_location and body.latitude is None:
         raise HTTPException(status_code=400, detail="التحقق بالموقع يتطلب تحديد إحداثيات القاعة")
     s = AttendanceSession(
@@ -118,6 +131,12 @@ def create_session(body: SessionIn, request: Request, user: User = Depends(get_c
     )
     db.add(s)
     db.flush()
+    if body.method != "qr":
+        from ..models import AttendanceSessionOption
+
+        db.add(AttendanceSessionOption(session_id=s.id, method=body.method,
+                                       code_seconds=body.code_seconds if body.method == "code" else 0))
+        db.flush()
     audit.record(db, "attendance.session_created", actor=user, target_type="attendance_session", target_id=s.id,
                  details={"kind": s.kind, "course_id": s.course_id, "risk_level": s.risk_level}, ip=client_ip(request))
     db.commit()
@@ -189,6 +208,34 @@ def session_qr(sid: int, user: User = Depends(get_current_user), db: Session = D
     return state
 
 
+@router.get("/attendance/sessions/{sid}/code")
+def session_code(sid: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """The code the teacher reads out, and how long until it changes."""
+    s = _session_for(db, user, sid)
+    opt = svc.option_of(db, s)
+    if not opt or opt.method != "code":
+        raise HTTPException(status_code=400, detail="هذه الجلسة لا تستخدم رمز الأستاذ")
+    if s.status != "open" or utcnow() > s.ends_at:
+        raise HTTPException(status_code=400, detail="الجلسة مغلقة")
+    return {**svc.code_state(s, opt), "present": _present(db, s)}
+
+
+@router.get("/attendance/sessions/{sid}/ble")
+def session_ble(sid: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """What the teacher's phone advertises over Bluetooth now (changes every 30 seconds)."""
+    s = _session_for(db, user, sid)
+    if svc.method_of(db, s) != "bluetooth":
+        raise HTTPException(status_code=400, detail="هذه الجلسة لا تستخدم البلوتوث")
+    if s.status != "open" or utcnow() > s.ends_at:
+        raise HTTPException(status_code=400, detail="الجلسة مغلقة")
+    return {**svc.ble_state(s), "present": _present(db, s)}
+
+
+def _present(db: Session, s: AttendanceSession) -> int:
+    return db.scalar(select(func.count(AttendanceRecord.id)).where(
+        AttendanceRecord.session_id == s.id, AttendanceRecord.status.in_(["present", "late", "pending_review"])))
+
+
 @router.get("/attendance/sessions/{sid}/requirements")
 def session_requirements(sid: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """What the scanning app must collect for this session (for eligible participants)."""
@@ -220,26 +267,22 @@ def prepare_check_in(body: PrepareIn, user: User = Depends(get_current_user), db
     must collect plus a short ticket for step 2 (/attendance/check-in), however slow the network."""
     if not limiter.hit(f"prepare:{user.id}", 20, 60):
         raise HTTPException(status_code=429, detail="محاولات كثيرة، حاول بعد قليل")
-    window = token = None
-    sid = body.session_id
-    if body.payload:
-        sid, window, token = svc.parse_payload(body.payload)
-    elif not (body.short_code and sid):
-        raise HTTPException(status_code=400, detail="أدخل رمز الحضور")
-    s = db.get(AttendanceSession, sid)
-    if not s or s.university_id != user.university_id:
-        raise not_found("جلسة الحضور غير موجودة")
+    s = svc.resolve(db, user, body.payload, body.short_code, body.session_id)
     if not svc.eligible(db, user, s):
         raise HTTPException(status_code=403, detail="أنت غير مسجل في هذه الجلسة")
     now = utcnow()
     policy = svc.policy_for(db, s.university_id)
-    if s.status != "open" or now > s.ends_at or now < s.starts_at - timedelta(minutes=int(policy.get("open_before_minutes", 10))):
+    if not svc._window_open(db, s, policy, now):
         raise HTTPException(status_code=400, detail="جلسة الحضور مغلقة")
-    if not svc.verify_code(s, window=window, token=token, short_code=None if body.payload else body.short_code):
-        raise HTTPException(status_code=400, detail="رمز الحضور منتهي الصلاحية أو غير صحيح، امسح الرمز الحالي")
-    return {"id": s.id, "title": s.title, "require_location": s.require_location, "require_selfie": s.require_selfie,
+    method = svc.method_of(db, s)
+    rec = db.scalar(select(AttendanceRecord).where(AttendanceRecord.session_id == s.id, AttendanceRecord.user_id == user.id))
+    db.commit()  # today's session of a checkpoint is made on its first scan
+    return {"id": s.id, "title": s.title, "method": method, "require_location": s.require_location or (
+                method == "post" and s.latitude is not None),
+            "require_selfie": s.require_selfie and not (rec and method == "post"),
             "has_geofence": s.latitude is not None, "ticket": svc.issue_ticket(s, user.id),
-            "ticket_seconds": int(policy.get("scan_ticket_seconds", 120))}
+            "ticket_seconds": int(policy.get("scan_ticket_seconds", 120)),
+            "action": ("out" if rec else "in") if method == "post" else None}
 
 
 @router.post("/attendance/check-in")

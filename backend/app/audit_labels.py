@@ -80,6 +80,9 @@ ACTIONS: dict[str, tuple[str, str]] = {
     "submission.regraded": ("تعديل تقييم تسليم", "grade"),
     # attendance
     "attendance.session_created": ("فتح جلسة حضور", "attendance"),
+    "attendance.checkpoint_created": ("إنشاء نقطة دوام ثابتة", "attendance"),
+    "attendance.checkpoint_updated": ("تعديل نقطة دوام ثابتة", "attendance"),
+    "attendance.checkpoint_rotated": ("تغيير رمز نقطة دوام (إلغاء المطبوع)", "attendance"),
     "attendance.session_closed": ("إغلاق جلسة حضور", "attendance"),
     "attendance.manual": ("تسجيل حضور يدوي", "attendance"),
     "attendance.change": ("تعديل حالة حضور", "attendance"),

@@ -17,6 +17,7 @@ from .db import init_db
 from .routers import (
     accounts,
     admin,
+    checkpoints,
     ai,
     archive,
     assignments,
@@ -121,6 +122,8 @@ async def unhandled(request: Request, exc: Exception):  # pragma: no cover - saf
 for r in (auth, admin, accounts, ai, courses, assignments, grades, notifications, attendance, messages, requests, files, reports,
           banners, archive, publications, launch, personnel, programs, regulations, imports, download):
     app.include_router(r.router)
+app.include_router(checkpoints.router)
+app.include_router(checkpoints.me_router)
 
 
 # Written by deploy/install-vps.sh: the deployed commit, to check that an update went through.

@@ -33,17 +33,20 @@ from sqlalchemy.orm import Session
 
 from . import audit, notifications, sms_templates
 from .biometrics import get_verifier
-from .db import utcnow
+from .db import as_utc, utcnow
 from .models import (
     AttendanceAlert,
     AttendanceChange,
     AttendanceNonce,
     AttendanceRecord,
     AttendanceSession,
+    AttendanceSessionOption,
     Course,
     CourseStaff,
     Enrollment,
     Role,
+    StaffCheckpoint,
+    StaffScan,
     University,
     User,
     UserDevice,
@@ -104,6 +107,196 @@ def verify_ticket(session: AttendanceSession, user_id: int, ticket: str, max_age
         return False
     expected = issue_ticket(session, user_id, datetime.fromtimestamp(issued, timezone.utc)).split(".", 1)[1]
     return hmac.compare_digest(expected, sig)
+
+
+# --------------------------------------------------------------------------- other methods
+# A code the teacher reads out (no screen, no session number), the teacher's phone over Bluetooth,
+# and the fixed QR printed at an entrance for staff. All three end in the same check-in as the QR.
+
+BLE_PREFIX = "NUB1"
+POST_PREFIX = "NUSP1"
+BLE_SECONDS = 30
+BLE_MARK = b"NU"  # the first two bytes of the advertised service UUID, to tell ours from others
+LOCAL_TZ = "Africa/Tripoli"
+
+
+def option_of(db: Session, session: AttendanceSession) -> AttendanceSessionOption | None:
+    return db.scalar(select(AttendanceSessionOption).where(AttendanceSessionOption.session_id == session.id))
+
+
+def method_of(db: Session, session: AttendanceSession) -> str:
+    opt = option_of(db, session)
+    return opt.method if opt else "qr"
+
+
+def _code_window(opt: AttendanceSessionOption, at=None) -> int:
+    return int((at or utcnow()).timestamp() // opt.code_seconds) if opt.code_seconds else 0
+
+
+def teacher_code(session: AttendanceSession, opt: AttendanceSessionOption, window: int | None = None) -> str:
+    w = _code_window(opt) if window is None else window
+    mac = hmac.new(session.secret.encode(), f"code:{session.id}:{w}".encode(), hashlib.sha256).digest()
+    return f"{int.from_bytes(mac[:4], 'big') % 10_000:04d}"
+
+
+def code_state(session: AttendanceSession, opt: AttendanceSessionOption) -> dict:
+    now = utcnow()
+    expires = (opt.code_seconds - now.timestamp() % opt.code_seconds) if opt.code_seconds else \
+        max(0.0, (session.ends_at - now).total_seconds())
+    return {"code": teacher_code(session, opt), "code_seconds": opt.code_seconds, "expires_in": round(expires, 1)}
+
+
+def verify_teacher_code(session: AttendanceSession, opt: AttendanceSessionOption, code: str) -> bool:
+    code = (code or "").strip()
+    if hmac.compare_digest(teacher_code(session, opt), code):
+        return True
+    # the code just replaced stays good for 20 seconds, for whoever was typing it
+    if opt.code_seconds and utcnow().timestamp() % opt.code_seconds < 20:
+        return hmac.compare_digest(teacher_code(session, opt, _code_window(opt) - 1), code)
+    return False
+
+
+def _ble_mac(session: AttendanceSession, window: int) -> bytes:
+    return hmac.new(session.secret.encode(), f"ble:{session.id}:{window}".encode(), hashlib.sha256).digest()[:6]
+
+
+def ble_state(session: AttendanceSession) -> dict:
+    """What the teacher's phone advertises, as one 128-bit service UUID (Android and iPhone both
+    advertise service UUIDs): "NU", session id (4 bytes), time window (4 bytes), MAC (6 bytes)."""
+    now = utcnow()
+    w = int(now.timestamp() // BLE_SECONDS)
+    data = BLE_MARK + session.id.to_bytes(4, "big") + (w % 2**32).to_bytes(4, "big") + _ble_mac(session, w)
+    h = data.hex()
+    return {"uuid": f"{h[:8]}-{h[8:12]}-{h[12:16]}-{h[16:20]}-{h[20:]}", "data": h, "seconds": BLE_SECONDS,
+            "expires_in": round(BLE_SECONDS - now.timestamp() % BLE_SECONDS, 1)}
+
+
+def parse_ble(payload: str) -> tuple[int, int, bytes]:
+    try:
+        prefix, hexdata = payload.strip().split(":")
+        raw = bytes.fromhex(hexdata.replace("-", ""))
+        if prefix != BLE_PREFIX or len(raw) != 16 or raw[:2] != BLE_MARK:
+            raise ValueError
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="إشارة البلوتوث غير صالحة") from exc
+    return int.from_bytes(raw[2:6], "big"), int.from_bytes(raw[6:10], "big"), raw[10:]
+
+
+def verify_ble(session: AttendanceSession, window: int, mac: bytes) -> bool:
+    now = int(utcnow().timestamp() // BLE_SECONDS)
+    return any(window == w % 2**32 and hmac.compare_digest(_ble_mac(session, w), mac) for w in (now, now - 1))
+
+
+def checkpoint_token(cp: StaffCheckpoint) -> str:
+    mac = hmac.new(cp.secret.encode(), f"post:{cp.id}".encode(), hashlib.sha256).digest()
+    return base64.b32encode(mac[:10]).decode().rstrip("=")
+
+
+def checkpoint_payload(cp: StaffCheckpoint) -> str:
+    return f"{POST_PREFIX}:{cp.id}:{checkpoint_token(cp)}"
+
+
+def _local_day_bounds(db: Session, cp: StaffCheckpoint, now: datetime):
+    from zoneinfo import ZoneInfo
+
+    tz = ZoneInfo(LOCAL_TZ)
+    local = now.astimezone(tz)
+    policy = policy_for(db, cp.university_id)
+    hh, mm = (int(x) for x in str(policy.get("staff_work_start") or "08:00").split(":"))
+    day_start = local.replace(hour=0, minute=0, second=0, microsecond=0)
+    work = local.replace(hour=hh, minute=mm, second=0, microsecond=0)
+    to_utc = lambda d: d.astimezone(timezone.utc)  # noqa: E731
+    duration = timedelta(minutes=int(policy.get("staff_default_duration_minutes", 480)))
+    return (local.strftime("%Y-%m-%d"), to_utc(day_start), to_utc(work), to_utc(work + duration),
+            to_utc(day_start + timedelta(days=1)) - timedelta(seconds=1), policy)
+
+
+def checkpoint_session(db: Session, cp: StaffCheckpoint) -> AttendanceSession:
+    """Today's attendance session of a checkpoint, made on the first scan of the day."""
+    now = utcnow()
+    day, opens, starts, shift_end, ends, policy = _local_day_bounds(db, cp, now)
+    opt = db.scalar(select(AttendanceSessionOption).where(AttendanceSessionOption.checkpoint_id == cp.id,
+                                                          AttendanceSessionOption.day == day))
+    if opt:
+        return db.get(AttendanceSession, opt.session_id)
+    s = AttendanceSession(
+        university_id=cp.university_id, faculty_id=cp.faculty_id, kind="staff", title=f"دوام {cp.name} {day}",
+        location=cp.name, latitude=cp.latitude, longitude=cp.longitude, radius_m=cp.radius_m, starts_at=starts,
+        ends_at=ends, late_after_minutes=int(policy.get("staff_late_after_minutes", 15)),
+        rotation_seconds=int(policy.get("rotation_seconds", 15)), require_location=cp.latitude is not None,
+        require_selfie=cp.require_selfie, secret=new_secret(), created_by=cp.created_by or 0)
+    db.add(s)
+    db.flush()
+    db.add(AttendanceSessionOption(session_id=s.id, method="post", checkpoint_id=cp.id, day=day,
+                                   opens_at=opens, shift_end=shift_end))
+    db.flush()
+    return s
+
+
+def _window_open(db: Session, session: AttendanceSession, policy: dict, now: datetime) -> bool:
+    opt = option_of(db, session)
+    earliest = as_utc(opt.opens_at) if opt and opt.opens_at else \
+        session.starts_at - timedelta(minutes=int(policy.get("open_before_minutes", 10)))
+    return session.status == "open" and earliest <= now <= as_utc(session.ends_at)
+
+
+def resolve(db: Session, user: User, payload: str | None, short_code: str | None,
+            session_id: int | None) -> AttendanceSession:
+    """The session a scanned QR, Bluetooth signal or typed code points at, once the code is checked."""
+    now = utcnow()
+    if payload and payload.startswith(POST_PREFIX + ":"):
+        try:
+            _, cid, token = payload.strip().split(":")
+            cp = db.get(StaffCheckpoint, int(cid))
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="رمز QR غير صالح") from exc
+        if not cp or cp.university_id != user.university_id or not hmac.compare_digest(checkpoint_token(cp), token):
+            raise HTTPException(status_code=400, detail="رمز نقطة الدوام غير صالح أو تم تغييره")
+        if not cp.active:
+            raise HTTPException(status_code=400, detail="نقطة تسجيل الدوام هذه موقوفة")
+        if user.role not in Role.EMPLOYEES or (cp.faculty_id is not None and user.faculty_id != cp.faculty_id):
+            raise HTTPException(status_code=403, detail="هذه النقطة ليست لجهة عملك")
+        return checkpoint_session(db, cp)
+    if payload and payload.startswith(BLE_PREFIX + ":"):
+        sid, window, mac = parse_ble(payload)
+        s = db.get(AttendanceSession, sid)
+        if not s or s.university_id != user.university_id:
+            raise HTTPException(status_code=404, detail="جلسة الحضور غير موجودة")
+        if not verify_ble(s, window, mac):
+            raise HTTPException(status_code=400, detail="إشارة البلوتوث قديمة، اقترب من هاتف الأستاذ وأعد المحاولة")
+        return s
+    if payload:
+        sid, window, token = parse_payload(payload)
+        s = db.get(AttendanceSession, sid)
+        if not s or s.university_id != user.university_id:
+            raise HTTPException(status_code=404, detail="جلسة الحضور غير موجودة")
+        if not verify_code(s, window=window, token=token, short_code=None):
+            raise HTTPException(status_code=400, detail="رمز الحضور منتهي الصلاحية أو غير صحيح، امسح الرمز الحالي")
+        return s
+    if not short_code:
+        raise HTTPException(status_code=400, detail="أدخل رمز الحضور")
+    if session_id:  # the 6-digit code under the QR, with the session number
+        s = db.get(AttendanceSession, session_id)
+        if not s or s.university_id != user.university_id:
+            raise HTTPException(status_code=404, detail="جلسة الحضور غير موجودة")
+        opt = option_of(db, s)
+        ok = verify_teacher_code(s, opt, short_code) if opt and opt.method == "code" else \
+            verify_code(s, window=None, token=None, short_code=short_code)
+        if not ok:
+            raise HTTPException(status_code=400, detail="رمز الحضور منتهي الصلاحية أو غير صحيح")
+        return s
+    # the teacher's code alone: among the open sessions this user belongs to
+    rows = db.execute(select(AttendanceSession, AttendanceSessionOption).join(
+        AttendanceSessionOption, AttendanceSessionOption.session_id == AttendanceSession.id).where(
+        AttendanceSession.university_id == user.university_id, AttendanceSession.status == "open",
+        AttendanceSession.ends_at >= now, AttendanceSessionOption.method == "code")).all()
+    mine = [(s, o) for s, o in rows if eligible(db, user, s)]
+    for s, o in mine:
+        if verify_teacher_code(s, o, short_code):
+            return s
+    if not mine:
+        raise HTTPException(status_code=404, detail="لا توجد محاضرة مفتوحة بالرمز الآن في مقرراتك")
+    raise HTTPException(status_code=400, detail="الرمز غير صحيح أو انتهت مدته، اطلب الرمز الحالي من الأستاذ")
 
 
 def qr_state(session: AttendanceSession) -> dict:
@@ -235,15 +428,13 @@ def check_in(db: Session, user: User, *, payload: str | None, short_code: str | 
     if not nonce or not (16 <= len(nonce) <= 80):
         raise HTTPException(status_code=400, detail="معرف الطلب غير صالح")
 
-    window = token = None
-    if payload:
-        session_id, window, token = parse_payload(payload)
-    elif not ((short_code or ticket) and session_id):
-        raise HTTPException(status_code=400, detail="أدخل رمز الحضور")
-
-    session = db.get(AttendanceSession, session_id)
-    if not session or session.university_id != user.university_id:
-        raise HTTPException(status_code=404, detail="جلسة الحضور غير موجودة")
+    if ticket and session_id and not payload:
+        session = db.get(AttendanceSession, session_id)
+        if not session or session.university_id != user.university_id:
+            raise HTTPException(status_code=404, detail="جلسة الحضور غير موجودة")
+    else:
+        ticket = None
+        session = resolve(db, user, payload, short_code, session_id)
 
     # single-use request id: stops replay of a captured request
     if db.scalar(select(AttendanceNonce.id).where(AttendanceNonce.nonce == nonce)):
@@ -257,19 +448,19 @@ def check_in(db: Session, user: User, *, payload: str | None, short_code: str | 
 
     now = utcnow()
     policy = policy_for(db, session.university_id)
-    opens = int(policy.get("open_before_minutes", 10))
-    if session.status != "open" or now > session.ends_at or now < session.starts_at - timedelta(minutes=opens):
+    if not _window_open(db, session, policy, now):
         raise HTTPException(status_code=400, detail="جلسة الحضور مغلقة")
     if not eligible(db, user, session):
         raise HTTPException(status_code=403, detail="أنت غير مسجل في هذه الجلسة")
-    if ticket and not payload:
-        if not verify_ticket(session, user.id, ticket, int(policy.get("scan_ticket_seconds", 120))):
-            raise HTTPException(status_code=400, detail="انتهت مهلة التسجيل بعد المسح، امسح الرمز الحالي مرة أخرى")
-    elif not verify_code(session, window=window, token=token, short_code=None if payload else short_code):
-        raise HTTPException(status_code=400, detail="رمز الحضور منتهي الصلاحية أو غير صحيح، امسح الرمز الحالي")
+    if ticket and not verify_ticket(session, user.id, ticket, int(policy.get("scan_ticket_seconds", 120))):
+        raise HTTPException(status_code=400, detail="انتهت مهلة التسجيل بعد المسح، امسح الرمز الحالي مرة أخرى")
+    opt = option_of(db, session)
 
     existing = db.scalar(select(AttendanceRecord).where(AttendanceRecord.session_id == session.id,
                                                         AttendanceRecord.user_id == user.id))
+    post = opt is not None and opt.method == "post"
+    if existing and post:
+        return _post_exit(db, session, opt, existing, user, policy, now, latitude, longitude)
     if existing:
         if session.kind == "staff" and existing.check_out_at is None and existing.check_in_at \
                 and now - existing.check_in_at >= timedelta(minutes=1):
@@ -348,12 +539,39 @@ def check_in(db: Session, user: User, *, payload: str | None, short_code: str | 
 
     rec = AttendanceRecord(
         university_id=session.university_id, session_id=session.id, user_id=user.id, status=status,
-        initial_status=status, provisional_status=provisional, method="qr", check_in_at=now,
+        initial_status=status, provisional_status=provisional, method=opt.method if opt else "qr", check_in_at=now,
         device_id=device_id, ip=ip, latitude=latitude, longitude=longitude,
         distance_m=round(distance, 1) if distance is not None else None, risk_score=score, risk_flags=flags,
         selfie_file_id=selfie_file_id, face_check=face, created_at=now,
     )
     _seal(db, rec)
+    if post:
+        db.add(StaffScan(university_id=rec.university_id, checkpoint_id=opt.checkpoint_id, user_id=user.id,
+                         record_id=rec.id, kind="in", at=now))
+        db.flush()
+    return rec
+
+
+def _post_exit(db: Session, session: AttendanceSession, opt: AttendanceSessionOption, rec: AttendanceRecord,
+               user: User, policy: dict, now: datetime, latitude, longitude) -> AttendanceRecord:
+    """A later scan of the entrance QR the same day: the exit time, the last one counts."""
+    last = as_utc(rec.check_out_at or rec.check_in_at)
+    if last and now - last < timedelta(minutes=1):
+        raise HTTPException(status_code=409, detail="سُجّل مسحك قبل لحظات")
+    if session.latitude is not None:
+        if latitude is None or longitude is None:
+            raise HTTPException(status_code=400, detail="تسجيل الخروج يتطلب مشاركة الموقع")
+        if haversine_m(latitude, longitude, session.latitude, session.longitude) > session.radius_m:
+            raise HTTPException(status_code=400, detail="سجّل خروجك من مكان العمل نفسه")
+    rec.check_out_at = now
+    early = int(policy.get("staff_early_leave_minutes", 0))
+    flags = [f for f in rec.risk_flags if f != "early_leave"]
+    if early and opt.shift_end and now < as_utc(opt.shift_end) - timedelta(minutes=early):
+        flags.append("early_leave")  # a signal for reports, status kept
+    rec.risk_flags = flags
+    db.add(StaffScan(university_id=rec.university_id, checkpoint_id=opt.checkpoint_id, user_id=user.id,
+                     record_id=rec.id, kind="out", at=now))
+    db.flush()
     return rec
 
 

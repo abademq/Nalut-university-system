@@ -77,6 +77,8 @@ def reset(*, keep_structure: bool = True) -> dict:
         keep.append((m.PositionScope, _rows(db, m.PositionScope)))
         if keep_structure:
             keep += [(model, _rows(db, model)) for model in STRUCTURE]
+            # printed entrance QRs stay valid; who made them may not survive the reset
+            keep.append((m.StaffCheckpoint, [{**r, "created_by": None} for r in _rows(db, m.StaffCheckpoint)]))
     finally:
         db.close()
     Base.metadata.drop_all(bind=engine)
