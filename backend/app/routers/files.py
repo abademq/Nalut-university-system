@@ -58,6 +58,12 @@ def can_read(db: Session, user: User, f: StoredFile) -> bool:
         ev = db.scalar(select(ServiceRequestEvent).where(ServiceRequestEvent.file_id == f.id))
         r = db.get(ServiceRequest, ev.request_id) if ev else None
         return bool(r and (r.requester_id == user.id or can_handle(user, r)))
+    if f.purpose == "complaint":
+        from ..models import Complaint
+        from .complaints import handles
+
+        c = db.scalar(select(Complaint).where(Complaint.file_id == f.id))
+        return bool(c and (c.author_id == user.id or handles(db, user, c)))
     if f.purpose == "publication":
         from .publications import _manages, can_publish, visible
 

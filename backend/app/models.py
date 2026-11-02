@@ -784,6 +784,36 @@ class NotificationSmsCost(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
+class Complaint(Base):
+    """The complaints and suggestions box. An anonymous complaint keeps its author only so they can
+    follow it; the name is never shown to those who handle it, nor written to the audit log."""
+
+    __tablename__ = "complaints"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    university_id: Mapped[int] = mapped_column(ForeignKey("universities.id"), index=True)
+    faculty_id: Mapped[int | None] = mapped_column(ForeignKey("faculties.id"), index=True)  # none: the university
+    author_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    anonymous: Mapped[bool] = mapped_column(Boolean, default=False)
+    category: Mapped[str] = mapped_column(String(30))
+    subject: Mapped[str] = mapped_column(String(200))
+    body: Mapped[str] = mapped_column(Text)
+    file_id: Mapped[int | None] = mapped_column(ForeignKey("stored_files.id"))
+    status: Mapped[str] = mapped_column(String(20), default="new")  # new | in_review | resolved | rejected
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class ComplaintReply(Base):
+    __tablename__ = "complaint_replies"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    complaint_id: Mapped[int] = mapped_column(ForeignKey("complaints.id"), index=True)
+    author_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    from_handler: Mapped[bool] = mapped_column(Boolean, default=False)
+    body: Mapped[str] = mapped_column(Text)
+    status: Mapped[str | None] = mapped_column(String(20))  # the status set with this reply
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
 class Regulation(Base):
     """A regulation or rule published for the university, or for one faculty."""
 

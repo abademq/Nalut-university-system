@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../state/session.dart';
 import '../widgets/common.dart';
 import 'account_screen.dart';
+import 'complaints_screen.dart';
 import 'ai_screens.dart';
 import 'people_screens.dart';
 import 'courses_screen.dart';
@@ -85,6 +86,9 @@ class MoreScreen extends StatelessWidget {
               subtitle: 'جداول المحاضرات المنشورة والإعلانات بالصور'),
           _tile(context, Icons.description_outlined, 'الطلبات والمعاملات', const RequestsScreen(),
               subtitle: s.role == 'staff' || s.isAdmin ? 'طلباتي والوارد إليّ' : 'إفادة قيد، كشف درجات، عذر غياب…'),
+          if (s.role != 'platform_admin')
+            _tile(context, Icons.feedback_outlined, 'الشكاوى والمقترحات', const ComplaintsScreen(),
+                subtitle: s.can('complaints.manage') ? 'شكاواي والوارد إليّ' : 'أرسل شكوى أو اقتراحاً، ويمكن إخفاء اسمك'),
           if (s.can('banners.manage'))
             _tile(context, Icons.push_pin_outlined, 'الإعلانات المثبتة', const ManageBannersScreen()),
           if (s.can('publications.manage'))
