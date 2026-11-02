@@ -1,4 +1,4 @@
-import { html, useState, useAsync, Async, Empty, Chip, Tabs, ErrorBox, useForm, useSubmit, toast, DAYS, ROLE, fmtDate } from "../ui.js";
+import { html, useState, useAsync, Async, Empty, Chip, Tabs, ErrorBox, useForm, useSubmit, toast, DAYS, ROLE, fmtDate, Kpi } from "../ui.js";
 import { api } from "../api.js";
 
 // administers courses: whoever the permission matrix gives "courses.manage"
@@ -38,16 +38,41 @@ function CreateCourse({ user, onCreated }) {
     <button disabled=${busy}>إنشاء</button></form>`;
 }
 
+// A student's courses and credits: this term's load and what has been earned so far.
+export function AcademicSummary({ a }) {
+  if (!a) return null;
+  return html`<div class="card"><div class="kpis">
+      <${Kpi} label="مقررات هذا الفصل" value=${a.current_courses} />
+      <${Kpi} label="وحدات هذا الفصل" value=${a.current_credits} hint=${a.max_credits ? `الحد ${a.min_credits || 0}–${a.max_credits}` : null} />
+      <${Kpi} label="الوحدات المنجزة" value=${a.earned_credits} hint=${`${a.passed_courses} مقرر ناجح`} />
+      <${Kpi} label="مقررات راسب فيها" value=${a.failed_courses} />
+    </div>
+    ${a.load_warning ? html`<div class="alert warning" style="margin-top:.6rem">عبء هذا الفصل ${a.load_warning}</div>` : null}
+    ${a.courses ? html`<div class="table-wrap" style="margin-top:.6rem"><table>
+      <thead><tr><th>المقرر</th><th class="num">الوحدات</th><th>الفصل</th><th>الحالة</th></tr></thead>
+      <tbody>${a.courses.map((c) => html`<tr><td><span class="mono small">${c.code}</span> ${c.title}</td><td class="num">${c.credits}</td>
+        <td class="small">${c.term || "—"}</td>
+        <td>${c.state === "passed" ? html`<${Chip} kind="success">ناجح${c.letter ? ` (${c.letter})` : ""}<//>`
+          : c.state === "failed" ? html`<${Chip} kind="danger">راسب<//>` : html`<${Chip}>قيد الدراسة<//>`}</td></tr>`)}</tbody>
+      <tfoot><tr><th>المجموع</th><th class="num">${a.courses.reduce((n, c) => n + c.credits, 0)}</th><th colspan="2"></th></tr></tfoot>
+    </table></div>` : null}</div>`;
+}
+
 export function CoursesView({ user }) {
   const state = useAsync(() => api.get("/api/courses"), []);
+  const academic = useAsync(() => (user.role === "student" ? api.get("/api/me/academic") : Promise.resolve(null)), []);
   const [creating, setCreating] = useState(false);
   return html`<div>
     <div class="row between"><h1>المقررات</h1>
       ${isAdmin(user) ? html`<button onClick=${() => setCreating(!creating)}>${creating ? "إلغاء" : "+ مقرر جديد"}</button>` : null}</div>
+    ${academic.data ? html`<${AcademicSummary} a=${academic.data} />` : null}
     ${creating ? html`<${CreateCourse} user=${user} onCreated=${() => { setCreating(false); state.reload(); }} />` : null}
-    <${Async} state=${state}>${(courses) => courses.length ? html`<div class="grid cols-3">${courses.map((c) => html`
+    <${Async} state=${state}>${(courses) => courses.length ? html`
+      <p class="muted">${courses.length} مقرر · مجموع الوحدات ${courses.reduce((n, c) => n + c.credits, 0)}</p>
+      <div class="grid cols-3">${courses.map((c) => html`
       <a class="card item-link" href=${`#/courses/${c.id}`}>
         <div class="row between"><strong>${c.code}</strong><${Chip}>${c.credits} وحدات<//></div>
+        ${c.prerequisites.length ? html`<div class="small muted">يتطلب: <span class="ltr">${c.prerequisites.map((p) => p.code).join("، ")}</span></div>` : null}
         <h3 style="margin-top:.3rem">${c.title}</h3>
         <div class="small muted">${c.staff.map((s) => s.full_name).join("، ") || "لم يُسند بعد"}</div>
         <div class="small muted">${c.students_count} طالب · ${c.schedule.map((s) => `${DAYS[s.day]} ${s.start}`).join("، ")}</div>
@@ -119,16 +144,28 @@ function StaffManager({ course, onChange }) {
     .then(([a, b]) => [...a.items, ...b.items]), []);
   const [v, bind] = useForm({ user_id: "", role: "instructor" });
   const [codes, setCodes] = useState("");
+  const [refused, setRefused] = useState([]);   // students the registration rules turned down
+  const [reason, setReason] = useState("");
   const [assign, busy, error] = useSubmit(async () => {
     await api.post(`/api/courses/${course.id}/staff`, { user_id: Number(v.user_id), role: v.role });
     toast("تم الإسناد");
     onChange();
   });
-  const [enroll, busy2, error2] = useSubmit(async () => {
-    const r = await api.post(`/api/courses/${course.id}/enrollments`, { student_codes: codes.split(/[\s,،]+/).filter(Boolean) });
-    toast(`أُضيف ${r.added.length} طالب${r.unknown.length ? ` — غير معروف: ${r.unknown.join("، ")}` : ""}`);
-    setCodes("");
+  const send = async (list, override) => {
+    const r = await api.post(`/api/courses/${course.id}/enrollments`,
+      { student_codes: list, ...(override ? { override: true, reason } : {}) });
+    toast(`أُضيف ${r.added.length} طالب${r.unknown.length ? ` — غير معروف: ${r.unknown.join("، ")}` : ""}`
+      + (r.refused.length ? ` — رُفض ${r.refused.length} حسب قواعد التسجيل` : ""), r.refused.length ? "" : "success");
+    setRefused(r.refused);
     onChange();
+  };
+  const [enroll, busy2, error2] = useSubmit(async () => {
+    await send(codes.split(/[\s,،]+/).filter(Boolean), false);
+    setCodes("");
+  });
+  const [force, busy3, error3] = useSubmit(async () => {
+    await send(refused.map((x) => x.code), true);
+    setReason("");
   });
   return html`<div class="grid cols-2">
     <form class="card" onSubmit=${assign}><h3>إسناد عضو هيئة تدريس</h3><${ErrorBox} error=${error} />
@@ -138,8 +175,32 @@ function StaffManager({ course, onChange }) {
       <button disabled=${busy}>إسناد</button></form>
     <form class="card" onSubmit=${enroll}><h3>تسجيل طلبة</h3><${ErrorBox} error=${error2} />
       <div class="field"><label>أرقام القيد (مفصولة بمسافة أو فاصلة)</label><textarea value=${codes} onInput=${(e) => setCodes(e.target.value)} required></textarea></div>
-      <button disabled=${busy2}>تسجيل</button></form>
+      <button disabled=${busy2}>تسجيل</button>
+      <p class="small muted">تُطبَّق قواعد التسجيل: المتطلبات السابقة، وعدم تكرار مقرر ناجح، وتعارض المواعيد، والحد الأعلى للوحدات.</p></form>
+    ${refused.length ? html`<form class="card" onSubmit=${force} style="grid-column:1/-1"><h3>لم يُسجَّلوا حسب قواعد التسجيل</h3>
+      <${ErrorBox} error=${error3} />
+      <ul class="list">${refused.map((x) => html`<li><strong>${x.full_name}</strong> <span class="mono small">${x.code}</span>
+        <ul>${x.problems.map((p) => html`<li class="small">${p}</li>`)}</ul></li>`)}</ul>
+      <div class="field"><label>تسجيلهم رغم ذلك (استثناء): السبب</label>
+        <input value=${reason} onInput=${(e) => setReason(e.target.value)} placeholder="مثلاً: موافقة مجلس القسم رقم …" minlength="3" required /></div>
+      <div class="row"><button class="secondary" disabled=${busy3}>تسجيل استثنائي (يُسجَّل في سجل التدقيق)</button>
+        <button type="button" class="ghost" onClick=${() => setRefused([])}>إغلاق</button></div></form>` : null}
   </div>`;
+}
+
+// The courses (by code) a student must pass before registering in this one, for every term it is offered.
+function Prerequisites({ course, onChange }) {
+  const [codes, setCodes] = useState(course.prerequisites.map((p) => p.code).join(" "));
+  const [save, busy, error] = useSubmit(async () => {
+    await api.put(`/api/courses/${course.id}/prerequisites`, { codes: codes.split(/[\s,،]+/).filter(Boolean) });
+    toast("حُفظت المتطلبات السابقة", "success");
+    onChange();
+  });
+  return html`<form class="card" onSubmit=${save}><h3>المتطلبات السابقة</h3><${ErrorBox} error=${error} />
+    <div class="field"><label>رموز المقررات التي يجب النجاح فيها أولاً (مفصولة بمسافة)</label>
+      <input class="ltr" value=${codes} onInput=${(e) => setCodes(e.target.value)} placeholder="CS101 MATH101" /></div>
+    <p class="small muted">تسري على كل فصل يُطرح فيه المقرر بالرمز ${course.code}. يُحتسب النجاح بعد نشر نتيجة المتطلب.</p>
+    <button disabled=${busy}>حفظ</button></form>`;
 }
 
 export function CourseDetail({ id, user }) {
@@ -154,7 +215,8 @@ export function CourseDetail({ id, user }) {
       ...(teaches ? [["students", `الطلبة (${c.students_count})`]] : []), ...(isAdmin(user) ? [["manage", "الإدارة"]] : teaches ? [["components", "عناصر التقييم"]] : [])]} />
     ${tab === "info" ? html`<div class="grid cols-2">
       <div class="card"><h3>معلومات المقرر</h3><ul class="list">
-        <li>الوحدات: ${c.credits}</li>
+        <li>الوحدات: <strong>${c.credits}</strong></li>
+        <li>المتطلبات السابقة: ${c.prerequisites.length ? c.prerequisites.map((p, i) => html`${i ? "، " : ""}<span>${p.title || p.code} <span class="mono small">(${p.code})</span></span>`) : html`<span class="muted">لا يوجد</span>`}</li>
         <li>هيئة التدريس: ${c.staff.map((s) => html`<div>${s.full_name} <span class="small muted">${s.role === "assistant" ? "معيد" : "أستاذ"}</span>
           ${user.role === "student" ? html` · <a href=${`#/messages?to=${s.id}&course=${c.id}`}>مراسلة</a>` : null}</div>`)}</li>
         <li>عناصر التقييم: ${c.components.map((x) => `${x.name} (${x.max_score})`).join("، ")}</li></ul></div>
@@ -174,7 +236,8 @@ export function CourseDetail({ id, user }) {
           await api.del(`/api/courses/${c.id}/enrollments/${s.id}`); students.reload(); }}>سحب</button></td>` : null}</tr>`)}</tbody>
       </table></div>`}<//></div>` : null}
     ${tab === "components" ? html`<${Components} course=${c} onChange=${state.reload} />` : null}
-    ${tab === "manage" ? html`<div class="grid cols-2"><${EditCourse} course=${c} onChange=${state.reload} /><${Components} course=${c} onChange=${state.reload} /></div>
+    ${tab === "manage" ? html`<div class="grid cols-2"><${EditCourse} course=${c} onChange=${state.reload} /><${Components} course=${c} onChange=${state.reload} />
+      <${Prerequisites} course=${c} onChange=${state.reload} /></div>
       <${StaffManager} course=${c} onChange=${() => { state.reload(); students.reload(); }} />` : null}
   </div>`}<//>`;
 }

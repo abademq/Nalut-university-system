@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from .. import audit, permissions
+from .. import audit, permissions, registration
 from ..db import get_db
 from ..deps import (
     can_teach_course,
@@ -17,11 +17,13 @@ from ..deps import (
     get_current_user,
     not_found,
     require_roles,
+    tenant_settings,
     visible_course_ids,
 )
 from ..models import (
     AssessmentComponent,
     Course,
+    CoursePrerequisite,
     CourseStaff,
     Department,
     Enrollment,
@@ -46,6 +48,9 @@ def course_out(db: Session, c: Course, *, detail: bool = False) -> dict:
         "students_count": db.scalar(select(func.count(Enrollment.id)).where(
             Enrollment.course_id == c.id, Enrollment.status == "active")),
     }
+    req = registration.prerequisites(db, c)
+    names = registration.titles(db, c.university_id, req) if detail else {}
+    out["prerequisites"] = [{"code": r, "title": names.get(r)} for r in req]
     if detail:
         out["components"] = [{"id": a.id, "name": a.name, "max_score": a.max_score} for a in db.scalars(
             select(AssessmentComponent).where(AssessmentComponent.course_id == c.id)
@@ -112,8 +117,11 @@ def create_course(body: CourseIn, request: Request,
         term = db.get(Term, body.term_id)
         if not term or term.university_id != user.university_id:
             raise HTTPException(status_code=400, detail="الفصل الدراسي غير صحيح")
+    # no term chosen: the current one (a term's load and clashes are counted per term)
+    term_id = body.term_id or db.scalar(select(Term.id).where(Term.university_id == user.university_id,
+                                                              Term.is_current.is_(True)).limit(1))
     c = Course(university_id=user.university_id, faculty_id=fac.id, department_id=body.department_id,
-               term_id=body.term_id, code=body.code, title=body.title, credits=body.credits,
+               term_id=term_id, code=body.code, title=body.title, credits=body.credits,
                schedule=[s.model_dump() for s in body.schedule])
     db.add(c)
     db.flush()
@@ -202,6 +210,9 @@ def remove_staff(course_id: int, user_id: int, request: Request,
 
 class EnrollIn(BaseModel):
     student_codes: list[str] = Field(min_length=1, max_length=1000)
+    # register despite the rules (prerequisites, load, clashes); a reason is then required
+    override: bool = False
+    reason: str = Field(default="", max_length=300)
 
 
 @router.post("/courses/{course_id}/enrollments")
@@ -209,13 +220,22 @@ def enroll(course_id: int, body: EnrollIn, request: Request,
            user: User = Depends(_course_manager),
            db: Session = Depends(get_db)):
     c = get_course_for(db, user, course_id)
-    added, unknown = [], []
-    for code in {s.strip() for s in body.student_codes if s.strip()}:
+    if body.override and len(body.reason.strip()) < 3:
+        raise HTTPException(status_code=400, detail="اذكر سبب التسجيل رغم قواعد التسجيل")
+    cfg = tenant_settings(db, user)
+    added, unknown, refused, overridden = [], [], [], []
+    for code in sorted({s.strip() for s in body.student_codes if s.strip()}):
         st = db.scalar(select(User).where(User.university_id == c.university_id, User.code == code,
                                           User.role == Role.STUDENT))
         if not st:
             unknown.append(code)
             continue
+        problems = registration.check(db, st, c, cfg)
+        if problems and not body.override:
+            refused.append({"code": code, "full_name": st.full_name, "problems": problems})
+            continue
+        if problems:
+            overridden.append({"code": code, "problems": problems})
         e = db.scalar(select(Enrollment).where(Enrollment.course_id == c.id, Enrollment.student_id == st.id))
         if e:
             e.status = "active"
@@ -223,9 +243,49 @@ def enroll(course_id: int, body: EnrollIn, request: Request,
             db.add(Enrollment(course_id=c.id, student_id=st.id))
         added.append(code)
     audit.record(db, "course.enrolled", actor=user, target_type="course", target_id=c.id,
-                 details={"added": len(added)}, ip=client_ip(request))
+                 details={"added": len(added), **({"overridden": overridden, "reason": body.reason.strip()}
+                                                 if overridden else {})}, ip=client_ip(request))
     db.commit()
-    return {"added": sorted(added), "unknown": sorted(unknown)}
+    return {"added": sorted(added), "unknown": sorted(unknown), "refused": refused,
+            "overridden": [o["code"] for o in overridden]}
+
+
+class PrerequisitesIn(BaseModel):
+    codes: list[str] = Field(default_factory=list, max_length=20)
+
+
+@router.put("/courses/{course_id}/prerequisites")
+def set_prerequisites(course_id: int, body: PrerequisitesIn, request: Request,
+                      user: User = Depends(_course_manager), db: Session = Depends(get_db)):
+    """The courses (by code, in this faculty) to pass before registering in this one; applies to
+    every term's offering of the code."""
+    c = get_course_for(db, user, course_id)
+    if not course_admin(db, user, c):
+        raise forbidden("هذا المقرر خارج نطاق صلاحياتك")
+    codes = sorted({x.strip().upper() for x in body.codes if x.strip()})
+    if c.code.upper() in codes:
+        raise HTTPException(status_code=400, detail="لا يكون المقرر متطلباً لنفسه")
+    known = set(db.scalars(select(Course.code).where(Course.faculty_id == c.faculty_id, Course.code.in_(codes or ["-"]))))
+    known_upper = {k.upper(): k for k in known}
+    missing = [x for x in codes if x not in known_upper]
+    if missing:
+        raise HTTPException(status_code=400, detail=f"لا يوجد في الكلية مقرر بالرمز: {', '.join(missing)}")
+    codes = [known_upper[x] for x in codes]
+    loop = registration.would_cycle(db, c.faculty_id, c.code, codes)
+    if loop:
+        raise HTTPException(status_code=400, detail=f"{loop} يتطلب هذا المقرر (مباشرة أو عبر غيره)، فلا يكون متطلباً له")
+    old = registration.prerequisites(db, c)
+    for row in db.scalars(select(CoursePrerequisite).where(CoursePrerequisite.faculty_id == c.faculty_id,
+                                                           CoursePrerequisite.course_code == c.code)):
+        db.delete(row)
+    db.flush()
+    for code in codes:
+        db.add(CoursePrerequisite(university_id=c.university_id, faculty_id=c.faculty_id, course_code=c.code,
+                                  required_code=code))
+    audit.record(db, "course.prerequisites_changed", actor=user, target_type="course", target_id=c.id,
+                 details={"old": old, "new": codes}, ip=client_ip(request))
+    db.commit()
+    return course_out(db, c, detail=True)
 
 
 @router.delete("/courses/{course_id}/enrollments/{student_id}")
@@ -249,6 +309,16 @@ def course_students(course_id: int, user: User = Depends(get_current_user), db: 
     rows = db.scalars(select(User).join(Enrollment, Enrollment.student_id == User.id).where(
         Enrollment.course_id == c.id, Enrollment.status == "active").order_by(User.full_name)).all()
     return [{"id": u.id, "full_name": u.full_name, "code": u.code, "cohort": u.cohort} for u in rows]
+
+
+@router.get("/me/academic")
+def my_academic(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """A student's courses and credits: this term's load and the credits earned so far."""
+    if user.role != Role.STUDENT:
+        raise forbidden()
+    out = registration.summary(db, user, tenant_settings(db, user))
+    db.commit()
+    return out
 
 
 @router.get("/me/schedule")

@@ -70,6 +70,14 @@ DEFAULT_SETTINGS: dict = {
             "high": {"require_location": True, "require_selfie": True},
         },
     },
+    # registration rules, checked whenever students are registered in a course
+    "registration": {
+        "enforce_prerequisites": True,   # a course's prerequisites must have been passed
+        "block_passed_repeat": True,     # a course already passed cannot be taken again
+        "block_schedule_clash": True,    # no two courses of the same term at the same time
+        "max_credits_per_term": 21,      # 0 = no limit
+        "min_credits_per_term": 12,      # shown as a warning on the student's load, never blocks
+    },
     "messaging": {
         # whom students may start conversations with: course_staff (the teaching staff of
         # their courses), faculty (also their faculty's staff and administration) or none
@@ -179,6 +187,7 @@ NUMBER_LIMITS = {
     ("attendance", "default_radius_m"): (20, 5000), ("attendance", "selfie_retention_days"): (1, 365),
     ("grading", "pass_mark"): (0, 100), ("grading", "low_performance_percent"): (0, 100),
     ("notifications", "due_reminder_hours"): (1, 168), ("messaging", "max_attachment_mb"): (1, 25),
+    ("registration", "max_credits_per_term"): (0, 60), ("registration", "min_credits_per_term"): (0, 60),
 }
 NUMBER_LABELS = {
     "max_login_failures": "عدد محاولات الدخول الخاطئة", "lockout_minutes": "مدة قفل الحساب",
@@ -191,6 +200,7 @@ NUMBER_LABELS = {
     "selfie_retention_days": "مدة الاحتفاظ بالصور", "pass_mark": "درجة النجاح",
     "low_performance_percent": "حد الأداء الضعيف", "due_reminder_hours": "التذكير قبل التسليم",
     "max_attachment_mb": "حجم المرفق",
+    "max_credits_per_term": "الحد الأعلى للوحدات في الفصل", "min_credits_per_term": "الحد الأدنى للوحدات في الفصل",
 }
 RISK_SIGNALS = ("outside_geofence", "no_device_id", "shared_device", "device_used_by_other_account",
                 "new_device", "face_mismatch")
@@ -215,6 +225,9 @@ def validate_policies(changes: dict) -> None:
             bad(f"{NUMBER_LABELS[key]}: أدخل رقماً")
         if not lo <= value <= hi:
             bad(f"{NUMBER_LABELS[key]} يجب أن يكون بين {lo} و {hi}")
+    reg = changes.get("registration") or {}
+    if reg.get("max_credits_per_term") and float(reg.get("min_credits_per_term") or 0) > float(reg["max_credits_per_term"]):
+        bad("الحد الأدنى للوحدات أكبر من الحد الأعلى")
     att = changes.get("attendance") or {}
     if "warning_absence_percent" in att and "limit_absence_percent" in att \
             and float(att["warning_absence_percent"]) > float(att["limit_absence_percent"]):

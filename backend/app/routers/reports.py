@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from .. import attendance as att
 from .. import grades as grade_svc
-from .. import permissions
+from .. import permissions, registration
 from ..db import get_db, utcnow
 from ..deps import (
     forbidden,
@@ -332,7 +332,10 @@ def _student_report(db: Session, viewer: User, s: User) -> dict:
         })
     due_total = sum(c["due"] for c in courses)
     scores = [c["avg_score_percent"] for c in courses if c["avg_score_percent"] is not None]
-    return {"kind": "student", "summary": {
+    academic = registration.summary(db, s, cfg)
+    if viewer.role in Role.INSTRUCTORS:  # a teacher sees the load, not the whole record
+        academic = {k: v for k, v in academic.items() if k != "courses"}
+    return {"kind": "student", "academic": academic, "summary": {
         "courses": len(courses),
         "absence_percent": round(sum(c["absence_percent"] for c in courses) / len(courses), 1) if courses else None,
         "submission_rate": _pct(sum(c["submitted"] for c in courses), due_total),

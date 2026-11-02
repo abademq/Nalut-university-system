@@ -1,3 +1,4 @@
+import { AcademicSummary } from "./courses.js";
 import { html, useState, useAsync, Async, Empty, Chip, Kpi, navigate } from "../ui.js";
 import { api } from "../api.js";
 
@@ -44,7 +45,8 @@ export function StudentDetail({ id, user }) {
         <${Kpi} label="متوسط درجات المهام" value=${pct(s.avg_score_percent)} />
         <${Kpi} label="تنبيهات" value=${s.alerts} />
       </div>
-      <div class="card"><h3>المقررات</h3>${d.courses.length ? html`<div class="table-wrap"><table>
+      ${d.academic ? html`<h3>المقررات والوحدات</h3><${AcademicSummary} a=${d.academic} />` : null}
+      <div class="card"><h3>المتابعة في كل مقرر</h3>${d.courses.length ? html`<div class="table-wrap"><table>
         <thead><tr><th>المقرر</th><th class="num">الغياب</th><th class="num">مرات التأخير</th><th class="num">المهام المسلّمة</th>
           <th class="num">متوسط المهام</th><th>النتيجة</th><th>تنبيهات</th></tr></thead>
         <tbody>${d.courses.map((c) => html`<tr><td>${c.course.code} — ${c.course.title}</td>

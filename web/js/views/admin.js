@@ -395,6 +395,8 @@ const HINTS = {
   max_login_failures: "عدد كلمات المرور الخاطئة المتتالية قبل قفل الحساب مؤقتاً.",
   lockout_minutes: "مدة قفل الحساب بعد بلوغ عدد المحاولات الخاطئة.",
   max_attachment_mb: "أكبر حجم لملف يُرفق في الرسائل.",
+  max_credits_per_term: "لا يُسجَّل الطالب في مقرر يتجاوز به مجموع وحدات الفصل هذا الحد. 0 = بلا حد.",
+  min_credits_per_term: "تنبيه فقط: يظهر للطالب والإدارة إذا كان عبء الفصل أقل من هذا الحد.",
   rotation_seconds: "كل كم ثانية يتغير رمز QR المعروض. كلما قلّت المدة صعُب تمرير صورة الرمز لطالب غائب (15 ثانية مناسبة).",
   warning_absence_percent: "عند بلوغ نسبة غياب الطالب في مقرر هذه القيمة يصله تنبيه تحذيري.",
   limit_absence_percent: "الحد الأقصى المعتمد للغياب. عند تجاوزه يُنبَّه الطالب وأستاذ المقرر وإدارة الكلية لاتخاذ الإجراء وفق اللوائح (بقرار بشري، لا تلقائياً).",
@@ -415,6 +417,9 @@ function SettingsForm({ data, acting, onSaved }) {
     staff_default_duration_minutes: e.attendance.staff_default_duration_minutes, default_radius_m: e.attendance.default_radius_m,
     max_login_failures: e.security.max_login_failures, lockout_minutes: e.security.lockout_minutes,
     max_attachment_mb: e.messaging.max_attachment_mb, student_can_message: e.messaging.student_can_message,
+    max_credits_per_term: e.registration.max_credits_per_term, min_credits_per_term: e.registration.min_credits_per_term,
+    enforce_prerequisites: e.registration.enforce_prerequisites, block_passed_repeat: e.registration.block_passed_repeat,
+    block_schedule_clash: e.registration.block_schedule_clash,
     warning_absence_percent: e.attendance.warning_absence_percent, limit_absence_percent: e.attendance.limit_absence_percent,
     review_threshold: e.attendance.review_threshold, selfie_retention_days: e.attendance.selfie_retention_days,
     pass_mark: e.grading.pass_mark, low_performance_percent: e.grading.low_performance_percent,
@@ -456,6 +461,9 @@ function SettingsForm({ data, acting, onSaved }) {
         review_threshold: n("review_threshold"), selfie_retention_days: n("selfie_retention_days"),
         risk_weights: Object.fromEntries(Object.entries(weights).map(([k, w]) => [k, Number(w)])), levels },
       messaging: { ...e.messaging, max_attachment_mb: n("max_attachment_mb"), student_can_message: v.student_can_message },
+      registration: { ...e.registration, max_credits_per_term: n("max_credits_per_term"), min_credits_per_term: n("min_credits_per_term"),
+        enforce_prerequisites: !!v.enforce_prerequisites, block_passed_repeat: !!v.block_passed_repeat,
+        block_schedule_clash: !!v.block_schedule_clash },
       grading: { ...e.grading, pass_mark: n("pass_mark"), low_performance_percent: n("low_performance_percent"),
         scale: scale.map(([m, l, a]) => [Number(m), String(l).trim(), String(a).trim()]) },
     } });
@@ -514,6 +522,13 @@ function SettingsForm({ data, acting, onSaved }) {
         <option value="faculty">أساتذة مقرراته، وموظفي كليته وإدارتها</option>
         <option value="none">لا يبدأ محادثات (يرد فقط)</option></select></div>
       ${num("max_attachment_mb", "أكبر حجم للمرفق (ميغابايت)", { min: 1, max: 25 })}</div></div>
+    <div class="card"><h3>قواعد التسجيل في المقررات</h3>
+      <p class="small muted">تُفحص عند كل تسجيل طالب في مقرر. لمن يسجّل الطلبة أن يستثني طالباً بسبب مكتوب، ويُحفظ الاستثناء في سجل التدقيق.</p>
+      <label class="check"><input type="checkbox" ...${bind("enforce_prerequisites", "checkbox")} /> المتطلبات السابقة: لا يُسجَّل حتى ينجح فيها</label>
+      <label class="check"><input type="checkbox" ...${bind("block_passed_repeat", "checkbox")} /> لا يُعاد تسجيل مقرر نجح فيه الطالب</label>
+      <label class="check"><input type="checkbox" ...${bind("block_schedule_clash", "checkbox")} /> لا يُسجَّل في مقررين متعارضين في الموعد في نفس الفصل</label>
+      <div class="form-grid">${num("max_credits_per_term", "الحد الأعلى للوحدات في الفصل", { min: 0, max: 60 })}
+        ${num("min_credits_per_term", "الحد الأدنى للوحدات في الفصل (تنبيه)", { min: 0, max: 60 })}</div></div>
     <div class="card"><h3>حضور المحاضرات</h3><div class="form-grid">
       ${num("late_after_minutes", "الطالب متأخر بعد (دقيقة من بداية المحاضرة)", { min: 0, max: 180 })}
       ${num("default_duration_minutes", "مدة المحاضرة الافتراضية (دقيقة)", { min: 5, max: 720 })}

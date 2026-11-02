@@ -49,6 +49,7 @@ ACTIONS: dict[str, tuple[str, str]] = {
     "course.staff_assigned": ("إسناد مقرر لعضو هيئة تدريس", "course"),
     "course.staff_removed": ("إلغاء إسناد مقرر", "course"),
     "course.enrolled": ("تسجيل طالب في مقرر", "course"),
+    "course.prerequisites_changed": ("تعديل المتطلبات السابقة لمقرر", "course"),
     "course.unenrolled": ("إلغاء تسجيل طالب من مقرر", "course"),
     "component.updated": ("تعديل عنصر تقييم", "grade"),
     "component.deleted": ("حذف عنصر تقييم", "grade"),

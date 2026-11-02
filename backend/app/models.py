@@ -215,6 +215,21 @@ class Course(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
+class CoursePrerequisite(Base):
+    """A course (by code, in its faculty) that a student must have passed before registering in another.
+
+    Courses are offered again every term under the same code, so the rule follows the code."""
+
+    __tablename__ = "course_prerequisites"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    university_id: Mapped[int] = mapped_column(ForeignKey("universities.id"), index=True)
+    faculty_id: Mapped[int] = mapped_column(ForeignKey("faculties.id"), index=True)
+    course_code: Mapped[str] = mapped_column(String(40))
+    required_code: Mapped[str] = mapped_column(String(40))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    __table_args__ = (UniqueConstraint("faculty_id", "course_code", "required_code"),)
+
+
 class CourseStaff(Base):
     __tablename__ = "course_staff"
     id: Mapped[int] = mapped_column(primary_key=True)

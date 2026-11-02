@@ -27,6 +27,7 @@ from .models import (
     Conversation,
     ConversationParticipant,
     Course,
+    CoursePrerequisite,
     CourseResult,
     CourseStaff,
     Department,
@@ -159,6 +160,9 @@ def seed(db, second_university: bool = False) -> None:
     ce101 = course("CE101", "الرسم الهندسي", eng, ce,
                    [{"day": 0, "start": "12:30", "end": "14:00", "room": "E-Hall"}],
                    [(t_khaled, "instructor")], eng_students)
+
+    # data structures need programming first (registration checks it from now on)
+    db.add(CoursePrerequisite(university_id=uni.id, faculty_id=it.id, course_code="CS201", required_code="CS101"))
 
     # ----- grades: IS110 published, CS201 waiting for approval, CS101 draft in progress
     def fill_grades(c, studs, lo=40, hi=98, skip=()):
